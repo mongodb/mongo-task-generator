@@ -1,0 +1,22 @@
+buildvariant:
+  - display_name: Ubuntu 18.04
+    name: ubuntu1804
+    run_on: 
+      - ubuntu1804-test
+    tasks:
+      - name: sample
+
+pre:
+  - command: git.get_project
+    params:
+      directory: src
+
+tasks:
+  - name: sample
+    commands:
+      - command: shell.exec
+        params: 
+          working_dir: src
+          script: |
+            echo "Hello World"
+
