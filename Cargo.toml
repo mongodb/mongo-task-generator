@@ -1,0 +1,14 @@
+[package]
+name = "mongo-task-generator"
+version = "0.1.0"
+authors = ["Decision Automation Group <dev-prod-dag@mongodb.com>"]
+edition = "2018"
+
+[dependencies]
+
+[dev-dependencies]
+cargo-nextest = "0.9"
+
+[profile.release]
+opt-level = 2
+lto = "thin"

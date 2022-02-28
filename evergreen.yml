@@ -1,22 +1,63 @@
-buildvariant:
-  - display_name: Ubuntu 18.04
-    name: ubuntu1804
-    run_on: 
-      - ubuntu1804-test
+# Generated from bonsai
+# Generated at: 2022-02-28 18:00:48.201708 UTC
+---
+buildvariants:
+  - name: ubuntu1804
     tasks:
-      - name: sample
-
+      - name: build
+      - name: unit_tests
+      - name: lint
+      - name: format
+    display_name: Ubuntu 18.04
+    run_on:
+      - ubuntu1804-test
+tasks:
+  - name: unit_tests
+    commands:
+      - func: cargo_run
+        vars:
+          cargo_command: nextest run --profile ci
+          target_dir: src
+  - name: format
+    commands:
+      - func: cargo_run
+        vars:
+          target_dir: src
+          cargo_command: fmt --check
+  - name: lint
+    commands:
+      - func: cargo_run
+        vars:
+          target_dir: src
+          cargo_command: clippy
+  - name: build
+    commands:
+      - func: cargo_run
+        vars:
+          target_dir: src
+          cargo_command: build
+functions:
+  cargo_run:
+    - command: shell.exec
+      params:
+        script: "set -o errexit\n\nexport RUSTUP_HOME=\"$PWD/bonsai/rustup\"\nexport CARGO_HOME=\"$PWD/bonsai/cargo\"\nexport PATH=\"$PATH:$CARGO_HOME/bin\"\n\ncd ${target_dir}\n\ncargo ${cargo_command}\n"
+  cargo_enable nextest:
+    - command: shell.exec
+      params:
+        script: "set -o errexit\n\nexport RUSTUP_HOME=\"$PWD/bonsai/rustup\"\nexport CARGO_HOME=\"$PWD/bonsai/cargo\"\nexport PATH=\"$PATH:$CARGO_HOME/bin\"\n\ncurl -LsSf https://get.nexte.st/latest/linux | tar zxf - -C \"$CARGO_HOME/bin\"\n"
+  cargo_install rust:
+    - command: shell.exec
+      params:
+        script: "set -o errexit\n\nexport RUSTUP_HOME=\"$PWD/bonsai/rustup\"\nexport CARGO_HOME=\"$PWD/bonsai/cargo\"\nexport PATH=\"$PATH:$CARGO_HOME/bin\"\ncurl https://sh.rustup.rs -sSf | sh -s -- -y\nrustup default ${rust_version}\n"
 pre:
   - command: git.get_project
     params:
       directory: src
-
-tasks:
-  - name: sample
-    commands:
-      - command: shell.exec
-        params: 
-          working_dir: src
-          script: |
-            echo "Hello World"
-
+  - func: cargo_install rust
+    vars:
+      rust_version: stable
+  - func: cargo_enable nextest
+post:
+  - command: attach.xunit_results
+    params:
+      file: src/target/nextest/ci/*_junit.xml
