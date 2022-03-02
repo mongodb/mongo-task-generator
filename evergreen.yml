@@ -1,5 +1,5 @@
 # Generated from bonsai
-# Generated at: 2022-02-28 18:00:48.201708 UTC
+# Generated at: 2022-03-02 21:01:33.627389 UTC
 ---
 buildvariants:
   - name: ubuntu1804
@@ -16,20 +16,20 @@ tasks:
     commands:
       - func: cargo_run
         vars:
-          cargo_command: nextest run --profile ci
           target_dir: src
+          cargo_command: nextest run --profile ci
   - name: format
     commands:
       - func: cargo_run
         vars:
-          target_dir: src
           cargo_command: fmt --check
+          target_dir: src
   - name: lint
     commands:
       - func: cargo_run
         vars:
           target_dir: src
-          cargo_command: clippy
+          cargo_command: clippy -- -D warnings
   - name: build
     commands:
       - func: cargo_run
@@ -37,10 +37,6 @@ tasks:
           target_dir: src
           cargo_command: build
 functions:
-  cargo_run:
-    - command: shell.exec
-      params:
-        script: "set -o errexit\n\nexport RUSTUP_HOME=\"$PWD/bonsai/rustup\"\nexport CARGO_HOME=\"$PWD/bonsai/cargo\"\nexport PATH=\"$PATH:$CARGO_HOME/bin\"\n\ncd ${target_dir}\n\ncargo ${cargo_command}\n"
   cargo_enable nextest:
     - command: shell.exec
       params:
@@ -49,6 +45,10 @@ functions:
     - command: shell.exec
       params:
         script: "set -o errexit\n\nexport RUSTUP_HOME=\"$PWD/bonsai/rustup\"\nexport CARGO_HOME=\"$PWD/bonsai/cargo\"\nexport PATH=\"$PATH:$CARGO_HOME/bin\"\ncurl https://sh.rustup.rs -sSf | sh -s -- -y\nrustup default ${rust_version}\n"
+  cargo_run:
+    - command: shell.exec
+      params:
+        script: "set -o errexit\n\nexport RUSTUP_HOME=\"$PWD/bonsai/rustup\"\nexport CARGO_HOME=\"$PWD/bonsai/cargo\"\nexport PATH=\"$PATH:$CARGO_HOME/bin\"\n\ncd ${target_dir}\n\ncargo ${cargo_command}\n"
 pre:
   - command: git.get_project
     params:

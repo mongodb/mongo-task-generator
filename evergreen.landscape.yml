@@ -48,7 +48,7 @@ tasks:
     - bonsai: cargo:run
       params:
         target_dir: src
-        cargo_command: clippy
+        cargo_command: clippy -- -D warnings
 
   - name: build
     commands:
