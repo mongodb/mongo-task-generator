@@ -129,7 +129,7 @@ pub fn generate_configuration(deps: Dependencies, config_location: &str) -> Resu
 
     std::fs::create_dir_all(CONFIG_DIR).unwrap();
     let mut config_file = Path::new(CONFIG_DIR).to_path_buf();
-    config_file.push("evergreen_config.json".to_string());
+    config_file.push("evergreen_config.json");
     std::fs::write(config_file, serde_json::to_string_pretty(&gen_evg_project)?)?;
     println!("{}", serde_yaml::to_string(&gen_evg_project)?);
     Ok(())
