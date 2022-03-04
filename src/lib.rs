@@ -12,7 +12,8 @@ use std::{
 };
 
 use anyhow::Result;
-use evg_config::{EvgConfigService, EvgConfigUtils, EvgConfigUtilsImpl, EvgProjectConfig};
+use evg_config::{EvgConfigService, EvgProjectConfig};
+use evg_config_utils::{EvgConfigUtils, EvgConfigUtilsImpl};
 use lazy_static::lazy_static;
 use regex::Regex;
 use resmoke_proxy::ResmokeProxy;
@@ -31,6 +32,7 @@ use tracing::{event, Level};
 
 mod evergreen_names;
 mod evg_config;
+mod evg_config_utils;
 mod resmoke_proxy;
 mod task_name;
 mod task_types;
@@ -180,6 +182,24 @@ trait GenerateTasksService {
         build_variant: &BuildVariant,
         config_location: &str,
     ) -> Result<FuzzerGenTaskParams>;
+
+    /// Generate a task for the given task definition.
+    ///
+    /// # Arguments
+    ///
+    /// * `task_def` - Task definition to base generated task on.
+    /// * `build_variant` - Build Variant to base generated task on.
+    /// * `config_location` - Location where generated task configuration will be stored.
+    ///
+    /// # Returns
+    ///
+    /// Configuration for a generated task.
+    fn generate_task(
+        &self,
+        task_def: &EvgTask,
+        build_variant: &BuildVariant,
+        config_location: &str,
+    ) -> Result<Option<Box<dyn GeneratedSuite>>>;
 }
 
 struct GenerateTasksServiceImpl {
@@ -233,27 +253,19 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
         for build_variant in &build_variant_list {
             let build_variant = build_variant_map.get(build_variant).unwrap();
             for task in &build_variant.tasks {
-                if !seen_tasks.contains(&task.name) {
-                    seen_tasks.insert(task.name.to_string());
-                    if let Some(task_def) = task_map.get(&task.name) {
-                        if self.evg_config_utils.is_task_generated(task_def) {
-                            if self.evg_config_utils.is_task_fuzzer(task_def) {
-                                event!(Level::INFO, "Generating fuzzer: {}", &task.name,);
+                // Skip tasks that have already been seen.
+                if seen_tasks.contains(&task.name) {
+                    continue;
+                }
 
-                                let params = self.task_def_to_fuzzer_params(
-                                    task_def,
-                                    build_variant,
-                                    config_location,
-                                )?;
-
-                                let gen_fuzzer_service = self.gen_fuzzer_service.clone();
-                                let generated_task =
-                                    gen_fuzzer_service.generate_fuzzer_task(&params).unwrap();
-                                let mut generated_tasks = generated_tasks.lock().unwrap();
-                                generated_tasks.insert(task.name.clone(), generated_task);
-                            } else {
-                                event!(Level::INFO, "Generating resmoke task: {}", &task.name,);
-                            }
+                seen_tasks.insert(task.name.to_string());
+                if let Some(task_def) = task_map.get(&task.name) {
+                    if self.evg_config_utils.is_task_generated(task_def) {
+                        let generated_task =
+                            self.generate_task(task_def, build_variant, config_location)?;
+                        if let Some(generated_task) = generated_task {
+                            let mut generated_tasks = generated_tasks.lock().unwrap();
+                            generated_tasks.insert(task.name.clone(), generated_task);
                         }
                     }
                 }
@@ -261,6 +273,38 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
         }
 
         Ok(generated_tasks)
+    }
+
+    /// Generate a task for the given task definition.
+    ///
+    /// # Arguments
+    ///
+    /// * `task_def` - Task definition to base generated task on.
+    /// * `build_variant` - Build Variant to base generated task on.
+    /// * `config_location` - Location where generated task configuration will be stored.
+    ///
+    /// # Returns
+    ///
+    /// Configuration for a generated task.
+    fn generate_task(
+        &self,
+        task_def: &EvgTask,
+        build_variant: &BuildVariant,
+        config_location: &str,
+    ) -> Result<Option<Box<dyn GeneratedSuite>>> {
+        let generated_task = if self.evg_config_utils.is_task_fuzzer(task_def) {
+            event!(Level::INFO, "Generating fuzzer: {}", task_def.name);
+
+            let params =
+                self.task_def_to_fuzzer_params(task_def, build_variant, config_location)?;
+
+            Some(self.gen_fuzzer_service.generate_fuzzer_task(&params)?)
+        } else {
+            event!(Level::INFO, "Generating resmoke task: {}", task_def.name);
+            None
+        };
+
+        Ok(generated_task)
     }
 
     /// Create build variants definitions containing all the generated tasks for each build variant.

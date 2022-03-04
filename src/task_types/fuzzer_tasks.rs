@@ -11,8 +11,11 @@ use tracing::{event, Level};
 
 use crate::{
     evergreen_names::{
-        ADD_GIT_TAG, ARTIFACT_CREATION_TASK, CONFIGURE_EVG_API_CREDS, DO_MULTIVERSION_SETUP,
-        DO_SETUP, GET_PROJECT_WITH_NO_MODULES, RUN_FUZZER, RUN_GENERATED_TESTS, SETUP_JSTESTFUZZ,
+        ADD_GIT_TAG, ARTIFACT_CREATION_TASK, CONFIGURE_EVG_API_CREDS, CONTINUE_ON_FAILURE,
+        DO_MULTIVERSION_SETUP, DO_SETUP, FUZZER_PARAMETERS, GEN_TASK_CONFIG_LOCATION,
+        GET_PROJECT_WITH_NO_MODULES, IDLE_TIMEOUT, MULTIVERSION_EXCLUDE_TAGS, NPM_COMMAND,
+        REQUIRE_MULTIVERSION_SETUP, RESMOKE_ARGS, RESMOKE_JOBS_MAX, RUN_FUZZER,
+        RUN_GENERATED_TESTS, SETUP_JSTESTFUZZ, SHOULD_SHUFFLE_TESTS, SUITE_NAME, TASK_NAME,
     },
     task_name::name_generated_task,
 };
@@ -56,8 +59,8 @@ impl FuzzerGenTaskParams {
     /// Create parameters to send to fuzzer to generate appropriate fuzzer tests.
     fn build_fuzzer_parameters(&self) -> HashMap<String, ParamValue> {
         hashmap! {
-            "npm_command".to_string() => ParamValue::from(self.npm_command.as_str()),
-            "jstestfuzz_vars".to_string() => ParamValue::String(format!("--numGeneratedFiles {} {}", self.num_files, self.jstestfuzz_vars.clone().unwrap_or_default())),
+            NPM_COMMAND.to_string() => ParamValue::from(self.npm_command.as_str()),
+            FUZZER_PARAMETERS.to_string() => ParamValue::String(format!("--numGeneratedFiles {} {}", self.num_files, self.jstestfuzz_vars.clone().unwrap_or_default())),
         }
     }
 
@@ -82,25 +85,28 @@ impl FuzzerGenTaskParams {
         version_combination: Option<&str>,
     ) -> HashMap<String, ParamValue> {
         let mut vars = hashmap! {
-            "continue_on_failure".to_string() => ParamValue::from(self.continue_on_failure),
-            "gen_task_config_location".to_string() => ParamValue::from(self.config_location.as_str()),
-            "require_multiversion_setup".to_string() => ParamValue::from(self.is_multiversion()),
-            "resmoke_args".to_string() => ParamValue::from(self.resmoke_args.as_str()),
-            "resmoke_jobs_max".to_string() => ParamValue::from(self.resmoke_jobs_max),
-            "should_shuffle".to_string() => ParamValue::from(self.should_shuffle),
-            "task".to_string() => ParamValue::from(self.task_name.as_str()),
-            "timeout_secs".to_string() => ParamValue::from(self.timeout_secs),
+            CONTINUE_ON_FAILURE.to_string() => ParamValue::from(self.continue_on_failure),
+            GEN_TASK_CONFIG_LOCATION.to_string() => ParamValue::from(self.config_location.as_str()),
+            REQUIRE_MULTIVERSION_SETUP.to_string() => ParamValue::from(self.is_multiversion()),
+            RESMOKE_ARGS.to_string() => ParamValue::from(self.resmoke_args.as_str()),
+            RESMOKE_JOBS_MAX.to_string() => ParamValue::from(self.resmoke_jobs_max),
+            SHOULD_SHUFFLE_TESTS.to_string() => ParamValue::from(self.should_shuffle),
+            TASK_NAME.to_string() => ParamValue::from(self.task_name.as_str()),
+            IDLE_TIMEOUT.to_string() => ParamValue::from(self.timeout_secs),
         };
 
         if let Some(suite) = generated_suite_name {
-            vars.insert("suite".to_string(), ParamValue::from(suite));
+            vars.insert(SUITE_NAME.to_string(), ParamValue::from(suite));
         } else {
-            vars.insert("suite".to_string(), ParamValue::from(self.suite.as_str()));
+            vars.insert(
+                SUITE_NAME.to_string(),
+                ParamValue::from(self.suite.as_str()),
+            );
         }
 
         if let Some(version_combination) = version_combination {
             vars.insert(
-                "multiversion_exclude_tags_version".to_string(),
+                MULTIVERSION_EXCLUDE_TAGS.to_string(),
                 ParamValue::from(version_combination),
             );
         }

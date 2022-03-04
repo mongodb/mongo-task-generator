@@ -32,3 +32,30 @@ pub const ARTIFACT_CREATION_TASK: &str = "archive_dist_test_debug";
 // Vars
 /// Variable that indicates a task is a fuzzer.
 pub const IS_FUZZER: &str = "is_jstestfuzz";
+
+// Parameters
+// Fuzzer parameters
+/// Name of npm command to run.
+pub const NPM_COMMAND: &str = "npm_command";
+/// Parameters to pass to fuzzer command.
+pub const FUZZER_PARAMETERS: &str = "jstestfuzz_vars";
+/// Should test execution continue after a failure.
+pub const CONTINUE_ON_FAILURE: &str = "continue_on_failure";
+/// Location where generation task configuration is stored in S3.
+pub const GEN_TASK_CONFIG_LOCATION: &str = "gen_task_config_location";
+/// Is multiversion setup required to execute this task.
+pub const REQUIRE_MULTIVERSION_SETUP: &str = "require_multiversion_setup";
+/// Arguments to pass to resmoke command.
+pub const RESMOKE_ARGS: &str = "resmoke_args";
+/// Maximum amount of resmoke jobs to execute in parallel.
+pub const RESMOKE_JOBS_MAX: &str = "resmoke_jobs_max";
+/// Should test order to shuffled for execution.
+pub const SHOULD_SHUFFLE_TESTS: &str = "should_shuffle";
+/// Name of task being executed.
+pub const TASK_NAME: &str = "task";
+/// Name of suite being executed.
+pub const SUITE_NAME: &str = "suite";
+/// Idle timeout to set for execution.
+pub const IDLE_TIMEOUT: &str = "timeout_secs";
+/// Multiversion version combination being run against.
+pub const MULTIVERSION_EXCLUDE_TAGS: &str = "multiversion_exclude_tags_version";
