@@ -1,0 +1,95 @@
+use anyhow::Result;
+use std::{collections::HashMap, path::Path, process::Command};
+
+use shrub_rs::models::{project::EvgProject, task::EvgTask, variant::BuildVariant};
+
+const REQUIRED_PREFIX: &str = "-required";
+
+pub trait EvgConfigService {
+    /// Get a map of build variant names to build variant definitions.
+    fn get_build_variant_map(&self) -> HashMap<String, &BuildVariant>;
+
+    /// Get a map of task name to task definitions.
+    fn get_task_def_map(&self) -> HashMap<String, &EvgTask>;
+
+    /// Get a list of build variants with the required build variants at the start.
+    fn sort_build_variants_by_required(&self) -> Vec<String>;
+}
+
+/// Items needed to implement an evergreen configuration service.
+pub struct EvgProjectConfig {
+    /// Shrub representation of the evg project.
+    evg_project: EvgProject,
+}
+
+impl EvgProjectConfig {
+    /// Create a new instance of an EvgConfigService.
+    ///
+    /// # Parameters
+    ///
+    /// * `evg_project_location` - Path to evergreen project configuration to load.
+    pub fn new(evg_project_location: &Path) -> Result<Self> {
+        let evg_project = get_project_config(evg_project_location)?;
+        Ok(Self { evg_project })
+    }
+}
+
+impl EvgConfigService for EvgProjectConfig {
+    /// Get a map of build variant names to build variant definitions.
+    fn get_build_variant_map(&self) -> HashMap<String, &BuildVariant> {
+        self.evg_project.build_variant_map()
+    }
+
+    /// Get a map of task name to task definitions.
+    fn get_task_def_map(&self) -> HashMap<String, &EvgTask> {
+        self.evg_project.task_def_map()
+    }
+
+    /// Get a list of build variants with the required build variants at the start.
+    fn sort_build_variants_by_required(&self) -> Vec<String> {
+        let build_variant_map = self.get_build_variant_map();
+        let mut build_variants: Vec<String> = build_variant_map
+            .keys()
+            .into_iter()
+            .filter_map(|bv| {
+                if bv.ends_with(REQUIRED_PREFIX) {
+                    Some(bv.to_string())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        build_variants.extend::<Vec<String>>(
+            build_variant_map
+                .keys()
+                .into_iter()
+                .filter_map(|bv| {
+                    if !bv.ends_with(REQUIRED_PREFIX) {
+                        Some(bv.to_string())
+                    } else {
+                        None
+                    }
+                })
+                .collect(),
+        );
+
+        build_variants
+    }
+}
+
+/// Evaluate the evergreen configuration and load it into a shrub project.
+///
+/// # Arguments
+///
+/// * `location` - Path to file containing evergreen configuration to load.
+///
+/// # Returns
+///
+/// Shrub representation of evergreen configuration.
+fn get_project_config(location: &Path) -> Result<EvgProject> {
+    let evg_config_yaml = Command::new("evergreen")
+        .args(&["evaluate", location.to_str().unwrap()])
+        .output()?;
+    Ok(EvgProject::from_yaml_str(std::str::from_utf8(&evg_config_yaml.stdout)?).unwrap())
+}
