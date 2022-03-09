@@ -4,7 +4,7 @@ use shrub_rs::models::{
 };
 
 /// Interface for representing a generated task.
-pub trait GeneratedSuite {
+pub trait GeneratedSuite: Sync + Send {
     /// Get the display name to use for the generated task.
     fn display_name(&self) -> String;
     /// Get the list of sub-tasks that comprise the generated task.

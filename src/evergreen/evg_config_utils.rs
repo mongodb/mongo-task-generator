@@ -5,10 +5,8 @@ use shrub_rs::models::commands::EvgCommand::Function;
 use shrub_rs::models::params::ParamValue;
 use shrub_rs::models::{commands::FunctionCall, task::EvgTask, variant::BuildVariant};
 
-use crate::{
-    evergreen_names::{GENERATE_RESMOKE_TASKS, IS_FUZZER},
-    task_name::remove_gen_suffix,
-};
+use crate::evergreen_names::{GENERATE_RESMOKE_TASKS, IS_FUZZER};
+use crate::utils::task_name::remove_gen_suffix;
 
 lazy_static! {
     /// Regular expression for finding expansions.
@@ -17,7 +15,7 @@ lazy_static! {
         Regex::new(r"\$\{(?P<id>[a-zA-Z0-9_]+)(\|(?P<default>.*))?}").unwrap();
 }
 
-pub trait EvgConfigUtils {
+pub trait EvgConfigUtils: Sync + Send {
     /// Determine if the given evergreen task is a generated task.
     ///
     /// # Arguments
