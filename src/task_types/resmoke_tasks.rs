@@ -11,7 +11,7 @@ use shrub_rs::models::{
 use tracing::{event, warn, Level};
 
 use crate::{
-    evergreen::evg_task_history::{TaskHistoryService, TaskRuntimeHistory},
+    evergreen::evg_task_history::{get_test_name, TaskHistoryService, TaskRuntimeHistory},
     evergreen_names::{
         ADD_GIT_TAG, CONFIGURE_EVG_API_CREDS, DO_MULTIVERSION_SETUP, DO_SETUP,
         GEN_TASK_CONFIG_LOCATION, GET_PROJECT_WITH_NO_MODULES, REQUIRE_MULTIVERSION_SETUP,
@@ -392,26 +392,11 @@ fn resmoke_commands(
     commands
 }
 
-/// Get the base name of the given test file.
-///
-/// # Arguments
-///
-/// * `test_file` - Relative path to test file.
-///
-/// # Returns
-///
-/// Base name of test file with extension removed.
-fn get_test_name(test_file: &str) -> String {
-    let s = test_file.split('/');
-    s.last().unwrap().trim_end_matches(".js").to_string()
-}
-
 #[cfg(test)]
 mod tests {
     use crate::evergreen::evg_task_history::TestRuntimeHistory;
 
     use super::*;
-    use rstest::*;
 
     // ResmokeGenParams tests.
     #[test]
@@ -725,14 +710,5 @@ mod tests {
         assert_eq!(get_evg_fn_name(&commands[2]), Some("do setup"));
         assert_eq!(get_evg_fn_name(&commands[4]), Some("do multiversion setup"));
         assert_eq!(get_evg_fn_name(&commands[5]), Some("run test"));
-    }
-
-    // get_test_name tests.
-    #[rstest]
-    #[case("jstests/core/add1.js", "add1")]
-    #[case("jstests/core/add1", "add1")]
-    #[case("add1.js", "add1")]
-    fn test_get_test_name(#[case] test_file: &str, #[case] expected_name: &str) {
-        assert_eq!(get_test_name(test_file), expected_name.to_string());
     }
 }

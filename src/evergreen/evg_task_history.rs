@@ -283,6 +283,15 @@ fn hook_hook_name(identifier: &str) -> &str {
     identifier.split(HOOK_DELIMITER).last().unwrap()
 }
 
+/// Get the base name of the given test file.
+///
+/// # Arguments
+///
+/// * `test_file` - Relative path to test file.
+///
+/// # Returns
+///
+/// Base name of test file with extension removed.
 pub fn get_test_name(test_file: &str) -> String {
     let s = test_file.split('/');
     s.last().unwrap().trim_end_matches(".js").to_string()
@@ -309,5 +318,14 @@ mod tests {
     #[test]
     fn test_hook_hook_name() {
         assert_eq!(hook_hook_name("my_test:my_hook"), "my_hook");
+    }
+
+    // get_test_name tests.
+    #[rstest]
+    #[case("jstests/core/add1.js", "add1")]
+    #[case("jstests/core/add1", "add1")]
+    #[case("add1.js", "add1")]
+    fn test_get_test_name(#[case] test_file: &str, #[case] expected_name: &str) {
+        assert_eq!(get_test_name(test_file), expected_name.to_string());
     }
 }
