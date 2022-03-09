@@ -488,9 +488,9 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                 "resmoke_args",
                 "",
             ),
-            resmoke_jobs_max: None,
-            // resmoke_jobs_max: self.evg_config_utils
-            //     .lookup_red_param_u64(task_def, "resmoke_jobs_max")?,
+            resmoke_jobs_max: self
+                .evg_config_utils
+                .lookup_optional_param_u64(task_def, "resmoke_jobs-max")?,
             config_location: config_location.to_string(),
         })
     }
