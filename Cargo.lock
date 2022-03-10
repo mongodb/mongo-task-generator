@@ -1000,7 +1000,6 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
- "yaml-rust",
 ]
 
 [[package]]
