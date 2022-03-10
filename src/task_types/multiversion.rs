@@ -21,7 +21,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
-use crate::resmoke_proxy::{SuiteFixtureType, TestDiscovery};
+use crate::resmoke::{resmoke_proxy::TestDiscovery, resmoke_suite::SuiteFixtureType};
 
 /// A service for helping generating multiversion tasks.
 pub trait MultiversionService: Sync + Send {
@@ -85,7 +85,7 @@ impl MultiversionService for MultiversionServiceImpl {
     /// List of version combinations to create tests for.
     fn get_version_combinations(&self, suite_name: &str) -> Result<Vec<String>> {
         let suite_config = self.discovery_service.get_suite_config(suite_name)?;
-        let fixture_type = suite_config.get_fixture_type()?;
+        let fixture_type = suite_config.get_fixture_type();
         Ok(get_version_combinations(&fixture_type))
     }
 
@@ -161,7 +161,7 @@ fn get_version_combinations(fixture_type: &SuiteFixtureType) -> Vec<String> {
 mod tests {
     use std::str::FromStr;
 
-    use crate::resmoke_proxy::ResmokeSuiteConfig;
+    use crate::resmoke::{resmoke_proxy::MultiversionConfig, resmoke_suite::ResmokeSuiteConfig};
 
     use super::*;
     use rstest::*;
@@ -176,10 +176,7 @@ mod tests {
             todo!()
         }
 
-        fn get_suite_config(
-            &self,
-            _suite_name: &str,
-        ) -> Result<crate::resmoke_proxy::ResmokeSuiteConfig> {
+        fn get_suite_config(&self, _suite_name: &str) -> Result<ResmokeSuiteConfig> {
             if let Some(suite_config) = &self.suite_config {
                 Ok(suite_config.clone())
             } else {
@@ -187,8 +184,8 @@ mod tests {
             }
         }
 
-        fn get_multiversion_config(&self) -> Result<crate::resmoke_proxy::MultiversionConfig> {
-            Ok(crate::resmoke_proxy::MultiversionConfig {
+        fn get_multiversion_config(&self) -> Result<MultiversionConfig> {
+            Ok(MultiversionConfig {
                 last_versions: self.old_versions.clone(),
             })
         }

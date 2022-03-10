@@ -1,3 +1,12 @@
+//! Service for generating resmoke tasks.
+//!
+//! This service will query the historic runtime of tests in the given task and then
+//! use that information to divide the tests into sub-suites that can be run in parallel.
+//!
+//! Each task will contain the generated sub-suites and a '_misc' suite. The '_misc' suite
+//! tries to run all the tests for the original suite minus tests that were added to generated
+//! suites. This catches tests that were not included in the historic runtime data. For example,
+//! newly added tests that have not yet be run.
 use std::{cmp::min, collections::HashMap, sync::Arc};
 
 use anyhow::Result;
@@ -8,6 +17,7 @@ use shrub_rs::models::{
     params::ParamValue,
     task::EvgTask,
 };
+use tokio::sync::Mutex;
 use tracing::{event, warn, Level};
 
 use crate::{
@@ -17,11 +27,11 @@ use crate::{
         GEN_TASK_CONFIG_LOCATION, GET_PROJECT_WITH_NO_MODULES, REQUIRE_MULTIVERSION_SETUP,
         RESMOKE_ARGS, RESMOKE_JOBS_MAX, RUN_GENERATED_TESTS, SUITE_NAME,
     },
-    resmoke_proxy::TestDiscovery,
+    resmoke::resmoke_proxy::TestDiscovery,
     utils::{fs_service::FsService, task_name::name_generated_task},
 };
 
-use super::generated_suite::GeneratedSuite;
+use super::{generated_suite::GeneratedSuite, resmoke_config_writer::ResmokeConfigActor};
 
 /// Parameters describing how a specific resmoke suite should be generated.
 #[derive(Clone, Debug, Default)]
@@ -89,6 +99,19 @@ pub struct SubSuite {
     pub test_list: Vec<String>,
 }
 
+/// Information needed to generate resmoke configuration files for the generated task.
+#[derive(Clone, Debug)]
+pub struct ResmokeSuiteGenerationInfo {
+    /// Name of task being generated.
+    pub task_name: String,
+
+    /// Name of resmoke suite generated task is based on.
+    pub origin_suite: String,
+
+    /// List of generated sub-suites comprising task.
+    pub sub_suites: Vec<SubSuite>,
+}
+
 /// Representation of a generated resmoke suite.
 #[derive(Clone, Debug)]
 pub struct GeneratedResmokeSuite {
@@ -138,6 +161,8 @@ pub struct GenResmokeTaskServiceImpl {
     /// Test discovery service.
     test_discovery: Arc<dyn TestDiscovery>,
 
+    resmoke_config_actor: Arc<Mutex<dyn ResmokeConfigActor>>,
+
     /// Service to interact with file system.
     fs_service: Arc<dyn FsService>,
 
@@ -161,12 +186,14 @@ impl GenResmokeTaskServiceImpl {
     pub fn new(
         task_history_service: Arc<dyn TaskHistoryService>,
         test_discovery: Arc<dyn TestDiscovery>,
+        resmoke_config_actor: Arc<Mutex<dyn ResmokeConfigActor>>,
         fs_service: Arc<dyn FsService>,
         n_suites: usize,
     ) -> Self {
         Self {
             task_history_service,
             test_discovery,
+            resmoke_config_actor,
             fs_service,
             n_suites,
         }
@@ -328,6 +355,14 @@ impl GenResmokeTaskService for GenResmokeTaskServiceImpl {
             }
         };
 
+        let suite_info = ResmokeSuiteGenerationInfo {
+            task_name: params.task_name.to_string(),
+            origin_suite: params.suite_name.to_string(),
+            sub_suites: sub_suites.clone(),
+        };
+        let mut resmoke_config_actor = self.resmoke_config_actor.lock().await;
+        resmoke_config_actor.write_sub_suite(&suite_info).await;
+
         Ok(Box::new(GeneratedResmokeSuite {
             task_name: params.task_name.clone(),
             sub_suites: sub_suites
@@ -394,7 +429,10 @@ fn resmoke_commands(
 
 #[cfg(test)]
 mod tests {
-    use crate::evergreen::evg_task_history::TestRuntimeHistory;
+    use crate::{
+        evergreen::evg_task_history::TestRuntimeHistory,
+        resmoke::{resmoke_proxy::MultiversionConfig, resmoke_suite::ResmokeSuiteConfig},
+    };
 
     use super::*;
 
@@ -478,14 +516,11 @@ mod tests {
             Ok(self.test_list.clone())
         }
 
-        fn get_suite_config(
-            &self,
-            _suite_name: &str,
-        ) -> Result<crate::resmoke_proxy::ResmokeSuiteConfig> {
+        fn get_suite_config(&self, _suite_name: &str) -> Result<ResmokeSuiteConfig> {
             todo!()
         }
 
-        fn get_multiversion_config(&self) -> Result<crate::resmoke_proxy::MultiversionConfig> {
+        fn get_multiversion_config(&self) -> Result<MultiversionConfig> {
             todo!()
         }
     }
@@ -495,6 +530,47 @@ mod tests {
         fn file_exists(&self, _path: &str) -> bool {
             true
         }
+
+        fn write_file(&self, _path: &std::path::Path, _contents: &str) -> Result<()> {
+            Ok(())
+        }
+    }
+
+    struct MockResmokeConfigActor {}
+    #[async_trait]
+    impl ResmokeConfigActor for MockResmokeConfigActor {
+        async fn write_sub_suite(&mut self, _gen_suite: &ResmokeSuiteGenerationInfo) {}
+
+        async fn flush(&mut self) {}
+    }
+
+    fn build_mocked_service(
+        test_list: Vec<String>,
+        task_history: TaskRuntimeHistory,
+        n_suites: usize,
+    ) -> GenResmokeTaskServiceImpl {
+        let test_discovery = MockTestDiscovery { test_list };
+        let task_history_service = MockTaskHistoryService {
+            task_history: task_history.clone(),
+        };
+        let fs_service = MockFsService {};
+        let resmoke_config_actor = MockResmokeConfigActor {};
+
+        GenResmokeTaskServiceImpl::new(
+            Arc::new(task_history_service),
+            Arc::new(test_discovery),
+            Arc::new(Mutex::new(resmoke_config_actor)),
+            Arc::new(fs_service),
+            n_suites,
+        )
+    }
+
+    fn build_mock_test_runtime(test_name: &str, runtime: f64) -> TestRuntimeHistory {
+        TestRuntimeHistory {
+            test_name: test_name.to_string(),
+            average_runtime: runtime,
+            hooks: vec![],
+        }
     }
 
     #[test]
@@ -502,56 +578,23 @@ mod tests {
         // In this test we will create 3 subtasks with 6 tests. The first sub task should contain
         // a single test. The second 2 tests and the third 3 tests. We will set the test runtimes
         // to make this happen.
+        let n_suites = 3;
         let test_list: Vec<String> = (0..6)
             .into_iter()
             .map(|i| format!("test_{}.js", i))
             .collect();
-        let test_discovery = MockTestDiscovery { test_list };
         let task_history = TaskRuntimeHistory {
             task_name: "my task".to_string(),
             test_map: hashmap! {
-                "test_0".to_string() => TestRuntimeHistory {
-                    test_name: "test_0.js".to_string(),
-                    average_runtime: 100.0,
-                    hooks: vec![],
-                },
-                "test_1".to_string() => TestRuntimeHistory {
-                    test_name: "test_1.js".to_string(),
-                    average_runtime: 50.0,
-                    hooks: vec![],
-                },
-                "test_2".to_string() => TestRuntimeHistory {
-                    test_name: "test_2.js".to_string(),
-                    average_runtime: 50.0,
-                    hooks: vec![],
-                },
-                "test_3".to_string() => TestRuntimeHistory {
-                    test_name: "test_3.js".to_string(),
-                    average_runtime: 34.0,
-                    hooks: vec![],
-                },
-                "test_4".to_string() => TestRuntimeHistory {
-                    test_name: "test_4.js".to_string(),
-                    average_runtime: 34.0,
-                    hooks: vec![],
-                },
-                "test_5".to_string() => TestRuntimeHistory {
-                    test_name: "test_5.js".to_string(),
-                    average_runtime: 34.0,
-                    hooks: vec![],
-                },
+                "test_0".to_string() => build_mock_test_runtime("test_0.js", 100.0),
+                "test_1".to_string() => build_mock_test_runtime("test_1.js", 50.0),
+                "test_2".to_string() => build_mock_test_runtime("test_2.js", 50.0),
+                "test_3".to_string() => build_mock_test_runtime("test_3.js", 34.0),
+                "test_4".to_string() => build_mock_test_runtime("test_4.js", 34.0),
+                "test_5".to_string() => build_mock_test_runtime("test_5.js", 34.0),
             },
         };
-        let task_history_service = MockTaskHistoryService {
-            task_history: task_history.clone(),
-        };
-        let fs_service = MockFsService {};
-        let gen_resmoke_service = GenResmokeTaskServiceImpl::new(
-            Arc::new(task_history_service),
-            Arc::new(test_discovery),
-            Arc::new(fs_service),
-            3,
-        );
+        let gen_resmoke_service = build_mocked_service(test_list, task_history.clone(), n_suites);
 
         let params = ResmokeGenParams {
             ..Default::default()
@@ -561,7 +604,7 @@ mod tests {
             .split_task(&params, &task_history)
             .unwrap();
 
-        assert_eq!(sub_suites.len(), 3);
+        assert_eq!(sub_suites.len(), n_suites);
         let suite_0 = &sub_suites[0];
         assert!(suite_0.test_list.contains(&"test_0.js".to_string()));
         let suite_1 = &sub_suites[1];
@@ -577,25 +620,16 @@ mod tests {
 
     #[test]
     fn test_split_task_fallback_should_split_tasks_count() {
+        let n_suites = 3;
         let test_list: Vec<String> = (0..6)
             .into_iter()
             .map(|i| format!("test_{}.js", i))
             .collect();
-        let test_discovery = MockTestDiscovery { test_list };
         let task_history = TaskRuntimeHistory {
             task_name: "my task".to_string(),
             test_map: hashmap! {},
         };
-        let task_history_service = MockTaskHistoryService {
-            task_history: task_history.clone(),
-        };
-        let fs_service = MockFsService {};
-        let gen_resmoke_service = GenResmokeTaskServiceImpl::new(
-            Arc::new(task_history_service),
-            Arc::new(test_discovery),
-            Arc::new(fs_service),
-            3,
-        );
+        let gen_resmoke_service = build_mocked_service(test_list, task_history.clone(), n_suites);
 
         let params = ResmokeGenParams {
             ..Default::default()
@@ -603,7 +637,7 @@ mod tests {
 
         let sub_suites = gen_resmoke_service.split_task_fallback(&params).unwrap();
 
-        assert_eq!(sub_suites.len(), 3);
+        assert_eq!(sub_suites.len(), n_suites);
         let suite_0 = &sub_suites[0];
         assert!(suite_0.test_list.contains(&"test_0.js".to_string()));
         assert!(suite_0.test_list.contains(&"test_1.js".to_string()));
@@ -621,54 +655,23 @@ mod tests {
         // In this test we will create 3 subtasks with 6 tests. The first sub task should contain
         // a single test. The second 2 tests and the third 3 tests. We will set the test runtimes
         // to make this happen.
+        let n_suites = 3;
         let test_list: Vec<String> = (0..6)
             .into_iter()
             .map(|i| format!("test_{}.js", i))
             .collect();
-        let test_discovery = MockTestDiscovery { test_list };
         let task_history = TaskRuntimeHistory {
-            task_name: "my task".to_string(),
+            task_name: "my_task".to_string(),
             test_map: hashmap! {
-                "test_0".to_string() => TestRuntimeHistory {
-                    test_name: "test_0.js".to_string(),
-                    average_runtime: 100.0,
-                    hooks: vec![],
-                },
-                "test_1".to_string() => TestRuntimeHistory {
-                    test_name: "test_1.js".to_string(),
-                    average_runtime: 50.0,
-                    hooks: vec![],
-                },
-                "test_2".to_string() => TestRuntimeHistory {
-                    test_name: "test_2.js".to_string(),
-                    average_runtime: 50.0,
-                    hooks: vec![],
-                },
-                "test_3".to_string() => TestRuntimeHistory {
-                    test_name: "test_3.js".to_string(),
-                    average_runtime: 34.0,
-                    hooks: vec![],
-                },
-                "test_4".to_string() => TestRuntimeHistory {
-                    test_name: "test_4.js".to_string(),
-                    average_runtime: 34.0,
-                    hooks: vec![],
-                },
-                "test_5".to_string() => TestRuntimeHistory {
-                    test_name: "test_5.js".to_string(),
-                    average_runtime: 34.0,
-                    hooks: vec![],
-                },
+                "test_0".to_string() => build_mock_test_runtime("test_0.js", 100.0),
+                "test_1".to_string() => build_mock_test_runtime("test_1.js", 50.0),
+                "test_2".to_string() => build_mock_test_runtime("test_2.js", 50.0),
+                "test_3".to_string() => build_mock_test_runtime("test_3.js", 34.0),
+                "test_4".to_string() => build_mock_test_runtime("test_4.js", 34.0),
+                "test_5".to_string() => build_mock_test_runtime("test_5.js", 34.0),
             },
         };
-        let task_history_service = MockTaskHistoryService { task_history };
-        let fs_service = MockFsService {};
-        let gen_resmoke_service = GenResmokeTaskServiceImpl::new(
-            Arc::new(task_history_service),
-            Arc::new(test_discovery),
-            Arc::new(fs_service),
-            3,
-        );
+        let gen_resmoke_service = build_mocked_service(test_list, task_history.clone(), n_suites);
 
         let params = ResmokeGenParams {
             task_name: "my_task".to_string(),
@@ -681,7 +684,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(suite.display_name(), "my_task".to_string());
-        assert_eq!(suite.sub_tasks().len(), 3);
+        assert_eq!(suite.sub_tasks().len(), n_suites);
     }
 
     // resmoke_commands tests.
