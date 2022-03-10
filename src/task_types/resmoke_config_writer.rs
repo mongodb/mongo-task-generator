@@ -112,8 +112,7 @@ impl WriteConfigActorImpl {
         let all_tests: Vec<String> = suite_info
             .sub_suites
             .iter()
-            .map(|s| s.test_list.clone())
-            .flatten()
+            .flat_map(|s| s.test_list.clone())
             .collect();
         let misc_config = origin_config.with_new_tests(None, Some(&all_tests));
         let mut path = PathBuf::from(&self.target_dir);
