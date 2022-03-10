@@ -12,38 +12,38 @@ use std::{
 };
 
 use anyhow::Result;
-use evg_config::{EvgConfigService, EvgProjectConfig};
-use evg_config_utils::{EvgConfigUtils, EvgConfigUtilsImpl};
-use lazy_static::lazy_static;
-use regex::Regex;
+use async_trait::async_trait;
+use evergreen::{
+    evg_config::{EvgConfigService, EvgProjectConfig},
+    evg_config_utils::{EvgConfigUtils, EvgConfigUtilsImpl},
+    evg_task_history::TaskHistoryServiceImpl,
+};
+use evg_api_rs::EvgClient;
 use resmoke_proxy::ResmokeProxy;
 use shrub_rs::models::{
     project::EvgProject,
     task::{EvgTask, TaskRef},
     variant::{BuildVariant, DisplayTask},
 };
-use task_name::remove_gen_suffix;
 use task_types::{
     fuzzer_tasks::{FuzzerGenTaskParams, GenFuzzerService, GenFuzzerServiceImpl},
     generated_suite::GeneratedSuite,
     multiversion::MultiversionServiceImpl,
+    resmoke_tasks::{GenResmokeTaskService, GenResmokeTaskServiceImpl, ResmokeGenParams},
 };
 use tracing::{event, Level};
+use utils::{fs_service::FsServiceImpl, task_name::remove_gen_suffix};
 
+mod evergreen;
 mod evergreen_names;
-mod evg_config;
-mod evg_config_utils;
 mod resmoke_proxy;
-mod task_name;
 mod task_types;
+mod utils;
 
 /// Directory to store the generated configuration in.
 const CONFIG_DIR: &str = "generated_resmoke_config";
-
-lazy_static! {
-    static ref EXPANSION_RE: Regex =
-        Regex::new(r"\$\{(?P<id>[a-zA-Z0-9_]+)(\|(?P<default>.*))?}").unwrap();
-}
+const HISTORY_LOOKBACK_DAYS: u64 = 14;
+const MAX_SUB_TASKS_PER_TASK: usize = 5;
 
 type GenTaskCollection = HashMap<String, Box<dyn GeneratedSuite>>;
 
@@ -59,20 +59,36 @@ impl Dependencies {
     /// # Arguments
     ///
     /// * `evg_project_location` - Path to the evergreen project configuration yaml.
+    /// * `evg_project` - Evergreen project being run.
     ///
     /// # Returns
     ///
     /// A set of dependencies to run against.
-    pub fn new(evg_project_location: &Path) -> Result<Self> {
+    pub fn new(evg_project_location: &Path, evg_project: &str) -> Result<Self> {
+        let fs_service = Arc::new(FsServiceImpl::new());
         let discovery_service = Arc::new(ResmokeProxy::new());
-        let multiversion_service = Arc::new(MultiversionServiceImpl::new(discovery_service)?);
+        let multiversion_service =
+            Arc::new(MultiversionServiceImpl::new(discovery_service.clone())?);
         let evg_config_service = Arc::new(EvgProjectConfig::new(evg_project_location)?);
         let evg_config_utils = Arc::new(EvgConfigUtilsImpl::new());
         let gen_fuzzer_service = Arc::new(GenFuzzerServiceImpl::new(multiversion_service));
+        let evg_client = Arc::new(EvgClient::new().unwrap());
+        let task_history_service = Arc::new(TaskHistoryServiceImpl::new(
+            evg_client,
+            HISTORY_LOOKBACK_DAYS,
+            evg_project.to_string(),
+        ));
+        let gen_resmoke_task_service = Arc::new(GenResmokeTaskServiceImpl::new(
+            task_history_service,
+            discovery_service,
+            fs_service,
+            MAX_SUB_TASKS_PER_TASK,
+        ));
         let gen_task_service = Arc::new(GenerateTasksServiceImpl::new(
             evg_config_service,
             evg_config_utils,
             gen_fuzzer_service,
+            gen_resmoke_task_service,
         ));
 
         Ok(Self { gen_task_service })
@@ -105,12 +121,14 @@ impl GeneratedConfig {
 ///
 /// * `deps` - Dependencies needed to perform generation.
 /// * `config_location` - Pointer to S3 location that configuration will be uploaded to.
-pub fn generate_configuration(deps: Dependencies, config_location: &str) -> Result<()> {
+pub async fn generate_configuration(deps: Dependencies, config_location: &str) -> Result<()> {
     let generate_tasks_service = deps.gen_task_service;
 
     // We are going to do 2 passes through the project build variants. In this first pass, we
     // are actually going to create all the generated tasks that we discover.
-    let generated_tasks = generate_tasks_service.build_generated_tasks(config_location)?;
+    let generated_tasks = generate_tasks_service
+        .build_generated_tasks(config_location)
+        .await?;
 
     // Now that we have generated all the tasks we want to make another pass through all the
     // build variants and add references to the generated tasks that each build variant includes.
@@ -138,6 +156,7 @@ pub fn generate_configuration(deps: Dependencies, config_location: &str) -> Resu
 }
 
 /// A service for generating tasks.
+#[async_trait]
 trait GenerateTasksService {
     /// Build task definition for all tasks
     ///
@@ -148,8 +167,10 @@ trait GenerateTasksService {
     /// Returns
     ///
     /// Map of task names to generated task definitions.
-    fn build_generated_tasks(&self, config_location: &str)
-        -> Result<Arc<Mutex<GenTaskCollection>>>;
+    async fn build_generated_tasks(
+        &self,
+        config_location: &str,
+    ) -> Result<Arc<Mutex<GenTaskCollection>>>;
 
     /// Create build variants definitions containing all the generated tasks for each build variant.
     ///
@@ -194,18 +215,35 @@ trait GenerateTasksService {
     /// # Returns
     ///
     /// Configuration for a generated task.
-    fn generate_task(
+    async fn generate_task(
         &self,
         task_def: &EvgTask,
         build_variant: &BuildVariant,
         config_location: &str,
     ) -> Result<Option<Box<dyn GeneratedSuite>>>;
+
+    /// Build the configuration for generated a resmoke based on the evergreen task definition.
+    ///
+    /// # Arguments
+    ///
+    /// * `task-def` - Task definition of task to generate.
+    /// * `config_location` - Location where generated configuration will be stored in S3.
+    ///
+    /// # Returns
+    ///
+    /// Parameters to configure how resmoke task should be generated.
+    fn task_def_to_resmoke_params(
+        &self,
+        task_def: &EvgTask,
+        config_location: &str,
+    ) -> Result<ResmokeGenParams>;
 }
 
 struct GenerateTasksServiceImpl {
     evg_config_service: Arc<dyn EvgConfigService>,
     evg_config_utils: Arc<dyn EvgConfigUtils>,
     gen_fuzzer_service: Arc<dyn GenFuzzerService>,
+    gen_resmoke_service: Arc<dyn GenResmokeTaskService>,
 }
 
 impl GenerateTasksServiceImpl {
@@ -220,16 +258,19 @@ impl GenerateTasksServiceImpl {
         evg_config_service: Arc<dyn EvgConfigService>,
         evg_config_utils: Arc<dyn EvgConfigUtils>,
         gen_fuzzer_service: Arc<dyn GenFuzzerService>,
+        gen_resmoke_service: Arc<dyn GenResmokeTaskService>,
     ) -> Self {
         Self {
             evg_config_service,
             evg_config_utils,
             gen_fuzzer_service,
+            gen_resmoke_service,
         }
     }
 }
 
 /// An implementation of GeneratorTasksService.
+#[async_trait]
 impl GenerateTasksService for GenerateTasksServiceImpl {
     /// Build task definition for all tasks
     ///
@@ -240,7 +281,7 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
     /// Returns
     ///
     /// Map of task names to generated task definitions.
-    fn build_generated_tasks(
+    async fn build_generated_tasks(
         &self,
         config_location: &str,
     ) -> Result<Arc<Mutex<GenTaskCollection>>> {
@@ -261,8 +302,9 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                 seen_tasks.insert(task.name.to_string());
                 if let Some(task_def) = task_map.get(&task.name) {
                     if self.evg_config_utils.is_task_generated(task_def) {
-                        let generated_task =
-                            self.generate_task(task_def, build_variant, config_location)?;
+                        let generated_task = self
+                            .generate_task(task_def, build_variant, config_location)
+                            .await?;
                         if let Some(generated_task) = generated_task {
                             let mut generated_tasks = generated_tasks.lock().unwrap();
                             generated_tasks.insert(task.name.clone(), generated_task);
@@ -286,7 +328,7 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
     /// # Returns
     ///
     /// Configuration for a generated task.
-    fn generate_task(
+    async fn generate_task(
         &self,
         task_def: &EvgTask,
         build_variant: &BuildVariant,
@@ -301,7 +343,12 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
             Some(self.gen_fuzzer_service.generate_fuzzer_task(&params)?)
         } else {
             event!(Level::INFO, "Generating resmoke task: {}", task_def.name);
-            None
+            let params = self.task_def_to_resmoke_params(task_def, config_location)?;
+            Some(
+                self.gen_resmoke_service
+                    .generate_resmoke_task(&params, &build_variant.name)
+                    .await?,
+            )
         };
 
         Ok(generated_task)
@@ -409,6 +456,41 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                     .unwrap_or_default()
                     .contains(&"multiversion".to_string()),
             ),
+            config_location: config_location.to_string(),
+        })
+    }
+
+    /// Build the configuration for generated a resmoke based on the evergreen task definition.
+    ///
+    /// # Arguments
+    ///
+    /// * `task-def` - Task definition of task to generate.
+    /// * `config_location` - Location where generated configuration will be stored in S3.
+    ///
+    /// # Returns
+    ///
+    /// Parameters to configure how resmoke task should be generated.
+    fn task_def_to_resmoke_params(
+        &self,
+        task_def: &EvgTask,
+        config_location: &str,
+    ) -> Result<ResmokeGenParams> {
+        let task_name = remove_gen_suffix(&task_def.name).to_string();
+        let suite = self.evg_config_utils.find_suite_name(task_def).to_string();
+
+        Ok(ResmokeGenParams {
+            task_name,
+            suite_name: suite,
+            use_large_distro: false,
+            require_multiversion_setup: false,
+            resmoke_args: self.evg_config_utils.lookup_default_param_str(
+                task_def,
+                "resmoke_args",
+                "",
+            ),
+            resmoke_jobs_max: self
+                .evg_config_utils
+                .lookup_optional_param_u64(task_def, "resmoke_jobs-max")?,
             config_location: config_location.to_string(),
         })
     }

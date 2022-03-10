@@ -5,10 +5,8 @@ use shrub_rs::models::commands::EvgCommand::Function;
 use shrub_rs::models::params::ParamValue;
 use shrub_rs::models::{commands::FunctionCall, task::EvgTask, variant::BuildVariant};
 
-use crate::{
-    evergreen_names::{GENERATE_RESMOKE_TASKS, IS_FUZZER},
-    task_name::remove_gen_suffix,
-};
+use crate::evergreen_names::{GENERATE_RESMOKE_TASKS, IS_FUZZER};
+use crate::utils::task_name::remove_gen_suffix;
 
 lazy_static! {
     /// Regular expression for finding expansions.
@@ -17,7 +15,7 @@ lazy_static! {
         Regex::new(r"\$\{(?P<id>[a-zA-Z0-9_]+)(\|(?P<default>.*))?}").unwrap();
 }
 
-pub trait EvgConfigUtils {
+pub trait EvgConfigUtils: Sync + Send {
     /// Determine if the given evergreen task is a generated task.
     ///
     /// # Arguments
@@ -141,6 +139,18 @@ pub trait EvgConfigUtils {
     ///
     /// Value of run_var for the given task, the default will be returned if not defined.
     fn lookup_default_param_str(&self, task_def: &EvgTask, run_var: &str, default: &str) -> String;
+
+    /// Lookup the given variable in the task definition.
+    ///
+    /// # Arguments
+    ///
+    /// * `task_def` - Task definition to query.
+    /// * `run_var` - Variable to query.
+    ///
+    /// # Returns
+    ///
+    /// Value of run_var for the given task if it exists.
+    fn lookup_optional_param_u64(&self, task_def: &EvgTask, run_var: &str) -> Result<Option<u64>>;
 }
 
 /// Service for utilities to help interpret evergreen configuration.
@@ -359,6 +369,23 @@ impl EvgConfigUtils for EvgConfigUtilsImpl {
         self.get_gen_task_var(task_def, run_var)
             .unwrap_or(default)
             .to_string()
+    }
+
+    /// Lookup the given variable in the task definition.
+    ///
+    /// # Arguments
+    ///
+    /// * `task_def` - Task definition to query.
+    /// * `run_var` - Variable to query.
+    ///
+    /// # Returns
+    ///
+    /// Value of run_var for the given task if it exists.
+    fn lookup_optional_param_u64(&self, task_def: &EvgTask, run_var: &str) -> Result<Option<u64>> {
+        Ok(match self.get_gen_task_var(task_def, run_var) {
+            Some(v) => Some(v.parse()?),
+            _ => None,
+        })
     }
 }
 
@@ -753,5 +780,39 @@ mod tests {
         let result =
             evg_config_utils.lookup_default_param_str(&task_def, "my var", "default value");
         assert_eq!(result, "default value");
+    }
+
+    #[test]
+    fn test_lookup_optional_should_return_none_if_no_var() {
+        let task_def = EvgTask {
+            ..Default::default()
+        };
+        let evg_config_utils = EvgConfigUtilsImpl::new();
+
+        let result = evg_config_utils.lookup_optional_param_u64(&task_def, "my var");
+        assert_eq!(result.unwrap(), None);
+    }
+
+    #[test]
+    fn test_lookup_optional_should_return_value_if_it_exists() {
+        let task_def = EvgTask {
+            commands: vec![
+                fn_call("hello world"),
+                fn_call_with_params(
+                    "generate resmoke tasks",
+                    hashmap! {
+                        "var_str".to_string() => ParamValue::from("value1"),
+                        "var_u64".to_string() => ParamValue::from("12345"),
+                        "var_bool".to_string() => ParamValue::from("true"),
+                    },
+                ),
+                fn_call("run tests"),
+            ],
+            ..Default::default()
+        };
+        let evg_config_utils = EvgConfigUtilsImpl::new();
+
+        let result = evg_config_utils.lookup_optional_param_u64(&task_def, "var_u64");
+        assert_eq!(result.unwrap(), Some(12345));
     }
 }

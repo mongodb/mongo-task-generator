@@ -1,3 +1,4 @@
+//! Utilities for working with task names.
 const GEN_SUFFIX: &str = "_gen";
 
 /// Generate a name for a generated task.
@@ -23,6 +24,14 @@ pub fn name_generated_task(
 }
 
 /// Remove the '_gen' from end of the given task name if it exists.
+///
+/// # Arguments
+///
+/// * `task_name` - Name of task.
+///
+/// # Returns
+///
+/// Name of task with `_gen` stripped off.
 pub fn remove_gen_suffix(task_name: &str) -> &str {
     if task_name.ends_with(GEN_SUFFIX) {
         let end = task_name.len() - GEN_SUFFIX.len();

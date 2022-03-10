@@ -17,7 +17,7 @@ use crate::{
         REQUIRE_MULTIVERSION_SETUP, RESMOKE_ARGS, RESMOKE_JOBS_MAX, RUN_FUZZER,
         RUN_GENERATED_TESTS, SETUP_JSTESTFUZZ, SHOULD_SHUFFLE_TESTS, SUITE_NAME, TASK_NAME,
     },
-    task_name::name_generated_task,
+    utils::task_name::name_generated_task,
 };
 
 use super::{generated_suite::GeneratedSuite, multiversion::MultiversionService};

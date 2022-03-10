@@ -12,6 +12,8 @@ use tracing_subscriber::fmt::format;
 /// Expansions from evergreen to determine settings for how task should be generated.
 #[derive(Debug, Deserialize)]
 struct EvgExpansions {
+    /// Evergreen project being run.
+    pub project: String,
     /// Git revision being run against.
     pub revision: String,
     /// ID of Evergreen version running.
@@ -61,15 +63,16 @@ fn configure_logging() {
     tracing::subscriber::set_global_default(subscriber).unwrap();
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let args = Args::parse();
     configure_logging();
 
     let evg_expansions = EvgExpansions::from_yaml_file(&args.expansion_file)
         .expect("Error reading expansions file.");
-    let deps = Dependencies::new(&args.evg_project_file).unwrap();
+    let deps = Dependencies::new(&args.evg_project_file, &evg_expansions.project).unwrap();
 
-    let result = generate_configuration(deps, &evg_expansions.config_location());
+    let result = generate_configuration(deps, &evg_expansions.config_location()).await;
     if let Err(err) = result {
         eprintln!("Error encountered during execution: {}", err);
         exit(1);

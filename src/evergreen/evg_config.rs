@@ -5,7 +5,7 @@ use shrub_rs::models::{project::EvgProject, task::EvgTask, variant::BuildVariant
 
 const REQUIRED_PREFIX: &str = "-required";
 
-pub trait EvgConfigService {
+pub trait EvgConfigService: Sync + Send {
     /// Get a map of build variant names to build variant definitions.
     fn get_build_variant_map(&self) -> HashMap<String, &BuildVariant>;
 
