@@ -66,11 +66,16 @@ impl Dependencies {
     ///
     /// * `evg_project_location` - Path to the evergreen project configuration yaml.
     /// * `evg_project` - Evergreen project being run.
+    /// * `evg_auth_file` - Path to evergreen API auth file.
     ///
     /// # Returns
     ///
     /// A set of dependencies to run against.
-    pub fn new(evg_project_location: &Path, evg_project: &str) -> Result<Self> {
+    pub fn new(
+        evg_project_location: &Path,
+        evg_project: &str,
+        evg_auth_file: &Path,
+    ) -> Result<Self> {
         let fs_service = Arc::new(FsServiceImpl::new());
         let discovery_service = Arc::new(ResmokeProxy::new());
         let multiversion_service =
@@ -78,7 +83,7 @@ impl Dependencies {
         let evg_config_service = Arc::new(EvgProjectConfig::new(evg_project_location)?);
         let evg_config_utils = Arc::new(EvgConfigUtilsImpl::new());
         let gen_fuzzer_service = Arc::new(GenFuzzerServiceImpl::new(multiversion_service));
-        let evg_client = Arc::new(EvgClient::new().unwrap());
+        let evg_client = Arc::new(EvgClient::from_file(evg_auth_file).unwrap());
         let task_history_service = Arc::new(TaskHistoryServiceImpl::new(
             evg_client,
             HISTORY_LOOKBACK_DAYS,
@@ -138,14 +143,14 @@ impl GeneratedConfig {
 ///
 /// * `deps` - Dependencies needed to perform generation.
 /// * `config_location` - Pointer to S3 location that configuration will be uploaded to.
-pub async fn generate_configuration(deps: Dependencies, config_location: &str) -> Result<()> {
-    let generate_tasks_service = deps.gen_task_service;
+pub async fn generate_configuration(deps: &Dependencies, config_location: &str) -> Result<()> {
+    let generate_tasks_service = deps.gen_task_service.clone();
     std::fs::create_dir_all(CONFIG_DIR)?;
 
     // We are going to do 2 passes through the project build variants. In this first pass, we
     // are actually going to create all the generated tasks that we discover.
     let generated_tasks = generate_tasks_service
-        .build_generated_tasks(config_location)
+        .build_generated_tasks(deps, config_location)
         .await?;
 
     // Now that we have generated all the tasks we want to make another pass through all the
@@ -176,7 +181,7 @@ pub async fn generate_configuration(deps: Dependencies, config_location: &str) -
 
 /// A service for generating tasks.
 #[async_trait]
-trait GenerateTasksService {
+trait GenerateTasksService: Sync + Send {
     /// Build task definition for all tasks
     ///
     /// # Arguments
@@ -188,6 +193,7 @@ trait GenerateTasksService {
     /// Map of task names to generated task definitions.
     async fn build_generated_tasks(
         &self,
+        deps: &Dependencies,
         config_location: &str,
     ) -> Result<Arc<Mutex<GenTaskCollection>>>;
 
@@ -302,11 +308,14 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
     /// Map of task names to generated task definitions.
     async fn build_generated_tasks(
         &self,
+        deps: &Dependencies,
         config_location: &str,
     ) -> Result<Arc<Mutex<GenTaskCollection>>> {
         let build_variant_list = self.evg_config_service.sort_build_variants_by_required();
         let build_variant_map = self.evg_config_service.get_build_variant_map();
         let task_map = self.evg_config_service.get_task_def_map();
+
+        let mut thread_handles = vec![];
 
         let generated_tasks = Arc::new(Mutex::new(HashMap::new()));
         let mut seen_tasks = HashSet::new();
@@ -321,16 +330,21 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                 seen_tasks.insert(task.name.to_string());
                 if let Some(task_def) = task_map.get(&task.name) {
                     if self.evg_config_utils.is_task_generated(task_def) {
-                        let generated_task = self
-                            .generate_task(task_def, build_variant, config_location)
-                            .await?;
-                        if let Some(generated_task) = generated_task {
-                            let mut generated_tasks = generated_tasks.lock().unwrap();
-                            generated_tasks.insert(task.name.clone(), generated_task);
-                        }
+                        // Spawn off a tokio task to do the actual generation work.
+                        thread_handles.push(create_task_worker(
+                            deps,
+                            task_def,
+                            build_variant,
+                            config_location,
+                            generated_tasks.clone(),
+                        ));
                     }
                 }
             }
+        }
+
+        for handle in thread_handles {
+            handle.await.unwrap();
         }
 
         Ok(generated_tasks)
@@ -513,4 +527,43 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
             config_location: config_location.to_string(),
         })
     }
+}
+
+/// Spawn a tokio task to perform the task generation work.
+///
+/// # Arguments
+///
+/// * `deps` - Service dependencies.
+/// * `task_def` - Evergreen task definition to base generated task off.
+/// * `build_variant` - Build variant to query timing information from.
+/// * `config_location` - S3 location where generated config will be stored.
+/// * `generated_tasks` - Map to stored generated to in.
+///
+/// # Returns
+///
+/// Handle to created tokio worker.
+fn create_task_worker(
+    deps: &Dependencies,
+    task_def: &EvgTask,
+    build_variant: &BuildVariant,
+    config_location: &str,
+    generated_tasks: Arc<Mutex<GenTaskCollection>>,
+) -> tokio::task::JoinHandle<()> {
+    let generate_task_service = deps.gen_task_service.clone();
+    let task_def = task_def.clone();
+    let build_variant = build_variant.clone();
+    let config_location = config_location.to_string();
+    let generated_tasks = generated_tasks.clone();
+
+    tokio::spawn(async move {
+        let generated_task = generate_task_service
+            .generate_task(&task_def, &build_variant, &config_location)
+            .await
+            .unwrap();
+
+        if let Some(generated_task) = generated_task {
+            let mut generated_tasks = generated_tasks.lock().unwrap();
+            generated_tasks.insert(task_def.name.clone(), generated_task);
+        }
+    })
 }

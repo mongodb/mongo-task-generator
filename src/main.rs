@@ -1,12 +1,14 @@
 use std::{
     path::{Path, PathBuf},
     process::exit,
+    time::Instant,
 };
 
 use anyhow::Result;
 use clap::Parser;
 use mongo_task_generator::{generate_configuration, Dependencies};
 use serde::Deserialize;
+use tracing::{event, Level};
 use tracing_subscriber::fmt::format;
 
 /// Expansions from evergreen to determine settings for how task should be generated.
@@ -34,8 +36,8 @@ impl EvgExpansions {
     /// File to store generated configuration under.
     pub fn config_location(&self) -> String {
         format!(
-            "{}/generate_tasks/generated-config-{}.tgz",
-            self.revision, self.version_id
+            "{}/{}/generate_tasks/generated-config-{}.tgz",
+            self.project, self.revision, self.version_id
         )
     }
 }
@@ -70,9 +72,20 @@ async fn main() {
 
     let evg_expansions = EvgExpansions::from_yaml_file(&args.expansion_file)
         .expect("Error reading expansions file.");
-    let deps = Dependencies::new(&args.evg_project_file, &evg_expansions.project).unwrap();
+    let deps = Dependencies::new(
+        &args.evg_project_file,
+        &evg_expansions.project,
+        &args.evg_auth_file,
+    )
+    .unwrap();
 
-    let result = generate_configuration(deps, &evg_expansions.config_location()).await;
+    let start = Instant::now();
+    let result = generate_configuration(&deps, &evg_expansions.config_location()).await;
+    event!(
+        Level::INFO,
+        "generation completed: {} seconds",
+        duration_secs = start.elapsed().as_secs()
+    );
     if let Err(err) = result {
         eprintln!("Error encountered during execution: {}", err);
         exit(1);
