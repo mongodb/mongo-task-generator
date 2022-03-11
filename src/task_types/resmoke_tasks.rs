@@ -341,7 +341,7 @@ impl GenResmokeTaskService for GenResmokeTaskServiceImpl {
             .get_task_history(&params.task_name, build_variant)
             .await;
 
-        let sub_suites = match task_history {
+        let mut sub_suites = match task_history {
             Ok(task_history) => self.split_task(params, &task_history)?,
             Err(err) => {
                 warn!(
@@ -362,6 +362,12 @@ impl GenResmokeTaskService for GenResmokeTaskServiceImpl {
         };
         let mut resmoke_config_actor = self.resmoke_config_actor.lock().await;
         resmoke_config_actor.write_sub_suite(&suite_info).await;
+
+        // Add a `_misc` sub-task to the list of tasks.
+        sub_suites.push(SubSuite {
+            name: name_generated_task(&params.task_name, None, None),
+            test_list: vec![],
+        });
 
         Ok(Box::new(GeneratedResmokeSuite {
             task_name: params.task_name.clone(),
@@ -684,7 +690,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(suite.display_name(), "my_task".to_string());
-        assert_eq!(suite.sub_tasks().len(), n_suites);
+        assert_eq!(suite.sub_tasks().len(), n_suites + 1); // +1 for _misc suite.
     }
 
     // resmoke_commands tests.
