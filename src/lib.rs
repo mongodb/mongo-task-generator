@@ -19,7 +19,7 @@ use evergreen::{
     evg_task_history::TaskHistoryServiceImpl,
 };
 use evergreen_names::{
-    CONTINUE_ON_FAILURE, FUZZER_PARAMETERS, GENERATOR_TASKS, IDLE_TIMEOUT, LARGE_DISTRO_NAME,
+    CONTINUE_ON_FAILURE, FUZZER_PARAMETERS, GENERATOR_TASKS, IDLE_TIMEOUT, LARGE_DISTRO_EXPANSION,
     NPM_COMMAND, RESMOKE_ARGS, RESMOKE_JOBS_MAX, SHOULD_SHUFFLE_TESTS, USE_LARGE_DISTRO,
 };
 use evg_api_rs::EvgClient;
@@ -408,7 +408,7 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
             let mut generating_tasks = vec![];
             let large_distro_name = self
                 .evg_config_utils
-                .lookup_build_variant_expansion(LARGE_DISTRO_NAME, build_variant);
+                .lookup_build_variant_expansion(LARGE_DISTRO_EXPANSION, build_variant);
             for task in &build_variant.tasks {
                 let generated_tasks = generated_tasks.lock().unwrap();
                 if let Some(generated_task) = generated_tasks.get(&task.name) {

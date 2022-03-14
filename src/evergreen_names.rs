@@ -68,4 +68,4 @@ pub const MULTIVERSION_EXCLUDE_TAGS: &str = "multiversion_exclude_tags_version";
 
 // Build Variant expansions.
 /// Name of large distro for build variant.
-pub const LARGE_DISTRO_NAME: &str = "large_distro_name";
+pub const LARGE_DISTRO_EXPANSION: &str = "large_distro_name";
