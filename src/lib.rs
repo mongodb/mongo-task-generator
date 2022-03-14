@@ -19,8 +19,8 @@ use evergreen::{
     evg_task_history::TaskHistoryServiceImpl,
 };
 use evergreen_names::{
-    CONTINUE_ON_FAILURE, FUZZER_PARAMETERS, IDLE_TIMEOUT, NPM_COMMAND, RESMOKE_ARGS,
-    RESMOKE_JOBS_MAX, SHOULD_SHUFFLE_TESTS,
+    CONTINUE_ON_FAILURE, FUZZER_PARAMETERS, GENERATOR_TASKS, IDLE_TIMEOUT, NPM_COMMAND,
+    RESMOKE_ARGS, RESMOKE_JOBS_MAX, SHOULD_SHUFFLE_TESTS,
 };
 use evg_api_rs::EvgClient;
 use resmoke::resmoke_proxy::ResmokeProxy;
@@ -405,9 +405,11 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
         let build_variant_map = self.evg_config_service.get_build_variant_map();
         for (_bv_name, build_variant) in build_variant_map {
             let mut gen_config = GeneratedConfig::new();
+            let mut generating_tasks = vec![];
             for task in &build_variant.tasks {
                 let generated_tasks = generated_tasks.lock().unwrap();
                 if let Some(generated_task) = generated_tasks.get(&task.name) {
+                    generating_tasks.push(&task.name);
                     gen_config
                         .display_tasks
                         .push(generated_task.build_display_task());
@@ -417,14 +419,25 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                 }
             }
 
-            let gen_build_variant = BuildVariant {
-                name: build_variant.name.clone(),
-                tasks: gen_config.gen_task_specs.clone(),
-                display_tasks: Some(gen_config.display_tasks.clone()),
-                activate: Some(false),
-                ..Default::default()
-            };
-            generated_build_variants.push(gen_build_variant);
+            if !generating_tasks.is_empty() {
+                // Put all the "_gen" tasks into a display task to hide them from view.
+                gen_config.display_tasks.push(DisplayTask {
+                    name: GENERATOR_TASKS.to_string(),
+                    execution_tasks: generating_tasks
+                        .into_iter()
+                        .map(|s| s.to_string())
+                        .collect(),
+                });
+
+                let gen_build_variant = BuildVariant {
+                    name: build_variant.name.clone(),
+                    tasks: gen_config.gen_task_specs.clone(),
+                    display_tasks: Some(gen_config.display_tasks.clone()),
+                    activate: Some(false),
+                    ..Default::default()
+                };
+                generated_build_variants.push(gen_build_variant);
+            }
         }
 
         generated_build_variants
