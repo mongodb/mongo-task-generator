@@ -115,9 +115,14 @@ pub struct ResmokeSuiteGenerationInfo {
 /// Representation of a generated resmoke suite.
 #[derive(Clone, Debug)]
 pub struct GeneratedResmokeSuite {
+    /// Name of display task to create.
     pub task_name: String,
-    // pub suite_name: String,
+
+    /// Sub suites that comprise generated task.
     pub sub_suites: Vec<EvgTask>,
+
+    /// If true, run generated task on a large distro.
+    use_large_distro: bool,
 }
 
 impl GeneratedSuite for GeneratedResmokeSuite {
@@ -129,6 +134,11 @@ impl GeneratedSuite for GeneratedResmokeSuite {
     /// Get the list of sub-tasks that comprise the generated task.
     fn sub_tasks(&self) -> Vec<EvgTask> {
         self.sub_suites.clone()
+    }
+
+    // If true, run generated task on a large distro.
+    fn use_large_distro(&self) -> bool {
+        self.use_large_distro
     }
 }
 
@@ -375,6 +385,7 @@ impl GenResmokeTaskService for GenResmokeTaskServiceImpl {
                 .into_iter()
                 .map(|s| build_resmoke_sub_task(s, params))
                 .collect(),
+            use_large_distro: params.use_large_distro,
         }))
     }
 }

@@ -134,6 +134,11 @@ impl GeneratedSuite for FuzzerTask {
     fn sub_tasks(&self) -> Vec<EvgTask> {
         self.sub_tasks.clone()
     }
+
+    /// If true, generate this task on a large distro.
+    fn use_large_distro(&self) -> bool {
+        false
+    }
 }
 
 /// A service for generating fuzzer tasks.

@@ -7,8 +7,12 @@ use shrub_rs::models::{
 pub trait GeneratedSuite: Sync + Send {
     /// Get the display name to use for the generated task.
     fn display_name(&self) -> String;
+
     /// Get the list of sub-tasks that comprise the generated task.
     fn sub_tasks(&self) -> Vec<EvgTask>;
+
+    /// If true, generate this task on a large distro.
+    fn use_large_distro(&self) -> bool;
 
     /// Build a shrub display task for this generated task.
     fn build_display_task(&self) -> DisplayTask {
@@ -23,10 +27,11 @@ pub trait GeneratedSuite: Sync + Send {
     }
 
     /// Build a shrub task reference for this generated task.
-    fn build_task_ref(&self) -> Vec<TaskRef> {
+    fn build_task_ref(&self, distro: Option<String>) -> Vec<TaskRef> {
+        let distros = distro.map(|d| vec![d]);
         self.sub_tasks()
             .iter()
-            .map(|s| s.get_reference(None, Some(false)))
+            .map(|s| s.get_reference(distros.clone(), Some(false)))
             .collect()
     }
 }

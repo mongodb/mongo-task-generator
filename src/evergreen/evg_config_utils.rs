@@ -73,6 +73,22 @@ pub trait EvgConfigUtils: Sync + Send {
     /// Value to use for the given `run_var` if found.
     fn translate_run_var(&self, run_var: &str, build_variant: &BuildVariant) -> Option<String>;
 
+    /// Lookup the specified expansion in the given build variant.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Name of expansion to query.
+    /// * `build_variant` - Build Variant to query.
+    ///
+    /// # Returns
+    ///
+    /// Value of expansion if it exists.
+    fn lookup_build_variant_expansion(
+        &self,
+        name: &str,
+        build_variant: &BuildVariant,
+    ) -> Option<String>;
+
     /// Lookup the given variable in the task definition.
     ///
     /// # Arguments
@@ -256,19 +272,37 @@ impl EvgConfigUtils for EvgConfigUtilsImpl {
         let expansion = EXPANSION_RE.captures(run_var);
         if let Some(captures) = expansion {
             let id = captures.name("id").unwrap();
-            if let Some(value) = build_variant
-                .expansions
-                .clone()
-                .unwrap_or_default()
-                .get(id.as_str())
-            {
-                Some(value.to_string())
+            if let Some(value) = self.lookup_build_variant_expansion(id.as_str(), build_variant) {
+                Some(value)
             } else {
                 captures.name("default").map(|d| d.as_str().to_string())
             }
         } else {
             Some(run_var.to_string())
         }
+    }
+
+    /// Lookup the specified expansion in the given build variant.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Name of expansion to query.
+    /// * `build_variant` - Build Variant to query.
+    ///
+    /// # Returns
+    ///
+    /// Value of expansion if it exists.
+    fn lookup_build_variant_expansion(
+        &self,
+        name: &str,
+        build_variant: &BuildVariant,
+    ) -> Option<String> {
+        build_variant
+            .expansions
+            .clone()
+            .unwrap_or_default()
+            .get(name)
+            .map(|v| v.to_string())
     }
 
     /// Lookup the given variable in the task definition.
@@ -718,6 +752,53 @@ mod tests {
         let lookup = evg_config_utils.translate_run_var(run_var, &build_variant);
 
         assert_eq!(lookup, Some("build variant value".to_string()));
+    }
+
+    // lookup_build_variant_expansion tests
+    #[test]
+    fn test_lookup_in_a_build_variant_with_no_expansions_should_return_none() {
+        let build_variant = BuildVariant {
+            ..Default::default()
+        };
+        let evg_config_utils = EvgConfigUtilsImpl::new();
+
+        let lookup =
+            evg_config_utils.lookup_build_variant_expansion("my expansion", &build_variant);
+
+        assert!(lookup.is_none());
+    }
+
+    #[test]
+    fn test_lookup_in_a_build_variant_with_missing_expansion_should_return_none() {
+        let build_variant = BuildVariant {
+            expansions: Some(btreemap! {
+                "expansion".to_string() => "build variant value".to_string(),
+            }),
+            ..Default::default()
+        };
+        let evg_config_utils = EvgConfigUtilsImpl::new();
+
+        let lookup =
+            evg_config_utils.lookup_build_variant_expansion("my expansion", &build_variant);
+
+        assert!(lookup.is_none());
+    }
+
+    #[test]
+    fn test_lookup_in_a_build_variant_with_expected_expansion_should_return_value() {
+        let build_variant = BuildVariant {
+            expansions: Some(btreemap! {
+                "expansion".to_string() => "build variant value".to_string(),
+                "my expansion".to_string() => "expansion value".to_string(),
+            }),
+            ..Default::default()
+        };
+        let evg_config_utils = EvgConfigUtilsImpl::new();
+
+        let lookup =
+            evg_config_utils.lookup_build_variant_expansion("my expansion", &build_variant);
+
+        assert_eq!(lookup, Some("expansion value".to_string()));
     }
 
     // lookup_* tests.
