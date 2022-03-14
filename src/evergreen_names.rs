@@ -34,6 +34,8 @@ pub const GENERATOR_TASKS: &str = "generator_tasks";
 // Vars
 /// Variable that indicates a task is a fuzzer.
 pub const IS_FUZZER: &str = "is_jstestfuzz";
+/// If true, generate sub-tasks to run on large distros.
+pub const USE_LARGE_DISTRO: &str = "use_large_distro";
 
 // Parameters
 // Shared parameters between fuzzers and resmoke.
@@ -63,3 +65,7 @@ pub const TASK_NAME: &str = "task";
 pub const IDLE_TIMEOUT: &str = "timeout_secs";
 /// Multiversion version combination being run against.
 pub const MULTIVERSION_EXCLUDE_TAGS: &str = "multiversion_exclude_tags_version";
+
+// Build Variant expansions.
+/// Name of large distro for build variant.
+pub const LARGE_DISTRO_EXPANSION: &str = "large_distro_name";

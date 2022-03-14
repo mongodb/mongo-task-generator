@@ -19,8 +19,8 @@ use evergreen::{
     evg_task_history::TaskHistoryServiceImpl,
 };
 use evergreen_names::{
-    CONTINUE_ON_FAILURE, FUZZER_PARAMETERS, GENERATOR_TASKS, IDLE_TIMEOUT, NPM_COMMAND,
-    RESMOKE_ARGS, RESMOKE_JOBS_MAX, SHOULD_SHUFFLE_TESTS,
+    CONTINUE_ON_FAILURE, FUZZER_PARAMETERS, GENERATOR_TASKS, IDLE_TIMEOUT, LARGE_DISTRO_EXPANSION,
+    NPM_COMMAND, RESMOKE_ARGS, RESMOKE_JOBS_MAX, SHOULD_SHUFFLE_TESTS, USE_LARGE_DISTRO,
 };
 use evg_api_rs::EvgClient;
 use resmoke::resmoke_proxy::ResmokeProxy;
@@ -406,16 +406,25 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
         for (_bv_name, build_variant) in build_variant_map {
             let mut gen_config = GeneratedConfig::new();
             let mut generating_tasks = vec![];
+            let large_distro_name = self
+                .evg_config_utils
+                .lookup_build_variant_expansion(LARGE_DISTRO_EXPANSION, build_variant);
             for task in &build_variant.tasks {
                 let generated_tasks = generated_tasks.lock().unwrap();
                 if let Some(generated_task) = generated_tasks.get(&task.name) {
+                    let distro = if generated_task.use_large_distro() {
+                        large_distro_name.clone()
+                    } else {
+                        None
+                    };
+
                     generating_tasks.push(&task.name);
                     gen_config
                         .display_tasks
                         .push(generated_task.build_display_task());
                     gen_config
                         .gen_task_specs
-                        .extend(generated_task.build_task_ref());
+                        .extend(generated_task.build_task_ref(distro));
                 }
             }
 
@@ -527,7 +536,11 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
         Ok(ResmokeGenParams {
             task_name,
             suite_name: suite,
-            use_large_distro: false,
+            use_large_distro: self.evg_config_utils.lookup_default_param_bool(
+                task_def,
+                USE_LARGE_DISTRO,
+                false,
+            )?,
             require_multiversion_setup: false,
             resmoke_args: self.evg_config_utils.lookup_default_param_str(
                 task_def,
