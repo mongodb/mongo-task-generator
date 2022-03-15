@@ -11,11 +11,10 @@ const GEN_SUFFIX: &str = "_gen";
 /// * `variant` - Build Variant being generated.
 pub fn name_generated_task(
     display_name: &str,
-    sub_task_index: Option<u64>,
-    total_tasks: Option<u64>,
+    sub_task_index: Option<usize>,
+    total_tasks: usize,
 ) -> String {
     if let Some(index) = sub_task_index {
-        let total_tasks = total_tasks.unwrap();
         let alignment = (total_tasks as f64).log10().ceil() as usize;
         format!("{}_{:0fill$}", display_name, index, fill = alignment)
     } else {
@@ -47,14 +46,14 @@ mod tests {
     use rstest::*;
 
     #[rstest]
-    #[case("task", Some(0), Some(10), "task_0")]
-    #[case("task", Some(42), Some(1001), "task_0042")]
-    #[case("task", None, Some(1001), "task_misc")]
-    #[case("task", None, None, "task_misc")]
+    #[case("task", Some(0), 10, "task_0")]
+    #[case("task", Some(42), 1001, "task_0042")]
+    #[case("task", None, 1001, "task_misc")]
+    #[case("task", None, 0, "task_misc")]
     fn test_name_generated_task_should_not_include_suffix(
         #[case] name: &str,
-        #[case] index: Option<u64>,
-        #[case] total: Option<u64>,
+        #[case] index: Option<usize>,
+        #[case] total: usize,
         #[case] expected: &str,
     ) {
         let task_name = name_generated_task(name, index, total);
