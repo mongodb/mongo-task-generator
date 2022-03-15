@@ -50,7 +50,7 @@ pub struct FuzzerGenTaskParams {
     /// Timeout before test execution is considered hung.
     pub timeout_secs: u64,
     /// Requires downloading multiversion binaries.
-    pub require_multiversion_setup: Option<bool>,
+    pub require_multiversion_setup: bool,
     /// Location of generated task configuration.
     pub config_location: String,
 }
@@ -66,7 +66,7 @@ impl FuzzerGenTaskParams {
 
     /// Determine if these parameters are for a multiversion fuzzer.
     fn is_multiversion(&self) -> bool {
-        self.require_multiversion_setup.unwrap_or(false)
+        self.require_multiversion_setup
     }
 
     /// Build the vars to send to tasks in the 'run tests' function.
@@ -350,13 +350,9 @@ mod tests {
     }
 
     #[rstest]
-    #[case(Some(true), true)]
-    #[case(Some(false), false)]
-    #[case(None, false)]
-    fn test_is_multiversion(
-        #[case] require_multiversion_setup: Option<bool>,
-        #[case] actual: bool,
-    ) {
+    #[case(true, true)]
+    #[case(false, false)]
+    fn test_is_multiversion(#[case] require_multiversion_setup: bool, #[case] actual: bool) {
         let gen_params = FuzzerGenTaskParams {
             require_multiversion_setup,
             ..Default::default()
@@ -494,7 +490,7 @@ mod tests {
         let sub_task_index = 42_u64;
         let params = FuzzerGenTaskParams {
             task_name: "some task".to_string(),
-            require_multiversion_setup: Some(true),
+            require_multiversion_setup: true,
             ..Default::default()
         };
 

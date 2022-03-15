@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use anyhow::{bail, Result};
 use lazy_static::lazy_static;
 use regex::Regex;
@@ -48,6 +50,17 @@ pub trait EvgConfigUtils: Sync + Send {
     ///
     /// Name of task the given resmoke suite executes.
     fn find_suite_name<'a>(&self, task: &'a EvgTask) -> &'a str;
+
+    /// Get a set of the task tags defined in the given task definition.
+    ///
+    /// # Arguments
+    ///
+    /// * `task` - Evergreen task to query.
+    ///
+    /// # Returns
+    ///
+    /// Set of tags assigned to the task.
+    fn get_task_tags(&self, task: &EvgTask) -> HashSet<String>;
 
     /// Lookup the given variable in the vars section of the 'generate resmoke task' func.
     ///
@@ -234,6 +247,24 @@ impl EvgConfigUtils for EvgConfigUtilsImpl {
         } else {
             remove_gen_suffix(&task.name)
         }
+    }
+
+    /// Get a set of the task tags defined in the given task definition.
+    ///
+    /// # Arguments
+    ///
+    /// * `task` - Evergreen task to query.
+    ///
+    /// # Returns
+    ///
+    /// Set of tags assigned to the task.
+    fn get_task_tags(&self, task: &EvgTask) -> HashSet<String> {
+        task.tags
+            .clone()
+            .unwrap_or_default()
+            .iter()
+            .map(|t| t.to_string())
+            .collect()
     }
 
     /// Lookup the given variable in the vars section of the 'generate resmoke task' func.
@@ -574,6 +605,37 @@ mod tests {
         let evg_config_utils = EvgConfigUtilsImpl::new();
 
         assert_eq!(evg_config_utils.find_suite_name(&evg_task), "my_task");
+    }
+
+    // get_task_tags tests.
+    #[test]
+    fn test_get_task_tags_with_no_tags_should_return_empty_set() {
+        let evg_task = EvgTask {
+            tags: None,
+            ..Default::default()
+        };
+        let evg_config_utils = EvgConfigUtilsImpl::new();
+
+        assert!(evg_config_utils.get_task_tags(&evg_task).is_empty());
+    }
+
+    #[test]
+    fn test_get_task_tags_with_tags_should_return_tags_in_set() {
+        let evg_task = EvgTask {
+            tags: Some(vec![
+                "tag_0".to_string(),
+                "tag_1".to_string(),
+                "tag_2".to_string(),
+            ]),
+            ..Default::default()
+        };
+        let evg_config_utils = EvgConfigUtilsImpl::new();
+
+        let tags = evg_config_utils.get_task_tags(&evg_task);
+        assert_eq!(tags.len(), 3);
+        assert!(tags.contains("tag_0"));
+        assert!(tags.contains("tag_1"));
+        assert!(tags.contains("tag_2"));
     }
 
     // get_gen_task_vars tests.
