@@ -20,7 +20,8 @@ use evergreen::{
 };
 use evergreen_names::{
     CONTINUE_ON_FAILURE, FUZZER_PARAMETERS, GENERATOR_TASKS, IDLE_TIMEOUT, LARGE_DISTRO_EXPANSION,
-    NPM_COMMAND, RESMOKE_ARGS, RESMOKE_JOBS_MAX, SHOULD_SHUFFLE_TESTS, USE_LARGE_DISTRO,
+    MULTIVERSION, NPM_COMMAND, NUM_FUZZER_FILES, NUM_FUZZER_TASKS, RESMOKE_ARGS, RESMOKE_JOBS_MAX,
+    SHOULD_SHUFFLE_TESTS, USE_LARGE_DISTRO,
 };
 use evg_api_rs::EvgClient;
 use resmoke::resmoke_proxy::ResmokeProxy;
@@ -475,8 +476,13 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
         let num_files = evg_config_utils
             .translate_run_var(
                 evg_config_utils
-                    .get_gen_task_var(task_def, "num_files")
-                    .unwrap_or_else(|| panic!("`num_files` missing for task: '{}'", task_def.name)),
+                    .get_gen_task_var(task_def, NUM_FUZZER_FILES)
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "`{}` missing for task: '{}'",
+                            NUM_FUZZER_FILES, task_def.name
+                        )
+                    }),
                 build_variant,
             )
             .unwrap();
@@ -487,7 +493,7 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
             variant: build_variant.name.to_string(),
             suite,
             num_files,
-            num_tasks: evg_config_utils.lookup_required_param_u64(task_def, "num_tasks")?,
+            num_tasks: evg_config_utils.lookup_required_param_u64(task_def, NUM_FUZZER_TASKS)?,
             resmoke_args: evg_config_utils.lookup_required_param_str(task_def, RESMOKE_ARGS)?,
             npm_command: evg_config_utils.lookup_default_param_str(
                 task_def,
@@ -504,13 +510,9 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
             should_shuffle: evg_config_utils
                 .lookup_required_param_bool(task_def, SHOULD_SHUFFLE_TESTS)?,
             timeout_secs: evg_config_utils.lookup_required_param_u64(task_def, IDLE_TIMEOUT)?,
-            require_multiversion_setup: Some(
-                task_def
-                    .tags
-                    .clone()
-                    .unwrap_or_default()
-                    .contains(&"multiversion".to_string()),
-            ),
+            require_multiversion_setup: evg_config_utils
+                .get_task_tags(task_def)
+                .contains(MULTIVERSION),
             config_location: config_location.to_string(),
         })
     }
