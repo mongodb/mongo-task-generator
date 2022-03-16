@@ -20,8 +20,8 @@ use evergreen::{
 };
 use evergreen_names::{
     CONTINUE_ON_FAILURE, FUZZER_PARAMETERS, GENERATOR_TASKS, IDLE_TIMEOUT, LARGE_DISTRO_EXPANSION,
-    MULTIVERSION, NPM_COMMAND, NUM_FUZZER_FILES, NUM_FUZZER_TASKS, RESMOKE_ARGS, RESMOKE_JOBS_MAX,
-    SHOULD_SHUFFLE_TESTS, USE_LARGE_DISTRO,
+    MULTIVERSION, NO_MULTIVERSION_ITERATION, NPM_COMMAND, NUM_FUZZER_FILES, NUM_FUZZER_TASKS,
+    RESMOKE_ARGS, RESMOKE_JOBS_MAX, SHOULD_SHUFFLE_TESTS, USE_LARGE_DISTRO,
 };
 use evg_api_rs::EvgClient;
 use resmoke::resmoke_proxy::ResmokeProxy;
@@ -83,7 +83,7 @@ impl Dependencies {
             Arc::new(MultiversionServiceImpl::new(discovery_service.clone())?);
         let evg_config_service = Arc::new(EvgProjectConfig::new(evg_project_location)?);
         let evg_config_utils = Arc::new(EvgConfigUtilsImpl::new());
-        let gen_fuzzer_service = Arc::new(GenFuzzerServiceImpl::new(multiversion_service));
+        let gen_fuzzer_service = Arc::new(GenFuzzerServiceImpl::new(multiversion_service.clone()));
         let evg_client = Arc::new(EvgClient::from_file(evg_auth_file).unwrap());
         let task_history_service = Arc::new(TaskHistoryServiceImpl::new(
             evg_client,
@@ -93,6 +93,7 @@ impl Dependencies {
         let resmoke_config_actor =
             Arc::new(tokio::sync::Mutex::new(ResmokeConfigActorService::new(
                 discovery_service.clone(),
+                multiversion_service.clone(),
                 fs_service.clone(),
                 CONFIG_DIR,
                 32,
@@ -101,6 +102,7 @@ impl Dependencies {
             task_history_service,
             discovery_service,
             resmoke_config_actor.clone(),
+            multiversion_service,
             fs_service,
             MAX_SUB_TASKS_PER_TASK,
         ));
@@ -174,7 +176,6 @@ pub async fn generate_configuration(deps: &Dependencies, config_location: &str) 
     let mut config_file = Path::new(CONFIG_DIR).to_path_buf();
     config_file.push("evergreen_config.json");
     std::fs::write(config_file, serde_json::to_string_pretty(&gen_evg_project)?)?;
-    println!("{}", serde_yaml::to_string(&gen_evg_project)?);
     let mut resmoke_config_actor = deps.resmoke_config_actor.lock().await;
     resmoke_config_actor.flush().await;
     Ok(())
@@ -534,6 +535,9 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
     ) -> Result<ResmokeGenParams> {
         let task_name = remove_gen_suffix(&task_def.name).to_string();
         let suite = self.evg_config_utils.find_suite_name(task_def).to_string();
+        let task_tags = self.evg_config_utils.get_task_tags(task_def);
+        let require_multiversion_setup = task_tags.contains(MULTIVERSION);
+        let no_multiversion_iteration = task_tags.contains(NO_MULTIVERSION_ITERATION);
 
         Ok(ResmokeGenParams {
             task_name,
@@ -543,7 +547,8 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                 USE_LARGE_DISTRO,
                 false,
             )?,
-            require_multiversion_setup: false,
+            require_multiversion_setup,
+            generate_multiversion_combos: require_multiversion_setup && !no_multiversion_iteration,
             resmoke_args: self.evg_config_utils.lookup_default_param_str(
                 task_def,
                 RESMOKE_ARGS,

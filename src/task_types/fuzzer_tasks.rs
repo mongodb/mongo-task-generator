@@ -184,24 +184,20 @@ impl GenFuzzerService for GenFuzzerServiceImpl {
         let task_name = &params.task_name;
         let mut sub_tasks: Vec<EvgTask> = vec![];
         if params.is_multiversion() {
-            let version_combinations = self
-                .multiversion_service
-                .get_version_combinations(&params.suite)?;
             event!(
                 Level::INFO,
                 task_name = task_name.as_str(),
                 "Generating multiversion fuzzer"
             );
-            for (old_version, version_combination) in self
-                .multiversion_service
-                .multiversion_iter(&version_combinations)
+            for (old_version, version_combination) in
+                self.multiversion_service.multiversion_iter(&params.suite)?
             {
                 let base_task_name =
                     build_name(&params.task_name, &old_version, &version_combination);
                 let base_suite_name = build_name(&params.suite, &old_version, &version_combination);
 
                 sub_tasks.extend(
-                    (0..params.num_tasks)
+                    (0..params.num_tasks as usize)
                         .map(|i| {
                             build_fuzzer_sub_task(
                                 &base_task_name,
@@ -215,7 +211,7 @@ impl GenFuzzerService for GenFuzzerServiceImpl {
                 );
             }
         } else {
-            sub_tasks = (0..params.num_tasks)
+            sub_tasks = (0..params.num_tasks as usize)
                 .map(|i| build_fuzzer_sub_task(&params.task_name, i, params, None, None))
                 .collect();
         }
@@ -242,13 +238,16 @@ impl GenFuzzerService for GenFuzzerServiceImpl {
 /// A shrub task to generate the sub-task.
 fn build_fuzzer_sub_task(
     display_name: &str,
-    sub_task_index: u64,
+    sub_task_index: usize,
     params: &FuzzerGenTaskParams,
     generated_suite_name: Option<&str>,
     version_combination: Option<&str>,
 ) -> EvgTask {
-    let sub_task_name =
-        name_generated_task(display_name, Some(sub_task_index), Some(params.num_tasks));
+    let sub_task_name = name_generated_task(
+        display_name,
+        Some(sub_task_index),
+        params.num_tasks as usize,
+    );
 
     let mut commands = vec![];
     if params.is_multiversion() {
@@ -460,7 +459,7 @@ mod tests {
     #[test]
     fn test_build_fuzzer_sub_task() {
         let display_name = "my_task";
-        let sub_task_index = 42_u64;
+        let sub_task_index = 42;
         let params = FuzzerGenTaskParams {
             task_name: "some task".to_string(),
             ..Default::default()
@@ -487,7 +486,7 @@ mod tests {
     #[test]
     fn test_build_multiversion_fuzzer_sub_task() {
         let display_name = "my_task";
-        let sub_task_index = 42_u64;
+        let sub_task_index = 42;
         let params = FuzzerGenTaskParams {
             task_name: "some task".to_string(),
             require_multiversion_setup: true,

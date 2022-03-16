@@ -77,3 +77,5 @@ pub const LARGE_DISTRO_EXPANSION: &str = "large_distro_name";
 // Task Tags
 /// Tag to include multiversion setup is required.
 pub const MULTIVERSION: &str = "multiversion";
+/// Tag to indicate multiversion combination should not be created.
+pub const NO_MULTIVERSION_ITERATION: &str = "no_version_combination";

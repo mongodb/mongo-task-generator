@@ -40,13 +40,31 @@ pub trait MultiversionService: Sync + Send {
     ///
     /// # Arguments
     ///
-    /// * `version_combination` - Version combinations that should be included for the suite.
+    /// * `suite_name` - Name of suite being generated.
     ///
     /// # Returns
     ///
     /// An iterator over the multiversion configurations to generate. Each iteration will
     /// include a tuple with the `old_version` and the `version_combinations` to use.
-    fn multiversion_iter(&self, version_combinations: &[String]) -> MultiversionIterator;
+    fn multiversion_iter(&self, suite_name: &str) -> Result<MultiversionIterator>;
+
+    /// Generate the name of the multiversion suite.
+    ///
+    /// # Arguments
+    ///
+    /// * `base_name` - Base name of the suite.
+    /// * `old_version` - Previous version of mongo being tested against (lts, continuous).
+    /// * `version_combination` - Mongo version combinations to test against.
+    ///
+    /// # Returns
+    ///
+    /// Name of multiversion suite.
+    fn name_multiversion_suite(
+        &self,
+        base_name: &str,
+        old_version: &str,
+        version_combination: &str,
+    ) -> String;
 }
 
 /// Implementation of Multiversion service.
@@ -93,14 +111,43 @@ impl MultiversionService for MultiversionServiceImpl {
     ///
     /// # Arguments
     ///
-    /// * `version_combination` - Version combinations that should be included for the suite.
+    /// * `suite_name` - Name of suite being generated.
     ///
     /// # Returns
     ///
     /// An iterator over the multiversion configurations to generate. Each iteration will
     /// include a tuple with the `old_version` and the `version_combinations` to use.
-    fn multiversion_iter(&self, version_combinations: &[String]) -> MultiversionIterator {
-        MultiversionIterator::new(&self.old_versions, version_combinations)
+    fn multiversion_iter(&self, suite_name: &str) -> Result<MultiversionIterator> {
+        let version_combinations = self.get_version_combinations(suite_name)?;
+        Ok(MultiversionIterator::new(
+            &self.old_versions,
+            &version_combinations,
+        ))
+    }
+
+    /// Generate the name of the multiversion suite.
+    ///
+    /// # Arguments
+    ///
+    /// * `base_name` - Base name of the suite.
+    /// * `old_version` - Previous version of mongo being tested against (lts, continuous).
+    /// * `version_combination` - Mongo version combinations to test against.
+    ///
+    /// # Returns
+    ///
+    /// Name of multiversion suite.
+    fn name_multiversion_suite(
+        &self,
+        base_name: &str,
+        old_version: &str,
+        version_combination: &str,
+    ) -> String {
+        // version combinations should only be included if it isn't an empty string.
+        if version_combination.is_empty() {
+            format!("{}_{}", base_name, old_version)
+        } else {
+            format!("{}_{}_{}", base_name, old_version, version_combination)
+        }
     }
 }
 
@@ -193,20 +240,38 @@ mod tests {
 
     #[test]
     fn test_multiversion_iterator() {
+        let suite_config_yaml = "
+            test_kind: js_test
+
+            selector:
+              roots:
+                - jstests/auth/*.js
+              exclude_files:
+                - jstests/auth/repl.js
+        
+            executor:
+              config:
+                shell_options:
+                  global_vars:
+                    TestData:
+                      roleGraphInvalidationIsFatal: true
+                  nodb: '' 
+              fixture:
+                class: ReplicaSetFixture
+                num_nodes: 3
+        ";
         let discovery_service = Arc::new(MockTestDiscovery {
             old_versions: vec!["lts".to_string(), "continuous".to_string()],
-            suite_config: None,
+            suite_config: Some(ResmokeSuiteConfig::from_str(suite_config_yaml).unwrap()),
         });
         let multiversion_service = MultiversionServiceImpl::new(discovery_service).unwrap();
 
         let mut seen_combos = 0;
-        for _ in multiversion_service
-            .multiversion_iter(&["new_old_new".to_string(), "old_new_old".to_string()])
-        {
+        for _ in multiversion_service.multiversion_iter("my suite").unwrap() {
             seen_combos += 1;
         }
 
-        assert_eq!(seen_combos, 2 * 2); // 2 old_versions * 2 version_combinations.
+        assert_eq!(seen_combos, 2 * 3); // 2 old_versions * 3 version_combinations.
     }
 
     #[test]
@@ -256,5 +321,29 @@ mod tests {
         let combos = get_version_combinations(&fixture_type);
 
         assert_eq!(combos, expected_combos);
+    }
+
+    #[rstest]
+    #[case("the_suite", "lts", "new_old_old_new", "the_suite_lts_new_old_old_new")]
+    #[case("the_suite", "lts", "", "the_suite_lts")]
+    fn test_name_multiversion_suite(
+        #[case] base_name: &str,
+        #[case] old_version: &str,
+        #[case] version_combination: &str,
+        #[case] expected_name: &str,
+    ) {
+        let discovery_service = Arc::new(MockTestDiscovery {
+            old_versions: vec![],
+            suite_config: None,
+        });
+        let multiversion_service = MultiversionServiceImpl::new(discovery_service).unwrap();
+
+        let suite_name = multiversion_service.name_multiversion_suite(
+            base_name,
+            old_version,
+            version_combination,
+        );
+
+        assert_eq!(suite_name, expected_name);
     }
 }
