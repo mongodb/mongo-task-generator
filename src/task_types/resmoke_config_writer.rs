@@ -417,6 +417,10 @@ mod tests {
         ) -> String {
             format!("{}_{}_{}", base_name, old_version, version_combination)
         }
+
+        fn exclude_tags_for_task(&self, _task_name: &str) -> String {
+            todo!()
+        }
     }
 
     fn build_mock_service(
@@ -453,11 +457,13 @@ mod tests {
                     index: Some(0),
                     name: "suite".to_string(),
                     test_list: vec!["test_0.js".to_string(), "test_1.js".to_string()],
+                    mv_exclude_tags: None,
                 },
                 SubSuite {
                     index: Some(1),
                     name: "suite".to_string(),
                     test_list: vec!["test_2.js".to_string(), "test_3.js".to_string()],
+                    mv_exclude_tags: None,
                 },
             ],
         };
@@ -488,11 +494,13 @@ mod tests {
                     index: Some(0),
                     name: "suite".to_string(),
                     test_list: vec!["test_0.js".to_string(), "test_1.js".to_string()],
+                    mv_exclude_tags: None,
                 },
                 SubSuite {
                     index: Some(1),
                     name: "suite".to_string(),
                     test_list: vec!["test_2.js".to_string(), "test_3.js".to_string()],
+                    mv_exclude_tags: None,
                 },
             ],
         };

@@ -72,9 +72,23 @@ pub struct ResmokeFixture {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mongod_options: Option<Box<Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub mongos_options: Option<Box<Value>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub num_nodes: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub use_replica_set_connection_string: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mixed_bin_versions: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub old_bin_version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub num_rs_nodes_per_shard: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub num_shards: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shard_options: Option<Box<Value>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub configsvr_options: Option<Box<Value>>,
 }
 
 #[derive(Serialize, Debug, Clone, Deserialize)]

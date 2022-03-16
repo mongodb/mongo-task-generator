@@ -21,7 +21,10 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
-use crate::resmoke::{resmoke_proxy::TestDiscovery, resmoke_suite::SuiteFixtureType};
+use crate::{
+    evergreen_names::{BACKPORT_REQUIRED_TAG, MULTIVERSION_INCOMPATIBLE},
+    resmoke::{resmoke_proxy::TestDiscovery, resmoke_suite::SuiteFixtureType},
+};
 
 /// A service for helping generating multiversion tasks.
 pub trait MultiversionService: Sync + Send {
@@ -65,14 +68,29 @@ pub trait MultiversionService: Sync + Send {
         old_version: &str,
         version_combination: &str,
     ) -> String;
+
+    /// Get the exclude tags for the given task.
+    ///
+    /// # Arguments
+    ///
+    /// * `task_name` - Name of task to query.
+    ///
+    /// # Returns
+    ///
+    /// Exclude tags as a comma-separated string.
+    fn exclude_tags_for_task(&self, task_name: &str) -> String;
 }
 
 /// Implementation of Multiversion service.
 pub struct MultiversionServiceImpl {
     /// Service to gather details about test suites.
     discovery_service: Arc<dyn TestDiscovery>,
+
     /// Old versions that need to be tested against.
     old_versions: Vec<String>,
+
+    /// Tags for required FCV version.
+    requires_fcv_tag: String,
 }
 
 /// Implementation of Multiversion service.
@@ -83,10 +101,11 @@ impl MultiversionServiceImpl {
     ///
     /// * `discovery_service` - Instance of service to query details about test suites.
     pub fn new(discovery_service: Arc<dyn TestDiscovery>) -> Result<Self> {
-        let old_versions = discovery_service.get_multiversion_config()?.last_versions;
+        let multiversion_config = discovery_service.get_multiversion_config()?;
         Ok(Self {
             discovery_service,
-            old_versions,
+            old_versions: multiversion_config.last_versions,
+            requires_fcv_tag: multiversion_config.requires_fcv_tag,
         })
     }
 }
@@ -148,6 +167,27 @@ impl MultiversionService for MultiversionServiceImpl {
         } else {
             format!("{}_{}_{}", base_name, old_version, version_combination)
         }
+    }
+
+    /// Get the exclude tags for the given task.
+    ///
+    /// # Arguments
+    ///
+    /// * `task_name` - Name of task to query.
+    ///
+    /// # Returns
+    ///
+    /// Exclude tags as a comma-separated string.
+    fn exclude_tags_for_task(&self, task_name: &str) -> String {
+        let task_tag = format!("{}_{}", task_name, BACKPORT_REQUIRED_TAG);
+        let tags = vec![
+            self.requires_fcv_tag.clone(),
+            MULTIVERSION_INCOMPATIBLE.to_string(),
+            BACKPORT_REQUIRED_TAG.to_string(),
+            task_tag,
+        ];
+
+        tags.join(",")
     }
 }
 
@@ -234,6 +274,7 @@ mod tests {
         fn get_multiversion_config(&self) -> Result<MultiversionConfig> {
             Ok(MultiversionConfig {
                 last_versions: self.old_versions.clone(),
+                requires_fcv_tag: "".to_string(),
             })
         }
     }

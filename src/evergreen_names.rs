@@ -40,6 +40,8 @@ pub const USE_LARGE_DISTRO: &str = "use_large_distro";
 pub const NUM_FUZZER_FILES: &str = "num_files";
 /// Number of sub-tasks that should be generated for a fuzzer.
 pub const NUM_FUZZER_TASKS: &str = "num_tasks";
+/// Tag to exclude multiversion version.
+pub const MULTIVERSION_EXCLUDE_TAG: &str = "multiversion_exclude_tags_version";
 
 // Parameters
 // Shared parameters between fuzzers and resmoke.
@@ -79,3 +81,11 @@ pub const LARGE_DISTRO_EXPANSION: &str = "large_distro_name";
 pub const MULTIVERSION: &str = "multiversion";
 /// Tag to indicate multiversion combination should not be created.
 pub const NO_MULTIVERSION_ITERATION: &str = "no_version_combination";
+
+// Multiversion values
+/// Tag to include required backport.
+pub const BACKPORT_REQUIRED_TAG: &str = "backport_required_multiversion";
+/// Tag to mark task multiversion incompatible.
+pub const MULTIVERSION_INCOMPATIBLE: &str = "multiversion_incompatible";
+/// Filename of multiversion exclude tags file.
+pub const MULTIVERSION_EXCLUDE_TAGS_FILE: &str = "multiversion_exclude_tags.yml";

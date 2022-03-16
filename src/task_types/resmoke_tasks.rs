@@ -24,8 +24,9 @@ use crate::{
     evergreen::evg_task_history::{get_test_name, TaskHistoryService, TaskRuntimeHistory},
     evergreen_names::{
         ADD_GIT_TAG, CONFIGURE_EVG_API_CREDS, DO_MULTIVERSION_SETUP, DO_SETUP,
-        GEN_TASK_CONFIG_LOCATION, GET_PROJECT_WITH_NO_MODULES, REQUIRE_MULTIVERSION_SETUP,
-        RESMOKE_ARGS, RESMOKE_JOBS_MAX, RUN_GENERATED_TESTS, SUITE_NAME,
+        GEN_TASK_CONFIG_LOCATION, GET_PROJECT_WITH_NO_MODULES, MULTIVERSION_EXCLUDE_TAG,
+        MULTIVERSION_EXCLUDE_TAGS_FILE, REQUIRE_MULTIVERSION_SETUP, RESMOKE_ARGS, RESMOKE_JOBS_MAX,
+        RUN_GENERATED_TESTS, SUITE_NAME,
     },
     resmoke::resmoke_proxy::TestDiscovery,
     utils::{fs_service::FsService, task_name::name_generated_task},
@@ -67,13 +68,25 @@ impl ResmokeGenParams {
     /// # Returns
     ///
     /// Map of arguments to pass to 'run tests' function.
-    fn build_run_test_vars(&self, suite_file: &str) -> HashMap<String, ParamValue> {
+    fn build_run_test_vars(
+        &self,
+        suite_file: &str,
+        sub_suite: &SubSuite,
+        exclude_tags: &str,
+    ) -> HashMap<String, ParamValue> {
         let mut run_test_vars = hashmap! {
             REQUIRE_MULTIVERSION_SETUP.to_string() => ParamValue::from(self.require_multiversion_setup),
-            RESMOKE_ARGS.to_string() => ParamValue::from(self.build_resmoke_args().as_str()),
+            RESMOKE_ARGS.to_string() => ParamValue::from(self.build_resmoke_args(exclude_tags).as_str()),
             SUITE_NAME.to_string() => ParamValue::from(format!("generated_resmoke_config/{}.yml", suite_file).as_str()),
             GEN_TASK_CONFIG_LOCATION.to_string() => ParamValue::from(self.config_location.as_str()),
         };
+
+        if let Some(mv_exclude_tags) = &sub_suite.mv_exclude_tags {
+            run_test_vars.insert(
+                MULTIVERSION_EXCLUDE_TAG.to_string(),
+                ParamValue::from(mv_exclude_tags.as_str()),
+            );
+        }
 
         if let Some(resmoke_jobs_max) = &self.resmoke_jobs_max {
             run_test_vars.insert(
@@ -90,20 +103,36 @@ impl ResmokeGenParams {
     /// # Returns
     ///
     /// String of arguments to pass to resmoke.
-    fn build_resmoke_args(&self) -> String {
-        format!("--originSuite={} {}", self.suite_name, self.resmoke_args)
+    fn build_resmoke_args(&self, exclude_tags: &str) -> String {
+        let suffix = if self.require_multiversion_setup {
+            format!(
+                "--tagFile=generated_resmoke_config/{} --excludeWithAnyTags={}",
+                MULTIVERSION_EXCLUDE_TAGS_FILE, exclude_tags
+            )
+        } else {
+            "".to_string()
+        };
+        format!(
+            "--originSuite={} {} {}",
+            self.suite_name, self.resmoke_args, suffix
+        )
     }
 }
 
 /// Representation of generated sub-suite.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct SubSuite {
     /// Index value of generated suite (None for the '_misc' sub-task).
     pub index: Option<usize>,
+
     /// Name of generated sub-suite.
     pub name: String,
+
     /// List of tests belonging to sub-suite.
     pub test_list: Vec<String>,
+
+    /// Multiversion exclude tags.
+    pub mv_exclude_tags: Option<String>,
 }
 
 /// Information needed to generate resmoke configuration files for the generated task.
@@ -278,6 +307,7 @@ impl GenResmokeTaskServiceImpl {
                         index: Some(i),
                         name: params.task_name.to_string(),
                         test_list: running_tests.clone(),
+                        mv_exclude_tags: None,
                     });
                     running_tests = vec![];
                     running_runtime = 0.0;
@@ -292,6 +322,7 @@ impl GenResmokeTaskServiceImpl {
                 index: Some(i),
                 name: params.task_name.to_string(),
                 test_list: running_tests.clone(),
+                mv_exclude_tags: None,
             });
         }
 
@@ -331,6 +362,7 @@ impl GenResmokeTaskServiceImpl {
                     index: Some(i),
                     name: params.task_name.to_string(),
                     test_list: current_tests,
+                    mv_exclude_tags: None,
                 });
                 current_tests = vec![];
                 i += 1;
@@ -342,6 +374,7 @@ impl GenResmokeTaskServiceImpl {
                 index: Some(i),
                 name: params.task_name.to_string(),
                 test_list: current_tests,
+                mv_exclude_tags: None,
             });
         }
 
@@ -378,6 +411,7 @@ impl GenResmokeTaskServiceImpl {
                     index: sub_suite.index,
                     name: suite,
                     test_list: sub_suite.test_list.clone(),
+                    mv_exclude_tags: Some(old_version.clone()),
                 });
             }
             // Add a `_misc` sub-task to the list of tasks.
@@ -389,10 +423,44 @@ impl GenResmokeTaskServiceImpl {
                     &version_combination,
                 ),
                 test_list: vec![],
+                mv_exclude_tags: Some(old_version.clone()),
             });
         }
 
         Ok(mv_sub_suites)
+    }
+
+    /// Build a shrub task to execute a split sub-task.
+    ///
+    /// # Arguments
+    ///
+    /// * `sub_suite` - Sub task to create task for.
+    /// * `params` - Parameters for how task should be generated.
+    ///
+    /// # Returns
+    ///
+    /// A shrub task to execute the given sub-suite.
+    fn build_resmoke_sub_task(
+        &self,
+        sub_suite: &SubSuite,
+        total_sub_suites: usize,
+        params: &ResmokeGenParams,
+    ) -> EvgTask {
+        let exclude_tags = self
+            .multiversion_service
+            .exclude_tags_for_task(&params.task_name);
+        let suite_file = &name_generated_task(&sub_suite.name, sub_suite.index, total_sub_suites);
+        let run_test_vars = params.build_run_test_vars(suite_file, sub_suite, &exclude_tags);
+
+        EvgTask {
+            name: suite_file.to_string(),
+            commands: resmoke_commands(
+                RUN_GENERATED_TESTS,
+                run_test_vars,
+                params.require_multiversion_setup,
+            ),
+            ..Default::default()
+        }
     }
 }
 
@@ -450,6 +518,7 @@ impl GenResmokeTaskService for GenResmokeTaskServiceImpl {
                 index: None,
                 name: params.task_name.to_string(),
                 test_list: vec![],
+                mv_exclude_tags: None,
             });
         }
 
@@ -457,39 +526,10 @@ impl GenResmokeTaskService for GenResmokeTaskServiceImpl {
             task_name: params.task_name.clone(),
             sub_suites: sub_suites
                 .into_iter()
-                .map(|s| build_resmoke_sub_task(&s, sub_task_total, params))
+                .map(|s| self.build_resmoke_sub_task(&s, sub_task_total, params))
                 .collect(),
             use_large_distro: params.use_large_distro,
         }))
-    }
-}
-
-/// Build a shrub task to execute a split sub-task.
-///
-/// # Arguments
-///
-/// * `sub_suite` - Sub task to create task for.
-/// * `params` - Parameters for how task should be generated.
-///
-/// # Returns
-///
-/// A shrub task to execute the given sub-suite.
-fn build_resmoke_sub_task(
-    sub_suite: &SubSuite,
-    total_sub_suites: usize,
-    params: &ResmokeGenParams,
-) -> EvgTask {
-    let suite_file = &name_generated_task(&sub_suite.name, sub_suite.index, total_sub_suites);
-    let run_test_vars = params.build_run_test_vars(suite_file);
-
-    EvgTask {
-        name: suite_file.to_string(),
-        commands: resmoke_commands(
-            RUN_GENERATED_TESTS,
-            run_test_vars,
-            params.require_multiversion_setup,
-        ),
-        ..Default::default()
     }
 }
 
@@ -545,8 +585,11 @@ mod tests {
             resmoke_args: "resmoke args".to_string(),
             ..Default::default()
         };
+        let sub_suite = SubSuite {
+            ..Default::default()
+        };
 
-        let test_vars = params.build_run_test_vars("my_suite_0");
+        let test_vars = params.build_run_test_vars("my_suite_0", &sub_suite, "");
 
         assert_eq!(test_vars.len(), 4);
         assert!(!test_vars.contains_key("resmoke_jobs_max"));
@@ -564,8 +607,11 @@ mod tests {
             resmoke_jobs_max: Some(5),
             ..Default::default()
         };
+        let sub_suite = SubSuite {
+            ..Default::default()
+        };
 
-        let test_vars = params.build_run_test_vars("my_suite_0");
+        let test_vars = params.build_run_test_vars("my_suite_0", &sub_suite, "");
 
         assert_eq!(test_vars.len(), 5);
         assert_eq!(
@@ -579,6 +625,32 @@ mod tests {
     }
 
     #[test]
+    fn test_build_run_test_vars_for_multiversion() {
+        let params = ResmokeGenParams {
+            suite_name: "my_suite".to_string(),
+            resmoke_args: "resmoke args".to_string(),
+            require_multiversion_setup: true,
+            ..Default::default()
+        };
+        let sub_suite = SubSuite {
+            mv_exclude_tags: Some("mv_tag_0,mv_tag_1".to_string()),
+            ..Default::default()
+        };
+
+        let test_vars = params.build_run_test_vars("my_suite_0", &sub_suite, "tag_0,tag_1,tag_2");
+
+        assert_eq!(test_vars.len(), 5);
+        assert_eq!(
+            test_vars.get("multiversion_exclude_tags_version").unwrap(),
+            &ParamValue::from("mv_tag_0,mv_tag_1")
+        );
+        assert_eq!(
+            test_vars.get("resmoke_args").unwrap(),
+            &ParamValue::from("--originSuite=my_suite resmoke args --tagFile=generated_resmoke_config/multiversion_exclude_tags.yml --excludeWithAnyTags=tag_0,tag_1,tag_2")
+        );
+    }
+
+    #[test]
     fn test_build_resmoke_args() {
         let params = ResmokeGenParams {
             suite_name: "my_suite".to_string(),
@@ -586,7 +658,7 @@ mod tests {
             ..Default::default()
         };
 
-        let resmoke_args = params.build_resmoke_args();
+        let resmoke_args = params.build_resmoke_args("");
 
         assert!(resmoke_args.contains("--originSuite=my_suite"));
         assert!(resmoke_args.contains("--args to --pass to resmoke"));
@@ -671,6 +743,10 @@ mod tests {
             version_combination: &str,
         ) -> String {
             format!("{}_{}_{}", base_name, old_version, version_combination)
+        }
+
+        fn exclude_tags_for_task(&self, _task_name: &str) -> String {
+            "tag_0,tag_1".to_string()
         }
     }
 
@@ -798,11 +874,13 @@ mod tests {
                 index: Some(0),
                 name: "suite".to_string(),
                 test_list: vec!["test_0.js".to_string(), "test_1.js".to_string()],
+                mv_exclude_tags: None,
             },
             SubSuite {
                 index: Some(1),
                 name: "suite".to_string(),
                 test_list: vec!["test_2.js".to_string(), "test_3.js".to_string()],
+                mv_exclude_tags: None,
             },
         ];
         let params = ResmokeGenParams {
