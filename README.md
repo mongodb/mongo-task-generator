@@ -57,7 +57,14 @@ This project is built to run on linux. It is tested on Ubuntu 18.04.
 
 ## Installation
 
-_TBD_
+The tool can be downloaded from the [github releases](https://github.com/mongodb/mongo-task-generator/releases)
+page. It is currently built on Ubuntu 18.04 and should work on recent x86 linux distributions.
+
+The install can be automated using a tool like `wget` or `curl`:
+
+```bash
+wget https://github.com/mongodb/mongo-task-generator/releases/download/v0.1.0/mongo-task-generator
+```
 
 ## Usage
 
@@ -129,7 +136,20 @@ Add a PR comment with `evergreen merge` to trigger a merge.
 
 ### Deployment
 
-_TBD_
+Deployment is done via github actions. Deployment can be triggered via a git tag. To create a
+deployment, tag the commit you wish to deploy with a git tag and push the tag to the remote
+repository.
+
+The git tags should be formatted as follows: "v" followed by the 3 number version being deployed.
+For example, "v0.1.0".
+
+```bash
+git tag v0.1.0
+git push origin --tags
+```
+
+The tagged version will be deployed to the [github release](https://github.com/mongodb/mongo-task-generator/releases)
+for the project.
 
 ### Evergreen configuration
 
