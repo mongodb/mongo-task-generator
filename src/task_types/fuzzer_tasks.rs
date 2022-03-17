@@ -74,7 +74,7 @@ impl FuzzerGenTaskParams {
     /// # Arguments
     ///
     /// * `generated_suite_name` - A generated suite to execute against.
-    /// * `version_combination` - Versions to start replica set with.
+    /// * `old_version` - Previous version of mongo to test against.
     ///
     /// # Returns
     ///
@@ -82,7 +82,7 @@ impl FuzzerGenTaskParams {
     fn build_run_tests_vars(
         &self,
         generated_suite_name: Option<&str>,
-        version_combination: Option<&str>,
+        old_version: Option<&str>,
     ) -> HashMap<String, ParamValue> {
         let mut vars = hashmap! {
             CONTINUE_ON_FAILURE.to_string() => ParamValue::from(self.continue_on_failure),
@@ -104,10 +104,10 @@ impl FuzzerGenTaskParams {
             );
         }
 
-        if let Some(version_combination) = version_combination {
+        if let Some(old_version) = old_version {
             vars.insert(
                 MULTIVERSION_EXCLUDE_TAGS.to_string(),
-                ParamValue::from(version_combination),
+                ParamValue::from(old_version),
             );
         }
 
@@ -204,7 +204,7 @@ impl GenFuzzerService for GenFuzzerServiceImpl {
                                 i,
                                 params,
                                 Some(&base_suite_name),
-                                Some(&version_combination),
+                                Some(&old_version),
                             )
                         })
                         .collect::<Vec<EvgTask>>(),
@@ -231,7 +231,7 @@ impl GenFuzzerService for GenFuzzerServiceImpl {
 /// * `sub_task_index` - Index of sub-task to build.
 /// * `params` - Parameters for how task should be generated.
 /// * `generated_suite_name` - Name of suite to execute against.
-/// * `version_combination` - Versions to start replica set with.
+/// * `old_version` - Previous version of mongo to test against.
 ///
 /// # Returns
 ///
@@ -241,7 +241,7 @@ fn build_fuzzer_sub_task(
     sub_task_index: usize,
     params: &FuzzerGenTaskParams,
     generated_suite_name: Option<&str>,
-    version_combination: Option<&str>,
+    old_version: Option<&str>,
 ) -> EvgTask {
     let sub_task_name = name_generated_task(
         display_name,
@@ -267,7 +267,7 @@ fn build_fuzzer_sub_task(
         fn_call_with_params(RUN_FUZZER, params.build_fuzzer_parameters()),
         fn_call_with_params(
             RUN_GENERATED_TESTS,
-            params.build_run_tests_vars(generated_suite_name, version_combination),
+            params.build_run_tests_vars(generated_suite_name, old_version),
         ),
     ]);
 
