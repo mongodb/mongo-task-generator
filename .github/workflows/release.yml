@@ -1,0 +1,57 @@
+name: Release
+on: 
+  push:
+    tags: 
+      - '*'
+
+jobs:
+  build_artifacts:
+    name: Build artifacts for ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        name: [
+          linux,
+        ]
+
+        include:
+          - name: linux
+            os: ubuntu-18.04
+            artifact_name: target/release/mongo-task-generator
+            asset_name: mongo-task-generator
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Setup toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+
+      - name: Build
+        run: cargo build --release --locked
+
+      - name: Strip binary
+        run: strip target/release/mongo-task-generator
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: ${{ matrix.asset_name }}
+          path: ${{ matrix.artifact_name }}
+
+  deploy_artifacts:
+    name: Create release
+    needs: build_artifacts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get artifacts
+        uses: actions/download-artifact@v2
+
+      - name: Upload release
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: "mongo-task-generator/*"
+          token: ${{ secrets.GITHUB_TOKEN }}
