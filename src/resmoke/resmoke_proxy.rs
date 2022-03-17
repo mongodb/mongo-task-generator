@@ -114,6 +114,8 @@ impl TestDiscovery for ResmokeProxy {
 pub struct MultiversionConfig {
     /// Previous version of MongoDB to test against.
     pub last_versions: Vec<String>,
+    /// Tags for required FCV version.
+    pub requires_fcv_tag: String,
 }
 
 impl MultiversionConfig {
