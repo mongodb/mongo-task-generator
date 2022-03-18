@@ -117,11 +117,8 @@ impl WriteConfigActorImpl {
 
         // If we encountered an error, save it off so we can report it on flush.
         if let Err(error) = result {
-            self.errors.push(format!(
-                "ERROR: {}: {}",
-                &suite_info.task_name,
-                error
-            ));
+            self.errors
+                .push(format!("ERROR: {}: {}", &suite_info.task_name, error));
         }
     }
 
