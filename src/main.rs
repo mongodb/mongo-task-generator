@@ -87,7 +87,7 @@ async fn main() {
         duration_secs = start.elapsed().as_secs()
     );
     if let Err(err) = result {
-        eprintln!("Error encountered during execution: {}", err);
+        eprintln!("Error encountered during execution: {:?}", err);
         exit(1);
     }
 }

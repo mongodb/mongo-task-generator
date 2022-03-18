@@ -11,7 +11,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use anyhow::Result;
+use anyhow::{bail, Result};
 use async_trait::async_trait;
 use evergreen::{
     evg_config::{EvgConfigService, EvgProjectConfig},
@@ -177,7 +177,13 @@ pub async fn generate_configuration(deps: &Dependencies, config_location: &str) 
     config_file.push("evergreen_config.json");
     std::fs::write(config_file, serde_json::to_string_pretty(&gen_evg_project)?)?;
     let mut resmoke_config_actor = deps.resmoke_config_actor.lock().await;
-    resmoke_config_actor.flush().await;
+    let failures = resmoke_config_actor.flush().await?;
+    if !failures.is_empty() {
+        bail!(format!(
+            "Encountered errors writing resmoke configuration files: {:?}",
+            failures
+        ));
+    }
     Ok(())
 }
 

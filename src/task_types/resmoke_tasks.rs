@@ -714,7 +714,9 @@ mod tests {
     impl ResmokeConfigActor for MockResmokeConfigActor {
         async fn write_sub_suite(&mut self, _gen_suite: &ResmokeSuiteGenerationInfo) {}
 
-        async fn flush(&mut self) {}
+        async fn flush(&mut self) -> Result<Vec<String>> {
+            Ok(vec![])
+        }
     }
 
     struct MockMultiversionService {
