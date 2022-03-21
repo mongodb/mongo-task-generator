@@ -55,6 +55,8 @@ pub const SUITE_NAME: &str = "suite";
 pub const GEN_TASK_CONFIG_LOCATION: &str = "gen_task_config_location";
 /// Maximum amount of resmoke jobs to execute in parallel.
 pub const RESMOKE_JOBS_MAX: &str = "resmoke_jobs_max";
+/// Number of times to repeat a given resmoke suite.
+pub const REPEAT_SUITES: &str = "resmoke_repeat_suites";
 
 // Fuzzer parameters.
 /// Name of npm command to run.
