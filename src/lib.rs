@@ -21,7 +21,7 @@ use evergreen::{
 use evergreen_names::{
     CONTINUE_ON_FAILURE, FUZZER_PARAMETERS, GENERATOR_TASKS, IDLE_TIMEOUT, LARGE_DISTRO_EXPANSION,
     MULTIVERSION, NO_MULTIVERSION_ITERATION, NPM_COMMAND, NUM_FUZZER_FILES, NUM_FUZZER_TASKS,
-    RESMOKE_ARGS, RESMOKE_JOBS_MAX, SHOULD_SHUFFLE_TESTS, USE_LARGE_DISTRO,
+    REPEAT_SUITES, RESMOKE_ARGS, RESMOKE_JOBS_MAX, SHOULD_SHUFFLE_TESTS, USE_LARGE_DISTRO,
 };
 use evg_api_rs::EvgClient;
 use resmoke::resmoke_proxy::ResmokeProxy;
@@ -555,6 +555,9 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
             )?,
             require_multiversion_setup,
             generate_multiversion_combos: require_multiversion_setup && !no_multiversion_iteration,
+            repeat_suites: self
+                .evg_config_utils
+                .lookup_optional_param_u64(task_def, REPEAT_SUITES)?,
             resmoke_args: self.evg_config_utils.lookup_default_param_str(
                 task_def,
                 RESMOKE_ARGS,

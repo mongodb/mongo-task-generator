@@ -50,6 +50,8 @@ pub struct ResmokeGenParams {
     pub require_multiversion_setup: bool,
     /// Should multiversion combinations be used for this task.
     pub generate_multiversion_combos: bool,
+    /// Specify how many times resmoke should repeat the suite being tested.
+    pub repeat_suites: Option<u64>,
     /// Arguments that should be passed to resmoke.
     pub resmoke_args: String,
     /// Number of jobs to limit resmoke to.
@@ -112,9 +114,16 @@ impl ResmokeGenParams {
         } else {
             "".to_string()
         };
+
+        let repeat_arg = if let Some(repeat) = self.repeat_suites {
+            format!("--repeatSuites={}", repeat)
+        } else {
+            "".to_string()
+        };
+
         format!(
-            "--originSuite={} {} {}",
-            self.suite_name, self.resmoke_args, suffix
+            "--originSuite={} {} {} {}",
+            self.suite_name, self.resmoke_args, repeat_arg, suffix
         )
     }
 }
@@ -646,7 +655,7 @@ mod tests {
         );
         assert_eq!(
             test_vars.get("resmoke_args").unwrap(),
-            &ParamValue::from("--originSuite=my_suite resmoke args --tagFile=generated_resmoke_config/multiversion_exclude_tags.yml --excludeWithAnyTags=tag_0,tag_1,tag_2")
+            &ParamValue::from("--originSuite=my_suite resmoke args  --tagFile=generated_resmoke_config/multiversion_exclude_tags.yml --excludeWithAnyTags=tag_0,tag_1,tag_2")
         );
     }
 
@@ -655,6 +664,7 @@ mod tests {
         let params = ResmokeGenParams {
             suite_name: "my_suite".to_string(),
             resmoke_args: "--args to --pass to resmoke".to_string(),
+            repeat_suites: Some(3),
             ..Default::default()
         };
 
@@ -662,6 +672,7 @@ mod tests {
 
         assert!(resmoke_args.contains("--originSuite=my_suite"));
         assert!(resmoke_args.contains("--args to --pass to resmoke"));
+        assert!(resmoke_args.contains("--repeatSuites=3"));
     }
 
     // split_task tests
