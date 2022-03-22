@@ -1,6 +1,7 @@
 [package]
 name = "mongo-task-generator"
-version = "0.1.0"
+version = "0.1.1"
+repository = "https://github.com/mongodb/mongo-task-generator"
 authors = ["Decision Automation Group <dev-prod-dag@mongodb.com>"]
 edition = "2018"
 
@@ -24,8 +25,10 @@ tracing = "0.1"
 tracing-subscriber = {version = "0.3", features = ["json", "fmt", "std"]}
 
 [dev-dependencies]
+assert_cmd = "2.0"
 cargo-nextest = "0.9"
-rstest = "0.11"
+rstest = "0.12"
+tempdir = "0.3"
 
 [profile.release]
 opt-level = 2

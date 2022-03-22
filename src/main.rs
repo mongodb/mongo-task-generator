@@ -11,6 +11,11 @@ use serde::Deserialize;
 use tracing::{event, Level};
 use tracing_subscriber::fmt::format;
 
+const DEFAULT_EVG_AUTH_FILE: &str = "~/.evergreen.yml";
+const DEFAULT_EVG_PROJECT_FILE: &str = "etc/evergreen.yml";
+const DEFAULT_RESMOKE_COMMAND: &str = "python buildscripts/resmoke.py";
+const DEFAULT_TARGET_DIRECTORY: &str = "generated_resmoke_config";
+
 /// Expansions from evergreen to determine settings for how task should be generated.
 #[derive(Debug, Deserialize)]
 struct EvgExpansions {
@@ -45,7 +50,7 @@ impl EvgExpansions {
 #[derive(Parser, Debug)]
 struct Args {
     /// File containing evergreen project configuration.
-    #[clap(long, parse(from_os_str))]
+    #[clap(long, parse(from_os_str), default_value = DEFAULT_EVG_PROJECT_FILE)]
     evg_project_file: PathBuf,
 
     /// File containing expansions that impact task generation.
@@ -53,8 +58,20 @@ struct Args {
     expansion_file: PathBuf,
 
     /// File with information on how to authenticate against the evergreen API.
-    #[clap(long, parse(from_os_str))]
+    #[clap(long, parse(from_os_str), default_value = DEFAULT_EVG_AUTH_FILE)]
     evg_auth_file: PathBuf,
+
+    /// Directory to write generated configuration files.
+    #[clap(long, parse(from_os_str), default_value = DEFAULT_TARGET_DIRECTORY)]
+    target_directory: PathBuf,
+
+    /// Disable evergreen task-history queries and use task splitting fallback.
+    #[clap(long)]
+    use_task_split_fallback: bool,
+
+    /// Command to invoke resmoke.
+    #[clap(long, default_value = DEFAULT_RESMOKE_COMMAND)]
+    resmoke_command: String,
 }
 
 /// Configure logging for the command execution.
@@ -76,11 +93,19 @@ async fn main() {
         &args.evg_project_file,
         &evg_expansions.project,
         &args.evg_auth_file,
+        args.use_task_split_fallback,
+        &args.resmoke_command,
+        &args.target_directory,
     )
     .unwrap();
 
     let start = Instant::now();
-    let result = generate_configuration(&deps, &evg_expansions.config_location()).await;
+    let result = generate_configuration(
+        &deps,
+        &evg_expansions.config_location(),
+        &args.target_directory,
+    )
+    .await;
     event!(
         Level::INFO,
         "generation completed: {} seconds",

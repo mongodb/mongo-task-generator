@@ -1,0 +1,3 @@
+user: my.user.name
+api_key: myApiKey
+api_server_host: https://evergreen.mongodb.com/api
