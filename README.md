@@ -28,7 +28,20 @@ Dynamically split evergreen tasks into subtasks for testing the mongodb/mongo pr
 
 ## Description
 
-_This project is under construction._
+A tool to dynamically generate and split resmoke tests for the mongodb/mongo project into sub-tasks
+that can be run in parallel. For example, a task that runs in 2 hours could be split into 4 sub-tasks
+that can be run in parallel to reduce the wall-clock time of to closer to 30 minutes.
+
+The tool will use [Evergreen Test Stats](https://github.com/evergreen-ci/evergreen/wiki/REST-V2-Usage#teststats)
+to determine how to divide the tests between sub-tasks. If test stats are not available for any
+reason, it will fallback to splitting tests so that each sub-tasks contains an equal number of tests.
+
+The tool will generate fuzzer tasks as well. In the case of fuzzer tasks, the generation
+determines the amount of fuzzer tests to generate. There are two controls for how many fuzzer tests
+to generate, `n_files` and `n_tasks`. They should be specified in the task definition in the evergreen
+config file. `n_files` controls how many fuzzer files will be generated in each sub-task, effectively
+controlling the runtime of each subtask. `n_tasks` controls how many sub-tasks will be generated.
+For example, if `n_files=3` and `n_tasks=5`, a total of 15 files will be run in 5 sub-tasks.
 
 ## Getting Help
 
@@ -39,7 +52,7 @@ channel, or email us at dev-prod-dag@mongodb.com.
 
 ### How can I request a change/report a bug in _Mongo Task Generator_?
 
-Create a DAG ticket in Jira.
+Create a [DAG ticket](https://jira.mongodb.org/browse/DAG) in Jira.
 
 ### What should I include in my ticket or question?
 
@@ -54,6 +67,9 @@ Please include the following:
 ## Dependencies
 
 This project is built to run on linux. It is tested on Ubuntu 18.04.
+
+The [evergreen CLI](https://github.com/evergreen-ci/evergreen/wiki/Using-the-Command-Line-Tool) is
+required.
 
 ## Installation
 
@@ -96,13 +112,34 @@ OPTIONS:
 
 ## Documentation
 
-_TBD_
+See [Generating tasks](docs/generating_tasks.md) for details on how task generation works.
 
 ## Contributor's Guide
 
 ### High Level Architecture
 
-_TBD_
+Flow chart of generating tasks:
+
+```mermaid
+graph TD
+    A[Read Evergreen Project Config] -->B(For each task in each build variant)
+    B --> C{task is generated?}
+    C --> |No| B
+    C -->|Yes| D{task is fuzzer?}
+    D -->|Yes| E[Generate Fuzzer based on task definition]
+    E --> B
+    C -->|No| F[Lookup task runtime history from Evergreen]
+    F --> G{valid history obtained?}
+    G --> |Yes| H[Split task by test runtimes]
+    G --> |No| I[Split task by counts]
+    H --> J[Generate resmoke suite config]
+    J --> |generated task definitions|B
+    B --> |done|K[For each Build Variant]
+    K --> L[Create task specs and display tasks in Build Variant]
+    L --> M[Create shrub config]
+    M --> N[Write shrub config to disk]
+    N --> O([End])
+```
 
 ### Setting up a local development environment
 
@@ -173,4 +210,5 @@ git.
 
 ## Resources
 
-- [Evergreen's generate.tasks documentation](https://github.com/evergreen-ci/evergreen/wiki/Project-Commands#generatetasks)
+- [Evergreen generate.tasks documentation](https://github.com/evergreen-ci/evergreen/wiki/Project-Commands#generatetasks)
+- [Evergreen test stats documentation](https://github.com/evergreen-ci/evergreen/wiki/REST-V2-Usage#teststats)
