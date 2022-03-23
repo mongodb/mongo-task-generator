@@ -470,11 +470,11 @@ impl GenResmokeTaskServiceImpl {
 
         EvgTask {
             name: suite_file.to_string(),
-            commands: resmoke_commands(
+            commands: Some(resmoke_commands(
                 RUN_GENERATED_TESTS,
                 run_test_vars,
                 params.require_multiversion_setup,
-            ),
+            )),
             ..Default::default()
         }
     }
