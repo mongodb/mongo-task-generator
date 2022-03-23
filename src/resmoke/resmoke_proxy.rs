@@ -37,12 +37,27 @@ pub trait TestDiscovery: Send + Sync {
 
 /// Implementation of `TestDiscovery` that queries details from resmoke.
 #[derive(Debug, Clone)]
-pub struct ResmokeProxy {}
+pub struct ResmokeProxy {
+    /// Primary command to invoke resmoke (usually `python`).
+    resmoke_cmd: String,
+    /// Script to invoke resmoke.
+    resmoke_script: String,
+}
 
 impl ResmokeProxy {
     /// Create a new `ResmokeProxy` instance.
-    pub fn new() -> Self {
-        Self {}
+    ///
+    /// # Arguments
+    ///
+    /// * `resmoke_cmd` - Command to invoke resmoke.
+    pub fn new(resmoke_cmd: &str) -> Self {
+        let cmd_parts: Vec<_> = resmoke_cmd.split(' ').collect();
+        let cmd = cmd_parts[0];
+        let script = cmd_parts[1..].join(" ");
+        Self {
+            resmoke_cmd: cmd.to_string(),
+            resmoke_script: script,
+        }
     }
 }
 
@@ -68,9 +83,11 @@ impl TestDiscovery for ResmokeProxy {
     ///
     /// A list of tests belonging to given suite.
     fn discover_tests(&self, suite_name: &str) -> Result<Vec<String>> {
+        let cmd = &self.resmoke_cmd;
+        let script = &self.resmoke_script;
         let start = Instant::now();
         let cmd_output = run_fun!(
-            python buildscripts/resmoke.py test-discovery --suite $suite_name
+            $cmd $script test-discovery --suite $suite_name
         )?;
         event!(
             Level::INFO,
@@ -97,15 +114,17 @@ impl TestDiscovery for ResmokeProxy {
     ///
     /// Resmoke configuration for the given suite.
     fn get_suite_config(&self, suite_name: &str) -> Result<ResmokeSuiteConfig> {
+        let cmd = &self.resmoke_cmd;
+        let script = &self.resmoke_script;
         let cmd_output = run_fun!(
-            python buildscripts/resmoke.py suiteconfig --suite $suite_name
+            $cmd $script suiteconfig --suite $suite_name
         )?;
         Ok(ResmokeSuiteConfig::from_str(&cmd_output)?)
     }
 
     /// Get the multiversion configuration to generate against.
     fn get_multiversion_config(&self) -> Result<MultiversionConfig> {
-        MultiversionConfig::from_resmoke()
+        MultiversionConfig::from_resmoke(&self.resmoke_cmd, &self.resmoke_script)
     }
 }
 
@@ -120,9 +139,9 @@ pub struct MultiversionConfig {
 
 impl MultiversionConfig {
     /// Query the multiversion configuration from resmoke.
-    pub fn from_resmoke() -> Result<MultiversionConfig> {
+    pub fn from_resmoke(cmd: &str, script: &str) -> Result<MultiversionConfig> {
         let cmd_output = run_fun!(
-            python buildscripts/resmoke.py multiversion-config
+            $cmd $script multiversion-config
         )?;
         Ok(serde_yaml::from_str(&cmd_output)?)
     }

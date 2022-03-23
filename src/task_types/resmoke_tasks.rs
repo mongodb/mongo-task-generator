@@ -90,10 +90,10 @@ impl ResmokeGenParams {
             );
         }
 
-        if let Some(resmoke_jobs_max) = &self.resmoke_jobs_max {
+        if let Some(resmoke_jobs_max) = self.resmoke_jobs_max {
             run_test_vars.insert(
                 RESMOKE_JOBS_MAX.to_string(),
-                ParamValue::from(*resmoke_jobs_max),
+                ParamValue::from(resmoke_jobs_max),
             );
         }
 
@@ -230,6 +230,9 @@ pub struct GenResmokeTaskServiceImpl {
 
     /// Max number of suites to split tasks into.
     n_suites: usize,
+
+    /// Disable evergreen task-history queries and use task splitting fallback.
+    use_task_split_fallback: bool,
 }
 
 impl GenResmokeTaskServiceImpl {
@@ -241,6 +244,8 @@ impl GenResmokeTaskServiceImpl {
     /// * `test_discovery` - An instance of the service to query tests belonging to a task.
     /// * `fs_service` - An instance of the service too work with the file system.
     /// * `n_suite` - Number of sub-suites to split tasks into.
+    /// * `use_task_split_fallback` - Disable evergreen task-history queries and use task
+    ///    splitting fallback.
     ///
     /// # Returns
     ///
@@ -252,6 +257,7 @@ impl GenResmokeTaskServiceImpl {
         multiversion_service: Arc<dyn MultiversionService>,
         fs_service: Arc<dyn FsService>,
         n_suites: usize,
+        use_task_split_fallback: bool,
     ) -> Self {
         Self {
             task_history_service,
@@ -260,6 +266,7 @@ impl GenResmokeTaskServiceImpl {
             multiversion_service,
             fs_service,
             n_suites,
+            use_task_split_fallback,
         }
     }
 }
@@ -490,22 +497,26 @@ impl GenResmokeTaskService for GenResmokeTaskServiceImpl {
         params: &ResmokeGenParams,
         build_variant: &str,
     ) -> Result<Box<dyn GeneratedSuite>> {
-        let task_history = self
-            .task_history_service
-            .get_task_history(&params.task_name, build_variant)
-            .await;
+        let mut sub_suites = if self.use_task_split_fallback {
+            self.split_task_fallback(params)?
+        } else {
+            let task_history = self
+                .task_history_service
+                .get_task_history(&params.task_name, build_variant)
+                .await;
 
-        let mut sub_suites = match task_history {
-            Ok(task_history) => self.split_task(params, &task_history)?,
-            Err(err) => {
-                warn!(
-                    task_name = params.task_name.as_str(),
-                    error = err.to_string().as_str(),
-                    "Could not get task history from evergreen",
-                );
-                // If we couldn't get the task history, then fallback to splitting the tests evenly
-                // among the desired number of sub-suites.
-                self.split_task_fallback(params)?
+            match task_history {
+                Ok(task_history) => self.split_task(params, &task_history)?,
+                Err(err) => {
+                    warn!(
+                        task_name = params.task_name.as_str(),
+                        error = err.to_string().as_str(),
+                        "Could not get task history from evergreen",
+                    );
+                    // If we couldn't get the task history, then fallback to splitting the tests evenly
+                    // among the desired number of sub-suites.
+                    self.split_task_fallback(params)?
+                }
             }
         };
 
@@ -788,6 +799,7 @@ mod tests {
             Arc::new(multiversion_service),
             Arc::new(fs_service),
             n_suites,
+            false,
         )
     }
 
