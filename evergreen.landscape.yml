@@ -8,11 +8,15 @@ buildvariants:
       - name: unit_tests
       - name: lint
       - name: format
+      - name: check_version
 
 bonsai:
   - source: github
     owner: dbradf
     repo: evg-bonsai-rust
+  - source: github
+    owner: dbradf
+    repo: evg-bonsai-version-check
 
 pre:
   - command: git.get_project
@@ -56,4 +60,11 @@ tasks:
       params:
         target_dir: src
         cargo_command: build
-
+  
+  - name: check_version
+    commands:
+    - bonsai: version-check:run
+      params:
+        target_dir: src
+        package_type: rust
+        publish_type: github-release

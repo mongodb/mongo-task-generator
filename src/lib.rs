@@ -47,7 +47,6 @@ mod task_types;
 mod utils;
 
 /// Directory to store the generated configuration in.
-const CONFIG_DIR: &str = "generated_resmoke_config";
 const HISTORY_LOOKBACK_DAYS: u64 = 14;
 const MAX_SUB_TASKS_PER_TASK: usize = 5;
 
@@ -68,6 +67,10 @@ impl Dependencies {
     /// * `evg_project_location` - Path to the evergreen project configuration yaml.
     /// * `evg_project` - Evergreen project being run.
     /// * `evg_auth_file` - Path to evergreen API auth file.
+    /// * `use_task_split_fallback` - Disable evergreen task-history queries and use task
+    ///    splitting fallback.
+    /// * `resmoke_command` - Command to execute resmoke.
+    /// * `target_directory` - Directory to store generated configuration.
     ///
     /// # Returns
     ///
@@ -76,15 +79,21 @@ impl Dependencies {
         evg_project_location: &Path,
         evg_project: &str,
         evg_auth_file: &Path,
+        use_task_split_fallback: bool,
+        resmoke_command: &str,
+        target_directory: &Path,
     ) -> Result<Self> {
         let fs_service = Arc::new(FsServiceImpl::new());
-        let discovery_service = Arc::new(ResmokeProxy::new());
+        let discovery_service = Arc::new(ResmokeProxy::new(resmoke_command));
         let multiversion_service =
             Arc::new(MultiversionServiceImpl::new(discovery_service.clone())?);
-        let evg_config_service = Arc::new(EvgProjectConfig::new(evg_project_location)?);
+        let evg_config_service = Arc::new(
+            EvgProjectConfig::new(evg_project_location).expect("Could not find evg project"),
+        );
         let evg_config_utils = Arc::new(EvgConfigUtilsImpl::new());
         let gen_fuzzer_service = Arc::new(GenFuzzerServiceImpl::new(multiversion_service.clone()));
-        let evg_client = Arc::new(EvgClient::from_file(evg_auth_file).unwrap());
+        let evg_client =
+            Arc::new(EvgClient::from_file(evg_auth_file).expect("Cannot find evergreen auth file"));
         let task_history_service = Arc::new(TaskHistoryServiceImpl::new(
             evg_client,
             HISTORY_LOOKBACK_DAYS,
@@ -95,7 +104,9 @@ impl Dependencies {
                 discovery_service.clone(),
                 multiversion_service.clone(),
                 fs_service.clone(),
-                CONFIG_DIR,
+                target_directory
+                    .to_str()
+                    .expect("Unexpected target directory"),
                 32,
             )));
         let gen_resmoke_task_service = Arc::new(GenResmokeTaskServiceImpl::new(
@@ -105,6 +116,7 @@ impl Dependencies {
             multiversion_service,
             fs_service,
             MAX_SUB_TASKS_PER_TASK,
+            use_task_split_fallback,
         ));
         let gen_task_service = Arc::new(GenerateTasksServiceImpl::new(
             evg_config_service,
@@ -146,9 +158,14 @@ impl GeneratedConfig {
 ///
 /// * `deps` - Dependencies needed to perform generation.
 /// * `config_location` - Pointer to S3 location that configuration will be uploaded to.
-pub async fn generate_configuration(deps: &Dependencies, config_location: &str) -> Result<()> {
+/// * `target_directory` - Directory to store generated configuration.
+pub async fn generate_configuration(
+    deps: &Dependencies,
+    config_location: &str,
+    target_directory: &Path,
+) -> Result<()> {
     let generate_tasks_service = deps.gen_task_service.clone();
-    std::fs::create_dir_all(CONFIG_DIR)?;
+    std::fs::create_dir_all(target_directory)?;
 
     // We are going to do 2 passes through the project build variants. In this first pass, we
     // are actually going to create all the generated tasks that we discover.
@@ -173,7 +190,7 @@ pub async fn generate_configuration(deps: &Dependencies, config_location: &str) 
         ..Default::default()
     };
 
-    let mut config_file = Path::new(CONFIG_DIR).to_path_buf();
+    let mut config_file = target_directory.to_path_buf();
     config_file.push("evergreen_config.json");
     std::fs::write(config_file, serde_json::to_string_pretty(&gen_evg_project)?)?;
     let mut resmoke_config_actor = deps.resmoke_config_actor.lock().await;
