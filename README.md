@@ -36,7 +36,7 @@ The tool will use [Evergreen Test Stats](https://github.com/evergreen-ci/evergre
 to determine how to divide the tests between sub-tasks. If test stats are not available for any
 reason, it will fallback to splitting tests so that each sub-tasks contains an equal number of tests.
 
-The tool will also generate fuzzer tasks as well. In the case of fuzzer tasks, the generation
+The tool will generate fuzzer tasks as well. In the case of fuzzer tasks, the generation
 determines the amount of fuzzer tests to generate. There are two controls for how many fuzzer tests
 to generate, `n_files` and `n_tasks`. They should be specified in the task definition in the evergreen
 config file. `n_files` controls how many fuzzer files will be generated in each sub-task, effectively

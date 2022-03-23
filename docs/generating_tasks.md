@@ -83,7 +83,7 @@ example, a newly added tests. The "_misc" sub-task will try to run all the tests
 tests that were included in the generated sub-tasks. This is used to catch any tasks without test
 runtime history.
 
-If for any reason the runtime history cannot be obtained (e.g. errors in querying, a task having to
+If for any reason the runtime history cannot be obtained (e.g. errors in querying, a task having no
 runtime history, etc), task splitting will fallback to splitting the tests into sub-tasks that
 contains a roughly equal number of tests.
 
@@ -104,12 +104,12 @@ Like fuzzer tasks, task generation is indicated by including the `"generate resm
 Additionally, the 2 parameters here will impact how the task is generated.
 
 * **suite**: By default, the name of the task (with the `_gen` suffix stripped off) will be used
-  to determine which resmoke suite to base the generated sub-tasks on. This can be overridden with
+  to determine which resmoke suite to base the generated sub-tasks on. This can be overwritten with
   the `suite` variable.
 * **use_large_distro**: Certain test suites require more machine resources in order to run
-  successfully. By setting the `use_large_distro` variable to `"true"`, when generated sub-tasks
-  are run on build_variants with a `large_distro_name` expansion defined, they will run on that
-  large distro instead of the default distro.
+  successfully. When generated sub-tasks are run on build_variants with a `large_distro_name`
+  expansion defined, they will run on that large distro instead of the default distro by setting
+  the `use_large_distro` variable to `"true"`.
 
 ### Multiversion testing
 
@@ -121,7 +121,7 @@ Multiversion configuration can be included with either fuzzer tasks or resmoke t
 multiversion configurations are applied on top of what is generated in the non-multiversion
 execution.
 
-There are aspects of multiversion generation: (1) Including the necessary steps in task execution
+There are two aspects of multiversion generation: (1) Including the necessary steps in task execution
 to be able to test against multiple mongo version and (2) generating sub-tasks to actually execute
 against mixed version configurations. Certain tasks contain embedded logic to test against multiple
 versions and so do not need extra generated configurations.
