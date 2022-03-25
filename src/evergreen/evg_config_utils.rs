@@ -203,14 +203,18 @@ impl EvgConfigUtils for EvgConfigUtilsImpl {
     ///
     /// `true` if the given task is generated.
     fn is_task_generated(&self, task: &EvgTask) -> bool {
-        task.commands.iter().any(|c| {
-            if let Function(func) = c {
-                if func.func == GENERATE_RESMOKE_TASKS {
-                    return true;
+        if let Some(commands) = &task.commands {
+            commands.iter().any(|c| {
+                if let Function(func) = c {
+                    if func.func == GENERATE_RESMOKE_TASKS {
+                        return true;
+                    }
                 }
-            }
+                false
+            })
+        } else {
             false
-        })
+        }
     }
 
     /// Determine if the given evergreen task a fuzzer task.
@@ -464,14 +468,18 @@ impl EvgConfigUtils for EvgConfigUtilsImpl {
 ///
 /// Function call to 'generate resmoke task'.
 fn get_generate_resmoke_func(task: &EvgTask) -> Option<&FunctionCall> {
-    let command = task.commands.iter().find(|c| {
-        if let Function(func) = c {
-            if func.func == GENERATE_RESMOKE_TASKS {
-                return true;
+    let command = if let Some(commands) = &task.commands {
+        commands.iter().find(|c| {
+            if let Function(func) = c {
+                if func.func == GENERATE_RESMOKE_TASKS {
+                    return true;
+                }
             }
-        }
-        false
-    });
+            false
+        })
+    } else {
+        None
+    };
 
     if let Some(Function(func)) = command {
         Some(func)
@@ -494,7 +502,7 @@ mod tests {
     #[test]
     fn test_is_task_generated_should_return_false_if_not_generated() {
         let evg_task = EvgTask {
-            commands: vec![fn_call("hello world"), fn_call("run tests")],
+            commands: Some(vec![fn_call("hello world"), fn_call("run tests")]),
             ..Default::default()
         };
         let evg_config_utils = EvgConfigUtilsImpl::new();
@@ -505,11 +513,11 @@ mod tests {
     #[test]
     fn test_is_task_generated_should_return_true_if_generated() {
         let evg_task = EvgTask {
-            commands: vec![
+            commands: Some(vec![
                 fn_call("hello world"),
                 fn_call("generate resmoke tasks"),
                 fn_call("run tests"),
-            ],
+            ]),
             ..Default::default()
         };
         let evg_config_utils = EvgConfigUtilsImpl::new();
@@ -521,7 +529,7 @@ mod tests {
     #[test]
     fn test_is_task_fuzzer_should_return_false_if_var_is_missing() {
         let evg_task = EvgTask {
-            commands: vec![
+            commands: Some(vec![
                 fn_call("hello world"),
                 fn_call_with_params(
                     "generate resmoke tasks",
@@ -531,7 +539,7 @@ mod tests {
                     },
                 ),
                 fn_call("run tests"),
-            ],
+            ]),
             ..Default::default()
         };
         let evg_config_utils = EvgConfigUtilsImpl::new();
@@ -542,7 +550,7 @@ mod tests {
     #[test]
     fn test_is_task_fuzzer_should_return_true_is_var_is_true() {
         let evg_task = EvgTask {
-            commands: vec![
+            commands: Some(vec![
                 fn_call("hello world"),
                 fn_call_with_params(
                     "generate resmoke tasks",
@@ -553,7 +561,7 @@ mod tests {
                     },
                 ),
                 fn_call("run tests"),
-            ],
+            ]),
             ..Default::default()
         };
         let evg_config_utils = EvgConfigUtilsImpl::new();
@@ -566,7 +574,7 @@ mod tests {
     fn test_find_suite_name_should_use_suite_var_if_it_exists() {
         let evg_task = EvgTask {
             name: "my_task_gen".to_string(),
-            commands: vec![
+            commands: Some(vec![
                 fn_call("hello world"),
                 fn_call_with_params(
                     "generate resmoke tasks",
@@ -577,7 +585,7 @@ mod tests {
                     },
                 ),
                 fn_call("run tests"),
-            ],
+            ]),
             ..Default::default()
         };
         let evg_config_utils = EvgConfigUtilsImpl::new();
@@ -589,7 +597,7 @@ mod tests {
     fn test_find_suite_name_should_use_task_name_if_no_var() {
         let evg_task = EvgTask {
             name: "my_task_gen".to_string(),
-            commands: vec![
+            commands: Some(vec![
                 fn_call("hello world"),
                 fn_call_with_params(
                     "generate resmoke tasks",
@@ -599,7 +607,7 @@ mod tests {
                     },
                 ),
                 fn_call("run tests"),
-            ],
+            ]),
             ..Default::default()
         };
         let evg_config_utils = EvgConfigUtilsImpl::new();
@@ -643,7 +651,7 @@ mod tests {
     #[test]
     fn test_get_gen_task_vars_should_return_none_if_no_func() {
         let evg_task = EvgTask {
-            commands: vec![fn_call("hello world"), fn_call("run tests")],
+            commands: Some(vec![fn_call("hello world"), fn_call("run tests")]),
             ..Default::default()
         };
         let evg_config_utils = EvgConfigUtilsImpl::new();
@@ -659,11 +667,11 @@ mod tests {
     #[test]
     fn test_get_gen_task_vars_should_return_none_if_no_func_vars() {
         let evg_task = EvgTask {
-            commands: vec![
+            commands: Some(vec![
                 fn_call("hello world"),
                 fn_call("generate resmoke tasks"),
                 fn_call("run tests"),
-            ],
+            ]),
             ..Default::default()
         };
         let evg_config_utils = EvgConfigUtilsImpl::new();
@@ -679,7 +687,7 @@ mod tests {
     #[test]
     fn test_get_gen_task_vars_should_return_none_if_missing_var() {
         let evg_task = EvgTask {
-            commands: vec![
+            commands: Some(vec![
                 fn_call("hello world"),
                 fn_call_with_params(
                     "generate resmoke tasks",
@@ -689,7 +697,7 @@ mod tests {
                     },
                 ),
                 fn_call("run tests"),
-            ],
+            ]),
             ..Default::default()
         };
         let evg_config_utils = EvgConfigUtilsImpl::new();
@@ -705,7 +713,7 @@ mod tests {
     #[test]
     fn test_get_gen_task_vars_should_return_var_value_if_it_exists() {
         let evg_task = EvgTask {
-            commands: vec![
+            commands: Some(vec![
                 fn_call("hello world"),
                 fn_call_with_params(
                     "generate resmoke tasks",
@@ -716,7 +724,7 @@ mod tests {
                     },
                 ),
                 fn_call("run tests"),
-            ],
+            ]),
             ..Default::default()
         };
         let evg_config_utils = EvgConfigUtilsImpl::new();
@@ -731,11 +739,11 @@ mod tests {
     #[test]
     fn test_get_generated_resmoke_func_should_return_resmoke_function() {
         let evg_task = EvgTask {
-            commands: vec![
+            commands: Some(vec![
                 fn_call("hello world"),
                 fn_call("generate resmoke tasks"),
                 fn_call("run tests"),
-            ],
+            ]),
             ..Default::default()
         };
 
@@ -750,7 +758,7 @@ mod tests {
     #[test]
     fn test_get_generated_resmoke_func_should_return_none_if_no_func_exists() {
         let evg_task = EvgTask {
-            commands: vec![fn_call("hello world"), fn_call("run tests")],
+            commands: Some(vec![fn_call("hello world"), fn_call("run tests")]),
             ..Default::default()
         };
 
@@ -884,7 +892,7 @@ mod tests {
     #[test]
     fn test_lookup_required_should_return_value_if_it_exists() {
         let task_def = EvgTask {
-            commands: vec![
+            commands: Some(vec![
                 fn_call("hello world"),
                 fn_call_with_params(
                     "generate resmoke tasks",
@@ -895,7 +903,7 @@ mod tests {
                     },
                 ),
                 fn_call("run tests"),
-            ],
+            ]),
             ..Default::default()
         };
         let evg_config_utils = EvgConfigUtilsImpl::new();
@@ -939,7 +947,7 @@ mod tests {
     #[test]
     fn test_lookup_optional_should_return_value_if_it_exists() {
         let task_def = EvgTask {
-            commands: vec![
+            commands: Some(vec![
                 fn_call("hello world"),
                 fn_call_with_params(
                     "generate resmoke tasks",
@@ -950,7 +958,7 @@ mod tests {
                     },
                 ),
                 fn_call("run tests"),
-            ],
+            ]),
             ..Default::default()
         };
         let evg_config_utils = EvgConfigUtilsImpl::new();

@@ -41,7 +41,7 @@ pub struct ResmokeProxy {
     /// Primary command to invoke resmoke (usually `python`).
     resmoke_cmd: String,
     /// Script to invoke resmoke.
-    resmoke_script: String,
+    resmoke_script: Vec<String>,
 }
 
 impl ResmokeProxy {
@@ -53,7 +53,7 @@ impl ResmokeProxy {
     pub fn new(resmoke_cmd: &str) -> Self {
         let cmd_parts: Vec<_> = resmoke_cmd.split(' ').collect();
         let cmd = cmd_parts[0];
-        let script = cmd_parts[1..].join(" ");
+        let script = cmd_parts[1..].iter().map(|s| s.to_string()).collect();
         Self {
             resmoke_cmd: cmd.to_string(),
             resmoke_script: script,
@@ -87,7 +87,7 @@ impl TestDiscovery for ResmokeProxy {
         let script = &self.resmoke_script;
         let start = Instant::now();
         let cmd_output = run_fun!(
-            $cmd $script test-discovery --suite $suite_name
+            $cmd $[script] test-discovery --suite $suite_name
         )?;
         event!(
             Level::INFO,
@@ -117,7 +117,7 @@ impl TestDiscovery for ResmokeProxy {
         let cmd = &self.resmoke_cmd;
         let script = &self.resmoke_script;
         let cmd_output = run_fun!(
-            $cmd $script suiteconfig --suite $suite_name
+            $cmd $[script] suiteconfig --suite $suite_name
         )?;
         Ok(ResmokeSuiteConfig::from_str(&cmd_output)?)
     }
@@ -139,9 +139,9 @@ pub struct MultiversionConfig {
 
 impl MultiversionConfig {
     /// Query the multiversion configuration from resmoke.
-    pub fn from_resmoke(cmd: &str, script: &str) -> Result<MultiversionConfig> {
+    pub fn from_resmoke(cmd: &str, script: &[String]) -> Result<MultiversionConfig> {
         let cmd_output = run_fun!(
-            $cmd $script multiversion-config
+            $cmd $[script] multiversion-config
         )?;
         Ok(serde_yaml::from_str(&cmd_output)?)
     }

@@ -278,7 +278,7 @@ fn build_fuzzer_sub_task(
 
     EvgTask {
         name: sub_task_name,
-        commands,
+        commands: Some(commands),
         depends_on: Some(vec![dependency]),
         ..Default::default()
     }
@@ -468,15 +468,11 @@ mod tests {
         let sub_task = build_fuzzer_sub_task(display_name, sub_task_index, &params, None, None);
 
         assert_eq!(sub_task.name, "my_task_42");
-        assert_eq!(get_evg_fn_name(&sub_task.commands[0]), Some("do setup"));
-        assert_eq!(
-            get_evg_fn_name(&sub_task.commands[3]),
-            Some("run jstestfuzz")
-        );
-        assert_eq!(
-            get_evg_fn_name(&sub_task.commands[4]),
-            Some("run generated tests")
-        );
+        assert!(sub_task.commands.is_some());
+        let commands = sub_task.commands.unwrap();
+        assert_eq!(get_evg_fn_name(&commands[0]), Some("do setup"));
+        assert_eq!(get_evg_fn_name(&commands[3]), Some("run jstestfuzz"));
+        assert_eq!(get_evg_fn_name(&commands[4]), Some("run generated tests"));
         assert_eq!(
             sub_task.depends_on.unwrap()[0].name,
             "archive_dist_test_debug"
@@ -496,23 +492,16 @@ mod tests {
         let sub_task = build_fuzzer_sub_task(display_name, sub_task_index, &params, None, None);
 
         assert_eq!(sub_task.name, "my_task_42");
+        assert!(sub_task.commands.is_some());
+        let commands = sub_task.commands.unwrap();
         assert_eq!(
-            get_evg_fn_name(&sub_task.commands[0]),
+            get_evg_fn_name(&commands[0]),
             Some("git get project no modules")
         );
-        assert_eq!(get_evg_fn_name(&sub_task.commands[2]), Some("do setup"));
-        assert_eq!(
-            get_evg_fn_name(&sub_task.commands[4]),
-            Some("do multiversion setup")
-        );
-        assert_eq!(
-            get_evg_fn_name(&sub_task.commands[6]),
-            Some("run jstestfuzz")
-        );
-        assert_eq!(
-            get_evg_fn_name(&sub_task.commands[7]),
-            Some("run generated tests")
-        );
+        assert_eq!(get_evg_fn_name(&commands[2]), Some("do setup"));
+        assert_eq!(get_evg_fn_name(&commands[4]), Some("do multiversion setup"));
+        assert_eq!(get_evg_fn_name(&commands[6]), Some("run jstestfuzz"));
+        assert_eq!(get_evg_fn_name(&commands[7]), Some("run generated tests"));
         assert_eq!(
             sub_task.depends_on.unwrap()[0].name,
             "archive_dist_test_debug"
