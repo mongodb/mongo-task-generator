@@ -538,6 +538,7 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                 .get_task_tags(task_def)
                 .contains(MULTIVERSION),
             config_location: config_location.to_string(),
+            dependencies: self.evg_config_utils.get_task_dependencies(task_def),
         })
     }
 
@@ -584,6 +585,7 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                 .evg_config_utils
                 .lookup_optional_param_u64(task_def, RESMOKE_JOBS_MAX)?,
             config_location: config_location.to_string(),
+            dependencies: self.evg_config_utils.get_task_dependencies(task_def),
         })
     }
 }

@@ -26,8 +26,6 @@ pub const ADD_GIT_TAG: &str = "add git tag";
 pub const GENERATE_RESMOKE_TASKS: &str = "generate resmoke tasks";
 
 // Tasks
-/// Task which creates artifacts needed to execute tests.
-pub const ARTIFACT_CREATION_TASK: &str = "archive_dist_test_debug";
 /// Name of display task to hide all "_gen" tasks behind.
 pub const GENERATOR_TASKS: &str = "generator_tasks";
 
