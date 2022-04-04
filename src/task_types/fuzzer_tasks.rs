@@ -10,12 +10,13 @@ use shrub_rs::models::{
 use tracing::{event, Level};
 
 use crate::{
+    configuration::GenerateConfig,
     evergreen_names::{
-        ADD_GIT_TAG, ARTIFACT_CREATION_TASK, CONFIGURE_EVG_API_CREDS, CONTINUE_ON_FAILURE,
-        DO_MULTIVERSION_SETUP, DO_SETUP, FUZZER_PARAMETERS, GEN_TASK_CONFIG_LOCATION,
-        GET_PROJECT_WITH_NO_MODULES, IDLE_TIMEOUT, MULTIVERSION_EXCLUDE_TAGS, NPM_COMMAND,
-        REQUIRE_MULTIVERSION_SETUP, RESMOKE_ARGS, RESMOKE_JOBS_MAX, RUN_FUZZER,
-        RUN_GENERATED_TESTS, SETUP_JSTESTFUZZ, SHOULD_SHUFFLE_TESTS, SUITE_NAME, TASK_NAME,
+        ADD_GIT_TAG, CONFIGURE_EVG_API_CREDS, CONTINUE_ON_FAILURE, DO_MULTIVERSION_SETUP, DO_SETUP,
+        FUZZER_PARAMETERS, GEN_TASK_CONFIG_LOCATION, GET_PROJECT_WITH_NO_MODULES, IDLE_TIMEOUT,
+        MULTIVERSION_EXCLUDE_TAGS, NPM_COMMAND, REQUIRE_MULTIVERSION_SETUP, RESMOKE_ARGS,
+        RESMOKE_JOBS_MAX, RUN_FUZZER, RUN_GENERATED_TESTS, SETUP_JSTESTFUZZ, SHOULD_SHUFFLE_TESTS,
+        SUITE_NAME, TASK_NAME,
     },
     utils::task_name::name_generated_task,
 };
@@ -152,6 +153,9 @@ pub trait GenFuzzerService: Sync + Send {
 pub struct GenFuzzerServiceImpl {
     /// Service to help generate multiversion test suites.
     multiversion_service: Arc<dyn MultiversionService>,
+
+    /// Configuration how things should be generated.
+    generate_config: Arc<GenerateConfig>,
 }
 
 impl GenFuzzerServiceImpl {
@@ -160,9 +164,13 @@ impl GenFuzzerServiceImpl {
     /// # Arguments
     ///
     /// * `multiversion_service` - Service to help generate multiversion test suites.
-    pub fn new(multiversion_service: Arc<dyn MultiversionService>) -> Self {
+    pub fn new(
+        multiversion_service: Arc<dyn MultiversionService>,
+        generate_config: Arc<GenerateConfig>,
+    ) -> Self {
         Self {
             multiversion_service: multiversion_service.clone(),
+            generate_config,
         }
     }
 }
@@ -205,6 +213,7 @@ impl GenFuzzerService for GenFuzzerServiceImpl {
                                 params,
                                 Some(&base_suite_name),
                                 Some(&old_version),
+                                &self.generate_config.dependencies,
                             )
                         })
                         .collect::<Vec<EvgTask>>(),
@@ -212,7 +221,16 @@ impl GenFuzzerService for GenFuzzerServiceImpl {
             }
         } else {
             sub_tasks = (0..params.num_tasks as usize)
-                .map(|i| build_fuzzer_sub_task(&params.task_name, i, params, None, None))
+                .map(|i| {
+                    build_fuzzer_sub_task(
+                        &params.task_name,
+                        i,
+                        params,
+                        None,
+                        None,
+                        &self.generate_config.dependencies,
+                    )
+                })
                 .collect();
         }
 
@@ -242,6 +260,7 @@ fn build_fuzzer_sub_task(
     params: &FuzzerGenTaskParams,
     generated_suite_name: Option<&str>,
     old_version: Option<&str>,
+    dependencies: &[String],
 ) -> EvgTask {
     let sub_task_name = name_generated_task(
         display_name,
@@ -271,15 +290,18 @@ fn build_fuzzer_sub_task(
         ),
     ]);
 
-    let dependency = TaskDependency {
-        name: ARTIFACT_CREATION_TASK.to_string(),
-        variant: None,
-    };
+    let depends_on = dependencies
+        .iter()
+        .map(|d| TaskDependency {
+            name: d.to_string(),
+            variant: None,
+        })
+        .collect();
 
     EvgTask {
         name: sub_task_name,
         commands: Some(commands),
-        depends_on: Some(vec![dependency]),
+        depends_on: Some(depends_on),
         ..Default::default()
     }
 }
@@ -464,8 +486,16 @@ mod tests {
             task_name: "some task".to_string(),
             ..Default::default()
         };
+        let compile_task = "archive_dist_test_debug";
 
-        let sub_task = build_fuzzer_sub_task(display_name, sub_task_index, &params, None, None);
+        let sub_task = build_fuzzer_sub_task(
+            display_name,
+            sub_task_index,
+            &params,
+            None,
+            None,
+            &[compile_task.to_string()],
+        );
 
         assert_eq!(sub_task.name, "my_task_42");
         assert!(sub_task.commands.is_some());
@@ -473,10 +503,7 @@ mod tests {
         assert_eq!(get_evg_fn_name(&commands[0]), Some("do setup"));
         assert_eq!(get_evg_fn_name(&commands[3]), Some("run jstestfuzz"));
         assert_eq!(get_evg_fn_name(&commands[4]), Some("run generated tests"));
-        assert_eq!(
-            sub_task.depends_on.unwrap()[0].name,
-            "archive_dist_test_debug"
-        )
+        assert_eq!(sub_task.depends_on.unwrap()[0].name, compile_task)
     }
 
     #[test]
@@ -488,8 +515,16 @@ mod tests {
             require_multiversion_setup: true,
             ..Default::default()
         };
+        let compile_task = "archive_dist_test_debug";
 
-        let sub_task = build_fuzzer_sub_task(display_name, sub_task_index, &params, None, None);
+        let sub_task = build_fuzzer_sub_task(
+            display_name,
+            sub_task_index,
+            &params,
+            None,
+            None,
+            &[compile_task.to_string()],
+        );
 
         assert_eq!(sub_task.name, "my_task_42");
         assert!(sub_task.commands.is_some());
@@ -502,9 +537,6 @@ mod tests {
         assert_eq!(get_evg_fn_name(&commands[4]), Some("do multiversion setup"));
         assert_eq!(get_evg_fn_name(&commands[6]), Some("run jstestfuzz"));
         assert_eq!(get_evg_fn_name(&commands[7]), Some("run generated tests"));
-        assert_eq!(
-            sub_task.depends_on.unwrap()[0].name,
-            "archive_dist_test_debug"
-        )
+        assert_eq!(sub_task.depends_on.unwrap()[0].name, compile_task)
     }
 }

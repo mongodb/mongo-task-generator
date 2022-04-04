@@ -13,6 +13,7 @@ use std::{
 
 use anyhow::{bail, Result};
 use async_trait::async_trait;
+use configuration::GenerateConfig;
 use evergreen::{
     evg_config::{EvgConfigService, EvgProjectConfig},
     evg_config_utils::{EvgConfigUtils, EvgConfigUtilsImpl},
@@ -40,8 +41,9 @@ use task_types::{
 use tracing::{event, Level};
 use utils::{fs_service::FsServiceImpl, task_name::remove_gen_suffix};
 
+mod configuration;
 mod evergreen;
-mod evergreen_names;
+pub mod evergreen_names;
 mod resmoke;
 mod task_types;
 mod utils;
@@ -82,7 +84,13 @@ impl Dependencies {
         use_task_split_fallback: bool,
         resmoke_command: &str,
         target_directory: &Path,
+        dependencies: Vec<String>,
     ) -> Result<Self> {
+        let generate_config = Arc::new(GenerateConfig {
+            dependencies,
+            max_sub_tasks_per_task: MAX_SUB_TASKS_PER_TASK,
+            use_task_split_fallback,
+        });
         let fs_service = Arc::new(FsServiceImpl::new());
         let discovery_service = Arc::new(ResmokeProxy::new(resmoke_command));
         let multiversion_service =
@@ -91,7 +99,10 @@ impl Dependencies {
             EvgProjectConfig::new(evg_project_location).expect("Could not find evg project"),
         );
         let evg_config_utils = Arc::new(EvgConfigUtilsImpl::new());
-        let gen_fuzzer_service = Arc::new(GenFuzzerServiceImpl::new(multiversion_service.clone()));
+        let gen_fuzzer_service = Arc::new(GenFuzzerServiceImpl::new(
+            multiversion_service.clone(),
+            generate_config.clone(),
+        ));
         let evg_client =
             Arc::new(EvgClient::from_file(evg_auth_file).expect("Cannot find evergreen auth file"));
         let task_history_service = Arc::new(TaskHistoryServiceImpl::new(
@@ -115,8 +126,7 @@ impl Dependencies {
             resmoke_config_actor.clone(),
             multiversion_service,
             fs_service,
-            MAX_SUB_TASKS_PER_TASK,
-            use_task_split_fallback,
+            generate_config,
         ));
         let gen_task_service = Arc::new(GenerateTasksServiceImpl::new(
             evg_config_service,

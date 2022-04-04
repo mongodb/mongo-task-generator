@@ -6,6 +6,7 @@ use std::{
 
 use anyhow::Result;
 use clap::Parser;
+use mongo_task_generator::evergreen_names::ARTIFACT_CREATION_TASK;
 use mongo_task_generator::{generate_configuration, Dependencies};
 use serde::Deserialize;
 use tracing::{event, Level};
@@ -72,6 +73,10 @@ struct Args {
     /// Command to invoke resmoke.
     #[clap(long, default_value = DEFAULT_RESMOKE_COMMAND)]
     resmoke_command: String,
+
+    /// Tasks that the generated tasks should depend on (can be specified multiple times).
+    #[clap(long, default_value = ARTIFACT_CREATION_TASK)]
+    dependency: Vec<String>,
 }
 
 /// Configure logging for the command execution.
@@ -90,12 +95,13 @@ async fn main() {
     let evg_expansions = EvgExpansions::from_yaml_file(&args.expansion_file)
         .expect("Error reading expansions file.");
     let deps = Dependencies::new(
-        &args.evg_project_file,
+        &expand_path(&args.evg_project_file),
         &evg_expansions.project,
-        &args.evg_auth_file,
+        &expand_path(&args.evg_auth_file),
         args.use_task_split_fallback,
         &args.resmoke_command,
-        &args.target_directory,
+        &expand_path(&args.target_directory),
+        args.dependency.clone(),
     )
     .unwrap();
 
@@ -115,4 +121,19 @@ async fn main() {
         eprintln!("Error encountered during execution: {:?}", err);
         exit(1);
     }
+}
+
+/// Expand ~ and any environment variables in the given path.
+///
+/// # Arguments
+///
+/// * `path` - Path to expand.
+///
+/// # Returns
+///
+/// Path with ~ and environment variables expanded.
+fn expand_path(path: &Path) -> PathBuf {
+    let path_str = path.to_str().unwrap();
+    let expanded = shellexpand::full(path_str).unwrap();
+    PathBuf::from(expanded.to_string())
 }

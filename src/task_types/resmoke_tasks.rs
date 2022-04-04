@@ -15,12 +15,13 @@ use maplit::hashmap;
 use shrub_rs::models::{
     commands::{fn_call, fn_call_with_params, EvgCommand},
     params::ParamValue,
-    task::EvgTask,
+    task::{EvgTask, TaskDependency},
 };
 use tokio::sync::Mutex;
 use tracing::{event, warn, Level};
 
 use crate::{
+    configuration::GenerateConfig,
     evergreen::evg_task_history::{get_test_name, TaskHistoryService, TaskRuntimeHistory},
     evergreen_names::{
         ADD_GIT_TAG, CONFIGURE_EVG_API_CREDS, DO_MULTIVERSION_SETUP, DO_SETUP,
@@ -228,11 +229,8 @@ pub struct GenResmokeTaskServiceImpl {
     /// Service to interact with file system.
     fs_service: Arc<dyn FsService>,
 
-    /// Max number of suites to split tasks into.
-    n_suites: usize,
-
-    /// Disable evergreen task-history queries and use task splitting fallback.
-    use_task_split_fallback: bool,
+    /// Configuration for how to generate tasks.
+    generate_config: Arc<GenerateConfig>,
 }
 
 impl GenResmokeTaskServiceImpl {
@@ -244,8 +242,7 @@ impl GenResmokeTaskServiceImpl {
     /// * `test_discovery` - An instance of the service to query tests belonging to a task.
     /// * `fs_service` - An instance of the service too work with the file system.
     /// * `n_suite` - Number of sub-suites to split tasks into.
-    /// * `use_task_split_fallback` - Disable evergreen task-history queries and use task
-    ///    splitting fallback.
+    /// * `generate_config` - Configuration for how tasks should be generated.
     ///
     /// # Returns
     ///
@@ -256,8 +253,7 @@ impl GenResmokeTaskServiceImpl {
         resmoke_config_actor: Arc<Mutex<dyn ResmokeConfigActor>>,
         multiversion_service: Arc<dyn MultiversionService>,
         fs_service: Arc<dyn FsService>,
-        n_suites: usize,
-        use_task_split_fallback: bool,
+        generate_config: Arc<GenerateConfig>,
     ) -> Self {
         Self {
             task_history_service,
@@ -265,8 +261,7 @@ impl GenResmokeTaskServiceImpl {
             resmoke_config_actor,
             multiversion_service,
             fs_service,
-            n_suites,
-            use_task_split_fallback,
+            generate_config,
         }
     }
 }
@@ -299,7 +294,7 @@ impl GenResmokeTaskServiceImpl {
             .iter()
             .fold(0.0, |init, (_, item)| init + item.average_runtime);
 
-        let max_tasks = min(self.n_suites, test_list.len());
+        let max_tasks = min(self.generate_config.max_sub_tasks_per_task, test_list.len());
         let runtime_per_subtask = total_runtime / max_tasks as f64;
         event!(
             Level::INFO,
@@ -365,7 +360,7 @@ impl GenResmokeTaskServiceImpl {
             .filter(|s| self.fs_service.file_exists(s))
             .collect();
 
-        let n_suites = min(test_list.len(), self.n_suites);
+        let n_suites = min(test_list.len(), self.generate_config.max_sub_tasks_per_task);
         let tasks_per_suite = test_list.len() / n_suites;
 
         let mut sub_suites = vec![];
@@ -468,6 +463,16 @@ impl GenResmokeTaskServiceImpl {
         let suite_file = &name_generated_task(&sub_suite.name, sub_suite.index, total_sub_suites);
         let run_test_vars = params.build_run_test_vars(suite_file, sub_suite, &exclude_tags);
 
+        let depends_on = self
+            .generate_config
+            .dependencies
+            .iter()
+            .map(|d| TaskDependency {
+                name: d.to_string(),
+                variant: None,
+            })
+            .collect();
+
         EvgTask {
             name: suite_file.to_string(),
             commands: Some(resmoke_commands(
@@ -475,6 +480,7 @@ impl GenResmokeTaskServiceImpl {
                 run_test_vars,
                 params.require_multiversion_setup,
             )),
+            depends_on: Some(depends_on),
             ..Default::default()
         }
     }
@@ -497,7 +503,7 @@ impl GenResmokeTaskService for GenResmokeTaskServiceImpl {
         params: &ResmokeGenParams,
         build_variant: &str,
     ) -> Result<Box<dyn GeneratedSuite>> {
-        let mut sub_suites = if self.use_task_split_fallback {
+        let mut sub_suites = if self.generate_config.use_task_split_fallback {
             self.split_task_fallback(params)?
         } else {
             let task_history = self
@@ -791,6 +797,11 @@ mod tests {
         };
         let fs_service = MockFsService {};
         let resmoke_config_actor = MockResmokeConfigActor {};
+        let generate_config = Arc::new(GenerateConfig {
+            dependencies: vec!["compile".to_string()],
+            max_sub_tasks_per_task: n_suites,
+            use_task_split_fallback: false,
+        });
 
         GenResmokeTaskServiceImpl::new(
             Arc::new(task_history_service),
@@ -798,8 +809,7 @@ mod tests {
             Arc::new(Mutex::new(resmoke_config_actor)),
             Arc::new(multiversion_service),
             Arc::new(fs_service),
-            n_suites,
-            false,
+            generate_config,
         )
     }
 
