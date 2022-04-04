@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.4 - 2022-04-04
+
+* Add support for custom dependencies.
+* Fix bug where ~ in options was not being expanded.
+
 ## 0.1.3 - 2022-03-24
 
 * Improve shrub support and support for multi-argument resmoke.
