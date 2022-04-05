@@ -90,12 +90,12 @@ async fn main() {
     let evg_expansions = EvgExpansions::from_yaml_file(&args.expansion_file)
         .expect("Error reading expansions file.");
     let deps = Dependencies::new(
-        &args.evg_project_file,
+        &expand_path(&args.evg_project_file),
         &evg_expansions.project,
-        &args.evg_auth_file,
+        &expand_path(&args.evg_auth_file),
         args.use_task_split_fallback,
         &args.resmoke_command,
-        &args.target_directory,
+        &expand_path(&args.target_directory),
     )
     .unwrap();
 
@@ -115,4 +115,19 @@ async fn main() {
         eprintln!("Error encountered during execution: {:?}", err);
         exit(1);
     }
+}
+
+/// Expand ~ and any environment variables in the given path.
+///
+/// # Arguments
+///
+/// * `path` - Path to expand.
+///
+/// # Returns
+///
+/// Path with ~ and environment variables expanded.
+fn expand_path(path: &Path) -> PathBuf {
+    let path_str = path.to_str().unwrap();
+    let expanded = shellexpand::full(path_str).unwrap();
+    PathBuf::from(expanded.to_string())
 }

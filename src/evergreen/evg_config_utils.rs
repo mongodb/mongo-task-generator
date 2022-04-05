@@ -62,6 +62,17 @@ pub trait EvgConfigUtils: Sync + Send {
     /// Set of tags assigned to the task.
     fn get_task_tags(&self, task: &EvgTask) -> HashSet<String>;
 
+    /// Get a list of tasks the given task depends on.
+    ///
+    /// # Arguments
+    ///
+    /// * `task` - Evergreen task to query.
+    ///
+    /// # Returns
+    ///
+    /// List of task names the task depends on.
+    fn get_task_dependencies(&self, task: &EvgTask) -> Vec<String>;
+
     /// Lookup the given variable in the vars section of the 'generate resmoke task' func.
     ///
     /// # Arguments
@@ -269,6 +280,24 @@ impl EvgConfigUtils for EvgConfigUtilsImpl {
             .iter()
             .map(|t| t.to_string())
             .collect()
+    }
+
+    /// Get a list of tasks the given task depends on.
+    ///
+    /// # Arguments
+    ///
+    /// * `task` - Evergreen task to query.
+    ///
+    /// # Returns
+    ///
+    /// List of task names the task depends on.
+    fn get_task_dependencies(&self, task: &EvgTask) -> Vec<String> {
+        let dependencies = task
+            .clone()
+            .depends_on
+            .map(|dep_list| dep_list.iter().map(|d| d.name.to_string()).collect());
+
+        dependencies.unwrap_or_default()
     }
 
     /// Lookup the given variable in the vars section of the 'generate resmoke task' func.
@@ -494,6 +523,7 @@ mod tests {
     use maplit::hashmap;
     use shrub_rs::models::commands::{fn_call, fn_call_with_params};
     use shrub_rs::models::params::ParamValue;
+    use shrub_rs::models::task::TaskDependency;
 
     use super::*;
 
@@ -644,6 +674,46 @@ mod tests {
         assert!(tags.contains("tag_0"));
         assert!(tags.contains("tag_1"));
         assert!(tags.contains("tag_2"));
+    }
+
+    // get_task_dependencies tests.
+    #[test]
+    fn test_get_task_dependencies_with_no_dependencies_should_return_empty_list() {
+        let evg_task = EvgTask {
+            depends_on: None,
+            ..Default::default()
+        };
+        let evg_config_utils = EvgConfigUtilsImpl::new();
+
+        assert!(evg_config_utils.get_task_dependencies(&evg_task).is_empty());
+    }
+
+    #[test]
+    fn test_get_task_dependencies_with_dependencies_should_return_list_of_dependencies() {
+        let evg_task = EvgTask {
+            depends_on: Some(vec![
+                TaskDependency {
+                    name: "dep0".to_string(),
+                    variant: None,
+                },
+                TaskDependency {
+                    name: "dep1".to_string(),
+                    variant: None,
+                },
+                TaskDependency {
+                    name: "dep2".to_string(),
+                    variant: None,
+                },
+            ]),
+            ..Default::default()
+        };
+        let evg_config_utils = EvgConfigUtilsImpl::new();
+
+        let dependencies = evg_config_utils.get_task_dependencies(&evg_task);
+        assert_eq!(dependencies.len(), 3);
+        assert!(dependencies.contains(&"dep0".to_string()));
+        assert!(dependencies.contains(&"dep1".to_string()));
+        assert!(dependencies.contains(&"dep2".to_string()));
     }
 
     // get_gen_task_vars tests.

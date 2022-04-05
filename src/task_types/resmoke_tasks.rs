@@ -15,7 +15,7 @@ use maplit::hashmap;
 use shrub_rs::models::{
     commands::{fn_call, fn_call_with_params, EvgCommand},
     params::ParamValue,
-    task::EvgTask,
+    task::{EvgTask, TaskDependency},
 };
 use tokio::sync::Mutex;
 use tracing::{event, warn, Level};
@@ -58,6 +58,8 @@ pub struct ResmokeGenParams {
     pub resmoke_jobs_max: Option<u64>,
     /// Location where generated task configuration will be stored in S3.
     pub config_location: String,
+    /// List of tasks generated sub-tasks should depend on.
+    pub dependencies: Vec<String>,
 }
 
 impl ResmokeGenParams {
@@ -125,6 +127,27 @@ impl ResmokeGenParams {
             "--originSuite={} {} {} {}",
             self.suite_name, self.resmoke_args, repeat_arg, suffix
         )
+    }
+
+    /// Build the dependency structure to use the the generated sub-tasks.
+    ///
+    /// # Returns
+    ///
+    /// List of `TaskDependency`s for generated tasks.
+    fn get_dependencies(&self) -> Option<Vec<TaskDependency>> {
+        if self.dependencies.is_empty() {
+            None
+        } else {
+            Some(
+                self.dependencies
+                    .iter()
+                    .map(|d| TaskDependency {
+                        name: d.to_string(),
+                        variant: None,
+                    })
+                    .collect(),
+            )
+        }
     }
 }
 
@@ -475,6 +498,7 @@ impl GenResmokeTaskServiceImpl {
                 run_test_vars,
                 params.require_multiversion_setup,
             )),
+            depends_on: params.get_dependencies(),
             ..Default::default()
         }
     }

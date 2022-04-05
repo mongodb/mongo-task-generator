@@ -11,11 +11,11 @@ use tracing::{event, Level};
 
 use crate::{
     evergreen_names::{
-        ADD_GIT_TAG, ARTIFACT_CREATION_TASK, CONFIGURE_EVG_API_CREDS, CONTINUE_ON_FAILURE,
-        DO_MULTIVERSION_SETUP, DO_SETUP, FUZZER_PARAMETERS, GEN_TASK_CONFIG_LOCATION,
-        GET_PROJECT_WITH_NO_MODULES, IDLE_TIMEOUT, MULTIVERSION_EXCLUDE_TAGS, NPM_COMMAND,
-        REQUIRE_MULTIVERSION_SETUP, RESMOKE_ARGS, RESMOKE_JOBS_MAX, RUN_FUZZER,
-        RUN_GENERATED_TESTS, SETUP_JSTESTFUZZ, SHOULD_SHUFFLE_TESTS, SUITE_NAME, TASK_NAME,
+        ADD_GIT_TAG, CONFIGURE_EVG_API_CREDS, CONTINUE_ON_FAILURE, DO_MULTIVERSION_SETUP, DO_SETUP,
+        FUZZER_PARAMETERS, GEN_TASK_CONFIG_LOCATION, GET_PROJECT_WITH_NO_MODULES, IDLE_TIMEOUT,
+        MULTIVERSION_EXCLUDE_TAGS, NPM_COMMAND, REQUIRE_MULTIVERSION_SETUP, RESMOKE_ARGS,
+        RESMOKE_JOBS_MAX, RUN_FUZZER, RUN_GENERATED_TESTS, SETUP_JSTESTFUZZ, SHOULD_SHUFFLE_TESTS,
+        SUITE_NAME, TASK_NAME,
     },
     utils::task_name::name_generated_task,
 };
@@ -53,6 +53,8 @@ pub struct FuzzerGenTaskParams {
     pub require_multiversion_setup: bool,
     /// Location of generated task configuration.
     pub config_location: String,
+    /// List of tasks generated sub-tasks should depend on.
+    pub dependencies: Vec<String>,
 }
 
 impl FuzzerGenTaskParams {
@@ -112,6 +114,27 @@ impl FuzzerGenTaskParams {
         }
 
         vars
+    }
+
+    /// Build the dependency structure to use the the generated sub-tasks.
+    ///
+    /// # Returns
+    ///
+    /// List of `TaskDependency`s for generated tasks.
+    fn get_dependencies(&self) -> Option<Vec<TaskDependency>> {
+        if self.dependencies.is_empty() {
+            None
+        } else {
+            Some(
+                self.dependencies
+                    .iter()
+                    .map(|d| TaskDependency {
+                        name: d.to_string(),
+                        variant: None,
+                    })
+                    .collect(),
+            )
+        }
     }
 }
 
@@ -271,15 +294,10 @@ fn build_fuzzer_sub_task(
         ),
     ]);
 
-    let dependency = TaskDependency {
-        name: ARTIFACT_CREATION_TASK.to_string(),
-        variant: None,
-    };
-
     EvgTask {
         name: sub_task_name,
         commands: Some(commands),
-        depends_on: Some(vec![dependency]),
+        depends_on: params.get_dependencies(),
         ..Default::default()
     }
 }
@@ -462,6 +480,7 @@ mod tests {
         let sub_task_index = 42;
         let params = FuzzerGenTaskParams {
             task_name: "some task".to_string(),
+            dependencies: vec!["archive_dist_test_debug".to_string()],
             ..Default::default()
         };
 
@@ -486,6 +505,7 @@ mod tests {
         let params = FuzzerGenTaskParams {
             task_name: "some task".to_string(),
             require_multiversion_setup: true,
+            dependencies: vec!["archive_dist_test_debug".to_string()],
             ..Default::default()
         };
 
