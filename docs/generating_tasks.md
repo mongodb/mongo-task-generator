@@ -185,7 +185,7 @@ revision: abc123
 version_id: 321abc
 ```
 
-You much provide the expansion file when running the `mongo-task-generator` command:
+You must provide the expansion file when running the `mongo-task-generator` command:
 
 ```bash
 mongo-task-generator --expansion-file expansions.yml
