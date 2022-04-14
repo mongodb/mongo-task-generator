@@ -309,7 +309,7 @@ impl GenerateTasksServiceImpl {
     /// * `evg_config_utils` - Utilities to work with evergreen project configuration.
     /// * `gen_fuzzer_service` - Service to generate fuzzer tasks.
     /// * `gen_resmoke_service` - Service for generating resmoke tasks.
-    /// * `generating_task` - Name of tasking creating the generated tasks.
+    /// * `generating_task` - Name of task creating the generated tasks.
     pub fn new(
         evg_config_service: Arc<dyn EvgConfigService>,
         evg_config_utils: Arc<dyn EvgConfigUtils>,
