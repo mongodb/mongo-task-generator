@@ -71,6 +71,7 @@ impl Dependencies {
     ///    splitting fallback.
     /// * `resmoke_command` - Command to execute resmoke.
     /// * `target_directory` - Directory to store generated configuration.
+    /// * `generating_task` - Name of task running the generation.
     ///
     /// # Returns
     ///
@@ -82,6 +83,7 @@ impl Dependencies {
         use_task_split_fallback: bool,
         resmoke_command: &str,
         target_directory: &Path,
+        generating_task: &str,
     ) -> Result<Self> {
         let fs_service = Arc::new(FsServiceImpl::new());
         let discovery_service = Arc::new(ResmokeProxy::new(resmoke_command));
@@ -123,6 +125,7 @@ impl Dependencies {
             evg_config_utils,
             gen_fuzzer_service,
             gen_resmoke_task_service,
+            generating_task.to_string(),
         ));
 
         Ok(Self {
@@ -294,6 +297,7 @@ struct GenerateTasksServiceImpl {
     evg_config_utils: Arc<dyn EvgConfigUtils>,
     gen_fuzzer_service: Arc<dyn GenFuzzerService>,
     gen_resmoke_service: Arc<dyn GenResmokeTaskService>,
+    generating_task: String,
 }
 
 impl GenerateTasksServiceImpl {
@@ -304,18 +308,43 @@ impl GenerateTasksServiceImpl {
     /// * `evg_config_service` - Service to work with evergreen project configuration.
     /// * `evg_config_utils` - Utilities to work with evergreen project configuration.
     /// * `gen_fuzzer_service` - Service to generate fuzzer tasks.
+    /// * `gen_resmoke_service` - Service for generating resmoke tasks.
+    /// * `generating_task` - Name of task creating the generated tasks.
     pub fn new(
         evg_config_service: Arc<dyn EvgConfigService>,
         evg_config_utils: Arc<dyn EvgConfigUtils>,
         gen_fuzzer_service: Arc<dyn GenFuzzerService>,
         gen_resmoke_service: Arc<dyn GenResmokeTaskService>,
+        generating_task: String,
     ) -> Self {
         Self {
             evg_config_service,
             evg_config_utils,
             gen_fuzzer_service,
             gen_resmoke_service,
+            generating_task,
         }
+    }
+
+    /// Determine the dependencies to add to tasks generated from the given task definition.
+    ///
+    /// A generated tasks should depend on all tasks listed in its "_gen" tasks depends_on
+    /// section except for the task generated the configuration.
+    ///
+    /// # Arguments
+    ///
+    /// * `task_def` - Definition of task being generated from.
+    ///
+    /// # Returns
+    ///
+    /// List of tasks that should be included as dependencies.
+    fn determine_task_dependencies(&self, task_def: &EvgTask) -> Vec<String> {
+        let depends_on = self.evg_config_utils.get_task_dependencies(task_def);
+
+        depends_on
+            .into_iter()
+            .filter(|t| t != &self.generating_task)
+            .collect()
     }
 }
 
@@ -538,7 +567,7 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                 .get_task_tags(task_def)
                 .contains(MULTIVERSION),
             config_location: config_location.to_string(),
-            dependencies: self.evg_config_utils.get_task_dependencies(task_def),
+            dependencies: self.determine_task_dependencies(task_def),
         })
     }
 
@@ -585,7 +614,7 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                 .evg_config_utils
                 .lookup_optional_param_u64(task_def, RESMOKE_JOBS_MAX)?,
             config_location: config_location.to_string(),
-            dependencies: self.evg_config_utils.get_task_dependencies(task_def),
+            dependencies: self.determine_task_dependencies(task_def),
         })
     }
 }
@@ -627,4 +656,94 @@ fn create_task_worker(
             generated_tasks.insert(task_def.name.clone(), generated_task);
         }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use rstest::rstest;
+    use shrub_rs::models::task::TaskDependency;
+
+    use super::*;
+
+    struct MockConfigService {}
+    impl EvgConfigService for MockConfigService {
+        fn get_build_variant_map(&self) -> HashMap<String, &BuildVariant> {
+            todo!()
+        }
+
+        fn get_task_def_map(&self) -> HashMap<String, &EvgTask> {
+            todo!()
+        }
+
+        fn sort_build_variants_by_required(&self) -> Vec<String> {
+            todo!()
+        }
+    }
+
+    struct MockGenFuzzerService {}
+    impl GenFuzzerService for MockGenFuzzerService {
+        fn generate_fuzzer_task(
+            &self,
+            _params: &FuzzerGenTaskParams,
+        ) -> Result<Box<dyn GeneratedSuite>> {
+            todo!()
+        }
+    }
+    struct MockGenResmokeTasksService {}
+    #[async_trait]
+    impl GenResmokeTaskService for MockGenResmokeTasksService {
+        async fn generate_resmoke_task(
+            &self,
+            _params: &ResmokeGenParams,
+            _build_variant: &str,
+        ) -> Result<Box<dyn GeneratedSuite>> {
+            todo!()
+        }
+    }
+
+    fn build_mock_generate_tasks_service() -> GenerateTasksServiceImpl {
+        GenerateTasksServiceImpl::new(
+            Arc::new(MockConfigService {}),
+            Arc::new(EvgConfigUtilsImpl::new()),
+            Arc::new(MockGenFuzzerService {}),
+            Arc::new(MockGenResmokeTasksService {}),
+            "generating_task".to_string(),
+        )
+    }
+
+    // Tests for determine_task_dependencies.
+    #[rstest]
+    #[case(
+        vec![], vec![]
+    )]
+    #[case(vec!["dependency_0", "dependency_1"], vec!["dependency_0", "dependency_1"])]
+    #[case(vec!["dependency_0", "generating_task"], vec!["dependency_0"])]
+    fn test_determine_task_dependencies(
+        #[case] depends_on: Vec<&str>,
+        #[case] expected_deps: Vec<&str>,
+    ) {
+        let gen_task_service = build_mock_generate_tasks_service();
+        let evg_task = EvgTask {
+            depends_on: Some(
+                depends_on
+                    .into_iter()
+                    .map(|d| TaskDependency {
+                        name: d.to_string(),
+                        variant: None,
+                    })
+                    .collect(),
+            ),
+            ..Default::default()
+        };
+
+        let deps = gen_task_service.determine_task_dependencies(&evg_task);
+
+        assert_eq!(
+            deps,
+            expected_deps
+                .into_iter()
+                .map(|d| d.to_string())
+                .collect::<Vec<String>>()
+        );
+    }
 }

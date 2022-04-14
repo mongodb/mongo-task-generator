@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.5 - 2022-04-14
+
+* Filter current task from task dependency.
+
 ## 0.1.4 - 2022-04-04
 
 * Enforce dependencies from task definitions.

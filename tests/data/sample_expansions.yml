@@ -1,3 +1,4 @@
 project: mongodb-mongo-master
 revision: abc123
+task_name: version_gen
 version_id: version_def456
