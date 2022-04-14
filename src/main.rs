@@ -23,6 +23,8 @@ struct EvgExpansions {
     pub project: String,
     /// Git revision being run against.
     pub revision: String,
+    /// Name of task running generator.
+    pub task_name: String,
     /// ID of Evergreen version running.
     pub version_id: String,
 }
@@ -96,6 +98,7 @@ async fn main() {
         args.use_task_split_fallback,
         &args.resmoke_command,
         &expand_path(&args.target_directory),
+        &evg_expansions.task_name,
     )
     .unwrap();
 

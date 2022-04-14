@@ -175,6 +175,7 @@ This file should be yaml and must contain the following entries:
 
 * **project**: The evergreen project id of the project being run.
 * **revision**: The git revision being run against.
+* **task_name**: Name of the task running the generation.
 * **version_id**: The evergreen version being run.
 
 A sample file would look like this:
@@ -182,6 +183,7 @@ A sample file would look like this:
 ```yaml
 project: mongodb-mongo-master
 revision: abc123
+task_name: generate_version
 version_id: 321abc
 ```
 
