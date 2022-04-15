@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.6 - 2022-04-15
+
+* Make evergreen failures result in fallback splitting.
+
 ## 0.1.5 - 2022-04-14
 
 * Filter current task from task dependency.

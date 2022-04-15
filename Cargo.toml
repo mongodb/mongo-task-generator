@@ -1,6 +1,6 @@
 [package]
 name = "mongo-task-generator"
-version = "0.1.5"
+version = "0.1.6"
 repository = "https://github.com/mongodb/mongo-task-generator"
 authors = ["Decision Automation Group <dev-prod-dag@mongodb.com>"]
 edition = "2018"
@@ -11,7 +11,7 @@ async-trait = "0.1"
 chrono = "0.4"
 clap = "3.1"
 cmd_lib = "1.3"
-evg-api-rs = "0.2.1"
+evg-api-rs = "0.2.2"
 futures = "0.3"
 lazy_static = "1.4"
 maplit = "1"
@@ -29,6 +29,7 @@ tracing-subscriber = {version = "0.3", features = ["json", "fmt", "std"]}
 assert_cmd = "2.0"
 cargo-nextest = "0.9"
 rstest = "0.12"
+simple-error = "0.2"
 tempdir = "0.3"
 
 [profile.release]

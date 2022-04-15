@@ -1,6 +1,6 @@
 //! Lookup the history of evergreen tasks.
 
-use anyhow::Result;
+use anyhow::{bail, Result};
 use async_trait::async_trait;
 use chrono::{DateTime, Duration, Utc};
 use evg_api_rs::models::stats::{EvgTestStats, EvgTestStatsRequest};
@@ -136,18 +136,21 @@ impl TaskHistoryService for TaskHistoryServiceImpl {
         let stats = self
             .evg_client
             .get_test_stats(&self.evg_project, &request)
-            .await
-            .unwrap();
+            .await;
 
-        // Split the returned stats into stats for hooks and tests. Also attach the hook stats
-        // to the test that they ran with.
-        let hook_map = gather_hook_stats(&stats);
-        let test_map = gather_test_stats(&stats, &hook_map);
+        if let Ok(stats) = stats {
+            // Split the returned stats into stats for hooks and tests. Also attach the hook stats
+            // to the test that they ran with.
+            let hook_map = gather_hook_stats(&stats);
+            let test_map = gather_test_stats(&stats, &hook_map);
 
-        Ok(TaskRuntimeHistory {
-            task_name: task.to_string(),
-            test_map,
-        })
+            Ok(TaskRuntimeHistory {
+                task_name: task.to_string(),
+                test_map,
+            })
+        } else {
+            bail!("Error from evergreen: {:?}", stats)
+        }
     }
 }
 
@@ -299,7 +302,9 @@ pub fn get_test_name(test_file: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use evg_api_rs::{models::task::EvgTask, BoxedStream, EvgError};
     use rstest::rstest;
+    use simple_error::SimpleError;
 
     use super::*;
 
@@ -327,5 +332,117 @@ mod tests {
     #[case("add1.js", "add1")]
     fn test_get_test_name(#[case] test_file: &str, #[case] expected_name: &str) {
         assert_eq!(get_test_name(test_file), expected_name.to_string());
+    }
+
+    // get_task_history tests.
+    #[tokio::test]
+    async fn test_get_task_history_should_fail_if_evg_call_fails() {
+        let mock_evg_client = MockEvgClient { return_error: true };
+        let task_history_service =
+            TaskHistoryServiceImpl::new(Arc::new(mock_evg_client), 14, "my-project".to_string());
+
+        let result = task_history_service
+            .get_task_history("my_task", "my_variant")
+            .await;
+
+        assert!(result.is_err());
+    }
+
+    struct MockEvgClient {
+        return_error: bool,
+    }
+
+    #[async_trait]
+    impl EvgApiClient for MockEvgClient {
+        async fn get_task(&self, _task_id: &str) -> Result<EvgTask, EvgError> {
+            todo!()
+        }
+
+        async fn get_version(
+            &self,
+            _version_id: &str,
+        ) -> Result<evg_api_rs::models::version::EvgVersion, EvgError> {
+            todo!()
+        }
+
+        async fn get_build(
+            &self,
+            _build_id: &str,
+        ) -> Result<Option<evg_api_rs::models::build::EvgBuild>, EvgError> {
+            todo!()
+        }
+
+        async fn get_tests(
+            &self,
+            _task_id: &str,
+        ) -> Result<Vec<evg_api_rs::models::test::EvgTest>, EvgError> {
+            todo!()
+        }
+
+        async fn get_test_stats(
+            &self,
+            _project_id: &str,
+            _query: &EvgTestStatsRequest,
+        ) -> Result<Vec<EvgTestStats>, EvgError> {
+            if self.return_error {
+                Err(Box::new(SimpleError::new("Error from evergreen")))
+            } else {
+                todo!()
+            }
+        }
+
+        async fn get_task_stats(
+            &self,
+            _project_id: &str,
+            _query: &evg_api_rs::models::stats::EvgTaskStatsRequest,
+        ) -> Result<Vec<evg_api_rs::models::stats::EvgTaskStats>, EvgError> {
+            todo!()
+        }
+
+        fn stream_versions(
+            &self,
+            _project_id: &str,
+        ) -> BoxedStream<evg_api_rs::models::version::EvgVersion> {
+            todo!()
+        }
+
+        fn stream_user_patches(
+            &self,
+            _user_id: &str,
+            _limit: Option<usize>,
+        ) -> BoxedStream<evg_api_rs::models::patch::EvgPatch> {
+            todo!()
+        }
+
+        fn stream_project_patches(
+            &self,
+            _project_id: &str,
+            _limit: Option<usize>,
+        ) -> BoxedStream<evg_api_rs::models::patch::EvgPatch> {
+            todo!()
+        }
+
+        fn stream_build_tasks(
+            &self,
+            _build_id: &str,
+            _status: Option<&str>,
+        ) -> BoxedStream<evg_api_rs::models::task::EvgTask> {
+            todo!()
+        }
+
+        fn stream_log(
+            &self,
+            _task: &evg_api_rs::models::task::EvgTask,
+            _log_name: &str,
+        ) -> BoxedStream<String> {
+            todo!()
+        }
+
+        fn stream_test_log(
+            &self,
+            _test: &evg_api_rs::models::test::EvgTest,
+        ) -> BoxedStream<String> {
+            todo!()
+        }
     }
 }
