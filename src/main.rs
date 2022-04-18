@@ -6,7 +6,7 @@ use std::{
 
 use anyhow::Result;
 use clap::Parser;
-use mongo_task_generator::{generate_configuration, Dependencies};
+use mongo_task_generator::{generate_configuration, Dependencies, ProjectInfo};
 use serde::Deserialize;
 use tracing::{event, Level};
 use tracing_subscriber::fmt::format;
@@ -74,6 +74,10 @@ struct Args {
     /// Command to invoke resmoke.
     #[clap(long, default_value = DEFAULT_RESMOKE_COMMAND)]
     resmoke_command: String,
+
+    /// File containing configuration for generating sub-tasks.
+    #[clap(long, parse(from_os_str))]
+    generate_sub_tasks_config: Option<PathBuf>,
 }
 
 /// Configure logging for the command execution.
@@ -89,11 +93,16 @@ async fn main() {
     let args = Args::parse();
     configure_logging();
 
+    let gen_sub_tasks_config_file = &args.generate_sub_tasks_config.map(|p| expand_path(&p));
     let evg_expansions = EvgExpansions::from_yaml_file(&args.expansion_file)
         .expect("Error reading expansions file.");
-    let deps = Dependencies::new(
-        &expand_path(&args.evg_project_file),
+    let project_info = ProjectInfo::new(
+        &args.evg_project_file,
         &evg_expansions.project,
+        gen_sub_tasks_config_file.as_ref(),
+    );
+    let deps = Dependencies::new(
+        &project_info,
         &expand_path(&args.evg_auth_file),
         args.use_task_split_fallback,
         &args.resmoke_command,

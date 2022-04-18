@@ -18,6 +18,8 @@ fn test_end2end_execution() {
         "--resmoke-command",
         "python3 tests/mocks/resmoke.py",
         "--use-task-split-fallback",
+        "--generate-sub-tasks-config",
+        "tests/data/sample_generate_subtasks_config.yml",
     ])
     .assert()
     .success();

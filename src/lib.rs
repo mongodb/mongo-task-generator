@@ -7,7 +7,7 @@
 
 use std::{
     collections::{HashMap, HashSet},
-    path::Path,
+    path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
 
@@ -24,6 +24,7 @@ use evergreen_names::{
     REPEAT_SUITES, RESMOKE_ARGS, RESMOKE_JOBS_MAX, SHOULD_SHUFFLE_TESTS, USE_LARGE_DISTRO,
 };
 use evg_api_rs::EvgClient;
+use generate_sub_tasks_config::GenerateSubTasksConfig;
 use resmoke::resmoke_proxy::ResmokeProxy;
 use shrub_rs::models::{
     project::EvgProject,
@@ -42,6 +43,7 @@ use utils::{fs_service::FsServiceImpl, task_name::remove_gen_suffix};
 
 mod evergreen;
 mod evergreen_names;
+mod generate_sub_tasks_config;
 mod resmoke;
 mod task_types;
 mod utils;
@@ -51,6 +53,59 @@ const HISTORY_LOOKBACK_DAYS: u64 = 14;
 const MAX_SUB_TASKS_PER_TASK: usize = 5;
 
 type GenTaskCollection = HashMap<String, Box<dyn GeneratedSuite>>;
+
+/// Information about the Evergreen project being run against.
+pub struct ProjectInfo {
+    /// Path to the evergreen project configuration yaml.
+    pub evg_project_location: PathBuf,
+
+    /// Evergreen project being run.
+    pub evg_project: String,
+
+    /// Path to the sub-tasks configuration file.
+    pub gen_sub_tasks_config_file: Option<PathBuf>,
+}
+
+impl ProjectInfo {
+    /// Create a new ProjectInfo struct.
+    ///
+    /// # Arguments
+    ///
+    /// * `evg_project_location` - Path to the evergreen project configuration yaml.
+    /// * `evg_project` - Evergreen project being run.
+    /// * `gen_sub_tasks_config_file` - Path to the sub-tasks configuration file.
+    ///
+    /// # Returns
+    ///
+    /// Instance of ProjectInfo with provided info.
+    pub fn new<P: AsRef<Path>>(
+        evg_project_location: P,
+        evg_project: &str,
+        gen_sub_tasks_config_file: Option<P>,
+    ) -> Self {
+        Self {
+            evg_project_location: evg_project_location.as_ref().to_path_buf(),
+            evg_project: evg_project.to_string(),
+            gen_sub_tasks_config_file: gen_sub_tasks_config_file.map(|p| p.as_ref().to_path_buf()),
+        }
+    }
+
+    /// Get the project configuration for this project.
+    pub fn get_project_config(&self) -> Result<EvgProjectConfig> {
+        Ok(EvgProjectConfig::new(&self.evg_project_location).expect("Could not find evg project"))
+    }
+
+    /// Get the generate sub-task configuration for this project.
+    pub fn get_generate_sub_tasks_config(&self) -> Result<Option<GenerateSubTasksConfig>> {
+        if let Some(gen_sub_tasks_config_file) = &self.gen_sub_tasks_config_file {
+            Ok(Some(GenerateSubTasksConfig::from_yaml_file(
+                gen_sub_tasks_config_file,
+            )?))
+        } else {
+            Ok(None)
+        }
+    }
+}
 
 /// Collection of services needed to execution.
 #[derive(Clone)]
@@ -64,8 +119,6 @@ impl Dependencies {
     ///
     /// # Arguments
     ///
-    /// * `evg_project_location` - Path to the evergreen project configuration yaml.
-    /// * `evg_project` - Evergreen project being run.
     /// * `evg_auth_file` - Path to evergreen API auth file.
     /// * `use_task_split_fallback` - Disable evergreen task-history queries and use task
     ///    splitting fallback.
@@ -77,8 +130,7 @@ impl Dependencies {
     ///
     /// A set of dependencies to run against.
     pub fn new(
-        evg_project_location: &Path,
-        evg_project: &str,
+        project_info: &ProjectInfo,
         evg_auth_file: &Path,
         use_task_split_fallback: bool,
         resmoke_command: &str,
@@ -89,9 +141,7 @@ impl Dependencies {
         let discovery_service = Arc::new(ResmokeProxy::new(resmoke_command));
         let multiversion_service =
             Arc::new(MultiversionServiceImpl::new(discovery_service.clone())?);
-        let evg_config_service = Arc::new(
-            EvgProjectConfig::new(evg_project_location).expect("Could not find evg project"),
-        );
+        let evg_config_service = Arc::new(project_info.get_project_config()?);
         let evg_config_utils = Arc::new(EvgConfigUtilsImpl::new());
         let gen_fuzzer_service = Arc::new(GenFuzzerServiceImpl::new(multiversion_service.clone()));
         let evg_client =
@@ -99,7 +149,7 @@ impl Dependencies {
         let task_history_service = Arc::new(TaskHistoryServiceImpl::new(
             evg_client,
             HISTORY_LOOKBACK_DAYS,
-            evg_project.to_string(),
+            project_info.evg_project.clone(),
         ));
         let resmoke_config_actor =
             Arc::new(tokio::sync::Mutex::new(ResmokeConfigActorService::new(
@@ -120,12 +170,14 @@ impl Dependencies {
             MAX_SUB_TASKS_PER_TASK,
             use_task_split_fallback,
         ));
+        let gen_sub_tasks_config = project_info.get_generate_sub_tasks_config()?;
         let gen_task_service = Arc::new(GenerateTasksServiceImpl::new(
             evg_config_service,
             evg_config_utils,
             gen_fuzzer_service,
             gen_resmoke_task_service,
             generating_task.to_string(),
+            gen_sub_tasks_config,
         ));
 
         Ok(Self {
@@ -179,7 +231,7 @@ pub async fn generate_configuration(
     // Now that we have generated all the tasks we want to make another pass through all the
     // build variants and add references to the generated tasks that each build variant includes.
     let generated_build_variants =
-        generate_tasks_service.generate_build_variants(generated_tasks.clone());
+        generate_tasks_service.generate_build_variants(generated_tasks.clone())?;
 
     let generated_tasks = generated_tasks.lock().unwrap();
     let task_defs: Vec<EvgTask> = generated_tasks
@@ -237,7 +289,7 @@ trait GenerateTasksService: Sync + Send {
     fn generate_build_variants(
         &self,
         generated_tasks: Arc<Mutex<GenTaskCollection>>,
-    ) -> Vec<BuildVariant>;
+    ) -> Result<Vec<BuildVariant>>;
 
     /// Build the configuration for generated a fuzzer based on the evergreen task definition.
     ///
@@ -298,6 +350,7 @@ struct GenerateTasksServiceImpl {
     gen_fuzzer_service: Arc<dyn GenFuzzerService>,
     gen_resmoke_service: Arc<dyn GenResmokeTaskService>,
     generating_task: String,
+    gen_sub_tasks_config: Option<GenerateSubTasksConfig>,
 }
 
 impl GenerateTasksServiceImpl {
@@ -310,12 +363,14 @@ impl GenerateTasksServiceImpl {
     /// * `gen_fuzzer_service` - Service to generate fuzzer tasks.
     /// * `gen_resmoke_service` - Service for generating resmoke tasks.
     /// * `generating_task` - Name of task creating the generated tasks.
+    /// * `gen_sub_tasks_config` - Configuration for generating sub-tasks.
     pub fn new(
         evg_config_service: Arc<dyn EvgConfigService>,
         evg_config_utils: Arc<dyn EvgConfigUtils>,
         gen_fuzzer_service: Arc<dyn GenFuzzerService>,
         gen_resmoke_service: Arc<dyn GenResmokeTaskService>,
         generating_task: String,
+        gen_sub_tasks_config: Option<GenerateSubTasksConfig>,
     ) -> Self {
         Self {
             evg_config_service,
@@ -323,6 +378,7 @@ impl GenerateTasksServiceImpl {
             gen_fuzzer_service,
             gen_resmoke_service,
             generating_task,
+            gen_sub_tasks_config,
         }
     }
 
@@ -345,6 +401,54 @@ impl GenerateTasksServiceImpl {
             .into_iter()
             .filter(|t| t != &self.generating_task)
             .collect()
+    }
+
+    /// Determine which distro the given sub-tasks should run on.
+    ///
+    /// By default, we won't specify a distro and they will just use the default for the build
+    /// variant. If they specify `use_large_distro` then we should instead use the large distro
+    /// configured for the build variant. If that is not defined, then throw an error unless
+    /// the build variant is configured to be ignored.
+    ///
+    /// # Arguments
+    ///
+    /// * `large_distro_name` - Name
+    fn determine_distro(
+        &self,
+        large_distro_name: &Option<String>,
+        generated_task: &dyn GeneratedSuite,
+        build_variant_name: &str,
+    ) -> Result<Option<String>> {
+        if generated_task.use_large_distro() {
+            if large_distro_name.is_some() {
+                return Ok(large_distro_name.clone());
+            }
+
+            if let Some(gen_task_config) = &self.gen_sub_tasks_config {
+                if gen_task_config.ignore_missing_large_distro(build_variant_name) {
+                    return Ok(None);
+                }
+            }
+
+            bail!(
+                r#"
+***************************************************************************************
+It appears we are trying to generate a task marked as requiring a large distro, but the
+build variant has not specified a large build variant. In order to resolve this error,
+you need to:
+
+(1) add a 'large_distro_name' expansion to this build variant ('{build_variant_name}').
+
+-- or --
+
+(2) add this build variant ('{build_variant_name}') to the 'build_variant_large_distro_exception'
+list in the 'etc/generate_subtasks_config.yml' file.
+***************************************************************************************
+"#
+            );
+        }
+
+        Ok(None)
     }
 }
 
@@ -453,11 +557,11 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
     fn generate_build_variants(
         &self,
         generated_tasks: Arc<Mutex<GenTaskCollection>>,
-    ) -> Vec<BuildVariant> {
+    ) -> Result<Vec<BuildVariant>> {
         let mut generated_build_variants = vec![];
 
         let build_variant_map = self.evg_config_service.get_build_variant_map();
-        for (_bv_name, build_variant) in build_variant_map {
+        for (bv_name, build_variant) in build_variant_map {
             let mut gen_config = GeneratedConfig::new();
             let mut generating_tasks = vec![];
             let large_distro_name = self
@@ -465,12 +569,13 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                 .lookup_build_variant_expansion(LARGE_DISTRO_EXPANSION, build_variant);
             for task in &build_variant.tasks {
                 let generated_tasks = generated_tasks.lock().unwrap();
+
                 if let Some(generated_task) = generated_tasks.get(&task.name) {
-                    let distro = if generated_task.use_large_distro() {
-                        large_distro_name.clone()
-                    } else {
-                        None
-                    };
+                    let distro = self.determine_distro(
+                        &large_distro_name,
+                        generated_task.as_ref(),
+                        &bv_name,
+                    )?;
 
                     generating_tasks.push(&task.name);
                     gen_config
@@ -503,7 +608,7 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
             }
         }
 
-        generated_build_variants
+        Ok(generated_build_variants)
     }
 
     /// Build the configuration for generated a fuzzer based on the evergreen task definition.
@@ -660,6 +765,7 @@ fn create_task_worker(
 
 #[cfg(test)]
 mod tests {
+    use maplit::hashset;
     use rstest::rstest;
     use shrub_rs::models::task::TaskDependency;
 
@@ -708,6 +814,7 @@ mod tests {
             Arc::new(MockGenFuzzerService {}),
             Arc::new(MockGenResmokeTasksService {}),
             "generating_task".to_string(),
+            None,
         )
     }
 
@@ -745,5 +852,69 @@ mod tests {
                 .map(|d| d.to_string())
                 .collect::<Vec<String>>()
         );
+    }
+
+    // Tests for determine_distro.
+    #[rstest]
+    #[case(false, None, None)]
+    #[case(false, Some("large_distro".to_string()), None)]
+    fn test_valid_determine_distros_should_work(
+        #[case] use_large_distro: bool,
+        #[case] large_distro_name: Option<String>,
+        #[case] expected_distro: Option<String>,
+    ) {
+        let gen_task_service = build_mock_generate_tasks_service();
+        let generated_task = Box::new(task_types::resmoke_tasks::GeneratedResmokeSuite {
+            task_name: "my task".to_string(),
+            sub_suites: vec![],
+            use_large_distro,
+        });
+
+        let distro = gen_task_service
+            .determine_distro(
+                &large_distro_name,
+                generated_task.as_ref(),
+                "my_build_variant",
+            )
+            .unwrap();
+
+        assert_eq!(distro, expected_distro);
+    }
+
+    #[test]
+    fn test_determine_distros_should_fail_if_no_large_distro() {
+        let gen_task_service = build_mock_generate_tasks_service();
+        let generated_task = Box::new(task_types::resmoke_tasks::GeneratedResmokeSuite {
+            task_name: "my task".to_string(),
+            sub_suites: vec![],
+            use_large_distro: true,
+        });
+
+        let distro =
+            gen_task_service.determine_distro(&None, generated_task.as_ref(), "my_build_variant");
+
+        assert!(distro.is_err());
+    }
+
+    #[test]
+    fn test_determine_distros_should_no_large_distro_can_be_ignored() {
+        let mut gen_task_service = build_mock_generate_tasks_service();
+        gen_task_service.gen_sub_tasks_config = Some(GenerateSubTasksConfig {
+            build_variant_large_distro_exceptions: hashset! {
+                "build_variant_0".to_string(),
+                "my_build_variant".to_string(),
+                "build_variant_1".to_string(),
+            },
+        });
+        let generated_task = Box::new(task_types::resmoke_tasks::GeneratedResmokeSuite {
+            task_name: "my task".to_string(),
+            sub_suites: vec![],
+            use_large_distro: true,
+        });
+
+        let distro =
+            gen_task_service.determine_distro(&None, generated_task.as_ref(), "my_build_variant");
+
+        assert!(distro.is_ok());
     }
 }

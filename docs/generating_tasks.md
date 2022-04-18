@@ -111,6 +111,19 @@ Additionally, the 2 parameters here will impact how the task is generated.
   expansion defined, they will run on that large distro instead of the default distro by setting
   the `use_large_distro` variable to `"true"`.
 
+**Note**: If a task has the `use_large_distro` value defined, but is added to a build variant
+without a `large_distro_name`, it will trigger a failure. This can be supported by using the
+`--generate-sub-tasks-config` file. This file should be YAML and supports a list of build variants
+that can safely generate `use_large_distro` tasks without a large distro.
+
+The file should look like:
+
+```yaml
+build_variant_large_distro_exceptions:
+  - build_variant_0
+  - build_variant_1
+```
+
 ### Multiversion testing
 
 We frequently want to run tests suites against configuration with mixed versions of mongo
@@ -219,9 +232,6 @@ USAGE:
     mongo-task-generator [OPTIONS] --expansion-file <EXPANSION_FILE>
 
 OPTIONS:
-        --dependency <DEPENDENCY>
-            Tasks that the generated tasks should depend on (can be specified multiple times)
-            [default: archive_dist_test_debug]
         --evg-auth-file <EVG_AUTH_FILE>
             File with information on how to authenticate against the evergreen API [default:
             ~/.evergreen.yml]
@@ -229,6 +239,8 @@ OPTIONS:
             File containing evergreen project configuration [default: etc/evergreen.yml]
         --expansion-file <EXPANSION_FILE>
             File containing expansions that impact task generation
+        --generate-sub-tasks-config <GENERATE_SUB_TASKS_CONFIG>
+            File containing configuration for generating sub-tasks            
     -h, --help
             Print help information
         --resmoke-command <RESMOKE_COMMAND>

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.0 - 2022-04-18
+
+* Fail tasks that define `use_large_distros`, but don't define `large_distro_name`.
+
 ## 0.1.6 - 2022-04-15
 
 * Make evergreen failures result in fallback splitting.
