@@ -193,7 +193,7 @@ pub struct GeneratedResmokeSuite {
     pub sub_suites: Vec<EvgTask>,
 
     /// If true, run generated task on a large distro.
-    use_large_distro: bool,
+    pub use_large_distro: bool,
 }
 
 impl GeneratedSuite for GeneratedResmokeSuite {
