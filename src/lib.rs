@@ -624,9 +624,8 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
     ///
     /// # Arguments
     ///
-    /// * `evg_config_utils` -
-    /// * `task-def` - Task definition of fuzzer to generate.
-    /// * `build_variant` -
+    /// * `task_def` - Task definition of fuzzer to generate.
+    /// * `build_variant` - Build variant task is being generated based off. 
     /// * `config_location` - Location where generated configuration will be stored in S3.
     ///
     /// # Returns
@@ -693,6 +692,7 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
     ///
     /// * `task_def` - Task definition of task to generate.
     /// * `config_location` - Location where generated configuration will be stored in S3.
+    /// * `is_enterprise` - Is this being generated for an enterprise build variant.
     ///
     /// # Returns
     ///
