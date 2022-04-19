@@ -12,10 +12,10 @@ use tracing::{event, Level};
 use crate::{
     evergreen_names::{
         ADD_GIT_TAG, CONFIGURE_EVG_API_CREDS, CONTINUE_ON_FAILURE, DO_MULTIVERSION_SETUP, DO_SETUP,
-        FUZZER_PARAMETERS, GEN_TASK_CONFIG_LOCATION, GET_PROJECT_WITH_NO_MODULES, IDLE_TIMEOUT,
-        MULTIVERSION_EXCLUDE_TAGS, NPM_COMMAND, REQUIRE_MULTIVERSION_SETUP, RESMOKE_ARGS,
-        RESMOKE_JOBS_MAX, RUN_FUZZER, RUN_GENERATED_TESTS, SETUP_JSTESTFUZZ, SHOULD_SHUFFLE_TESTS,
-        SUITE_NAME, TASK_NAME,
+        ENTERPRISE_MODULE, FUZZER_PARAMETERS, GEN_TASK_CONFIG_LOCATION,
+        GET_PROJECT_WITH_NO_MODULES, IDLE_TIMEOUT, MULTIVERSION_EXCLUDE_TAGS, NPM_COMMAND,
+        REQUIRE_MULTIVERSION_SETUP, RESMOKE_ARGS, RESMOKE_JOBS_MAX, RUN_FUZZER,
+        RUN_GENERATED_TESTS, SETUP_JSTESTFUZZ, SHOULD_SHUFFLE_TESTS, SUITE_NAME, TASK_NAME,
     },
     utils::task_name::name_generated_task,
 };
@@ -55,6 +55,8 @@ pub struct FuzzerGenTaskParams {
     pub config_location: String,
     /// List of tasks generated sub-tasks should depend on.
     pub dependencies: Vec<String>,
+    /// Is this task for enterprise builds.
+    pub is_enterprise: bool,
 }
 
 impl FuzzerGenTaskParams {
@@ -266,11 +268,14 @@ fn build_fuzzer_sub_task(
     generated_suite_name: Option<&str>,
     old_version: Option<&str>,
 ) -> EvgTask {
-    let sub_task_name = name_generated_task(
+    let mut sub_task_name = name_generated_task(
         display_name,
         Some(sub_task_index),
         params.num_tasks as usize,
     );
+    if params.is_enterprise {
+        sub_task_name = format!("{}-{}", sub_task_name, ENTERPRISE_MODULE);
+    }
 
     let mut commands = vec![];
     if params.is_multiversion() {

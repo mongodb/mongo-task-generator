@@ -23,7 +23,7 @@ use tracing::{event, warn, Level};
 use crate::{
     evergreen::evg_task_history::{get_test_name, TaskHistoryService, TaskRuntimeHistory},
     evergreen_names::{
-        ADD_GIT_TAG, CONFIGURE_EVG_API_CREDS, DO_MULTIVERSION_SETUP, DO_SETUP,
+        ADD_GIT_TAG, CONFIGURE_EVG_API_CREDS, DO_MULTIVERSION_SETUP, DO_SETUP, ENTERPRISE_MODULE,
         GEN_TASK_CONFIG_LOCATION, GET_PROJECT_WITH_NO_MODULES, MULTIVERSION_EXCLUDE_TAG,
         MULTIVERSION_EXCLUDE_TAGS_FILE, REQUIRE_MULTIVERSION_SETUP, RESMOKE_ARGS, RESMOKE_JOBS_MAX,
         RUN_GENERATED_TESTS, SUITE_NAME,
@@ -60,6 +60,8 @@ pub struct ResmokeGenParams {
     pub config_location: String,
     /// List of tasks generated sub-tasks should depend on.
     pub dependencies: Vec<String>,
+    /// Is this task for enterprise builds.
+    pub is_enterprise: bool,
 }
 
 impl ResmokeGenParams {
@@ -165,6 +167,9 @@ pub struct SubSuite {
 
     /// Multiversion exclude tags.
     pub mv_exclude_tags: Option<String>,
+
+    /// Is sub-suite for a enterprise build_variant.
+    pub is_enterprise: bool,
 }
 
 /// Information needed to generate resmoke configuration files for the generated task.
@@ -347,6 +352,7 @@ impl GenResmokeTaskServiceImpl {
                         name: params.task_name.to_string(),
                         test_list: running_tests.clone(),
                         mv_exclude_tags: None,
+                        is_enterprise: params.is_enterprise,
                     });
                     running_tests = vec![];
                     running_runtime = 0.0;
@@ -362,6 +368,7 @@ impl GenResmokeTaskServiceImpl {
                 name: params.task_name.to_string(),
                 test_list: running_tests.clone(),
                 mv_exclude_tags: None,
+                is_enterprise: params.is_enterprise,
             });
         }
 
@@ -402,6 +409,7 @@ impl GenResmokeTaskServiceImpl {
                     name: params.task_name.to_string(),
                     test_list: current_tests,
                     mv_exclude_tags: None,
+                    is_enterprise: params.is_enterprise,
                 });
                 current_tests = vec![];
                 i += 1;
@@ -414,6 +422,7 @@ impl GenResmokeTaskServiceImpl {
                 name: params.task_name.to_string(),
                 test_list: current_tests,
                 mv_exclude_tags: None,
+                is_enterprise: params.is_enterprise,
             });
         }
 
@@ -451,6 +460,7 @@ impl GenResmokeTaskServiceImpl {
                     name: suite,
                     test_list: sub_suite.test_list.clone(),
                     mv_exclude_tags: Some(old_version.clone()),
+                    is_enterprise: params.is_enterprise,
                 });
             }
             // Add a `_misc` sub-task to the list of tasks.
@@ -463,6 +473,7 @@ impl GenResmokeTaskServiceImpl {
                 ),
                 test_list: vec![],
                 mv_exclude_tags: Some(old_version.clone()),
+                is_enterprise: params.is_enterprise,
             });
         }
 
@@ -488,11 +499,16 @@ impl GenResmokeTaskServiceImpl {
         let exclude_tags = self
             .multiversion_service
             .exclude_tags_for_task(&params.task_name);
-        let suite_file = &name_generated_task(&sub_suite.name, sub_suite.index, total_sub_suites);
-        let run_test_vars = params.build_run_test_vars(suite_file, sub_suite, &exclude_tags);
+        let mut suite_file =
+            name_generated_task(&sub_suite.name, sub_suite.index, total_sub_suites);
+        if params.is_enterprise {
+            suite_file = format!("{}-{}", suite_file, ENTERPRISE_MODULE);
+        }
+
+        let run_test_vars = params.build_run_test_vars(&suite_file, sub_suite, &exclude_tags);
 
         EvgTask {
-            name: suite_file.to_string(),
+            name: suite_file,
             commands: Some(resmoke_commands(
                 RUN_GENERATED_TESTS,
                 run_test_vars,
@@ -563,6 +579,7 @@ impl GenResmokeTaskService for GenResmokeTaskServiceImpl {
                 name: params.task_name.to_string(),
                 test_list: vec![],
                 mv_exclude_tags: None,
+                is_enterprise: params.is_enterprise,
             });
         }
 
@@ -924,12 +941,14 @@ mod tests {
                 name: "suite".to_string(),
                 test_list: vec!["test_0.js".to_string(), "test_1.js".to_string()],
                 mv_exclude_tags: None,
+                is_enterprise: false,
             },
             SubSuite {
                 index: Some(1),
                 name: "suite".to_string(),
                 test_list: vec!["test_2.js".to_string(), "test_3.js".to_string()],
                 mv_exclude_tags: None,
+                is_enterprise: false,
             },
         ];
         let params = ResmokeGenParams {

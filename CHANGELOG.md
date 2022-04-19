@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.1 - 2022-04-19
+
+* Separate tasks generated for build variants with the enterprise modules enabled.
+
 ## 0.2.0 - 2022-04-18
 
 * Fail tasks that define `use_large_distros`, but don't define `large_distro_name`.
