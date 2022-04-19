@@ -625,7 +625,7 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
     /// # Arguments
     ///
     /// * `task_def` - Task definition of fuzzer to generate.
-    /// * `build_variant` - Build variant task is being generated based off. 
+    /// * `build_variant` - Build variant task is being generated based off.
     /// * `config_location` - Location where generated configuration will be stored in S3.
     ///
     /// # Returns
