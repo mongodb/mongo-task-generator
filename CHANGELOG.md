@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.2 - 2022-04-20
+
+* Filter out enterprise tests from non-enterprise build variants.
+
 ## 0.2.1 - 2022-04-19
 
 * Separate tasks generated for build variants with the enterprise modules enabled.
