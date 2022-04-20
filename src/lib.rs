@@ -19,9 +19,10 @@ use evergreen::{
     evg_task_history::TaskHistoryServiceImpl,
 };
 use evergreen_names::{
-    CONTINUE_ON_FAILURE, FUZZER_PARAMETERS, GENERATOR_TASKS, IDLE_TIMEOUT, LARGE_DISTRO_EXPANSION,
-    MULTIVERSION, NO_MULTIVERSION_ITERATION, NPM_COMMAND, NUM_FUZZER_FILES, NUM_FUZZER_TASKS,
-    REPEAT_SUITES, RESMOKE_ARGS, RESMOKE_JOBS_MAX, SHOULD_SHUFFLE_TESTS, USE_LARGE_DISTRO,
+    CONTINUE_ON_FAILURE, ENTERPRISE_MODULE, FUZZER_PARAMETERS, GENERATOR_TASKS, IDLE_TIMEOUT,
+    LARGE_DISTRO_EXPANSION, MULTIVERSION, NO_MULTIVERSION_ITERATION, NPM_COMMAND, NUM_FUZZER_FILES,
+    NUM_FUZZER_TASKS, REPEAT_SUITES, RESMOKE_ARGS, RESMOKE_JOBS_MAX, SHOULD_SHUFFLE_TESTS,
+    USE_LARGE_DISTRO,
 };
 use evg_api_rs::EvgClient;
 use generate_sub_tasks_config::GenerateSubTasksConfig;
@@ -341,6 +342,7 @@ trait GenerateTasksService: Sync + Send {
         &self,
         task_def: &EvgTask,
         config_location: &str,
+        is_enterprise: bool,
     ) -> Result<ResmokeGenParams>;
 }
 
@@ -479,13 +481,15 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
         let mut seen_tasks = HashSet::new();
         for build_variant in &build_variant_list {
             let build_variant = build_variant_map.get(build_variant).unwrap();
+            let is_enterprise = is_enterprise_build_variant(build_variant);
             for task in &build_variant.tasks {
                 // Skip tasks that have already been seen.
-                if seen_tasks.contains(&task.name) {
+                let task_name = lookup_task_name(is_enterprise, &task.name);
+                if seen_tasks.contains(&task_name) {
                     continue;
                 }
 
-                seen_tasks.insert(task.name.to_string());
+                seen_tasks.insert(task_name);
                 if let Some(task_def) = task_map.get(&task.name) {
                     if self.evg_config_utils.is_task_generated(task_def) {
                         // Spawn off a tokio task to do the actual generation work.
@@ -534,7 +538,9 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
             Some(self.gen_fuzzer_service.generate_fuzzer_task(&params)?)
         } else {
             event!(Level::INFO, "Generating resmoke task: {}", task_def.name);
-            let params = self.task_def_to_resmoke_params(task_def, config_location)?;
+            let is_enterprise = is_enterprise_build_variant(build_variant);
+            let params =
+                self.task_def_to_resmoke_params(task_def, config_location, is_enterprise)?;
             Some(
                 self.gen_resmoke_service
                     .generate_resmoke_task(&params, &build_variant.name)
@@ -562,6 +568,7 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
 
         let build_variant_map = self.evg_config_service.get_build_variant_map();
         for (bv_name, build_variant) in build_variant_map {
+            let is_enterprise = is_enterprise_build_variant(build_variant);
             let mut gen_config = GeneratedConfig::new();
             let mut generating_tasks = vec![];
             let large_distro_name = self
@@ -570,7 +577,9 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
             for task in &build_variant.tasks {
                 let generated_tasks = generated_tasks.lock().unwrap();
 
-                if let Some(generated_task) = generated_tasks.get(&task.name) {
+                let task_name = lookup_task_name(is_enterprise, &task.name);
+
+                if let Some(generated_task) = generated_tasks.get(&task_name) {
                     let distro = self.determine_distro(
                         &large_distro_name,
                         generated_task.as_ref(),
@@ -615,9 +624,8 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
     ///
     /// # Arguments
     ///
-    /// * `evg_config_utils` -
-    /// * `task-def` - Task definition of fuzzer to generate.
-    /// * `build_variant` -
+    /// * `task_def` - Task definition of fuzzer to generate.
+    /// * `build_variant` - Build variant task is being generated based off.
     /// * `config_location` - Location where generated configuration will be stored in S3.
     ///
     /// # Returns
@@ -630,6 +638,7 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
         config_location: &str,
     ) -> Result<FuzzerGenTaskParams> {
         let evg_config_utils = self.evg_config_utils.clone();
+        let is_enterprise = is_enterprise_build_variant(build_variant);
         let task_name = remove_gen_suffix(&task_def.name).to_string();
         let num_files = evg_config_utils
             .translate_run_var(
@@ -673,6 +682,7 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                 .contains(MULTIVERSION),
             config_location: config_location.to_string(),
             dependencies: self.determine_task_dependencies(task_def),
+            is_enterprise,
         })
     }
 
@@ -680,8 +690,9 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
     ///
     /// # Arguments
     ///
-    /// * `task-def` - Task definition of task to generate.
+    /// * `task_def` - Task definition of task to generate.
     /// * `config_location` - Location where generated configuration will be stored in S3.
+    /// * `is_enterprise` - Is this being generated for an enterprise build variant.
     ///
     /// # Returns
     ///
@@ -690,6 +701,7 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
         &self,
         task_def: &EvgTask,
         config_location: &str,
+        is_enterprise: bool,
     ) -> Result<ResmokeGenParams> {
         let task_name = remove_gen_suffix(&task_def.name).to_string();
         let suite = self.evg_config_utils.find_suite_name(task_def).to_string();
@@ -720,7 +732,46 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                 .lookup_optional_param_u64(task_def, RESMOKE_JOBS_MAX)?,
             config_location: config_location.to_string(),
             dependencies: self.determine_task_dependencies(task_def),
+            is_enterprise,
         })
+    }
+}
+
+/// Check if the given build variant includes the enterprise module.
+///
+/// # Arguments
+///
+/// * `build_variant` - Build variant to check.
+///
+/// # Returns
+///
+/// true if given build variant includes the enterprise module.
+fn is_enterprise_build_variant(build_variant: &BuildVariant) -> bool {
+    if let Some(modules) = &build_variant.modules {
+        modules.contains(&ENTERPRISE_MODULE.to_string())
+    } else {
+        false
+    }
+}
+
+/// Determine the task name to use.
+///
+/// We append "enterprise" to tasks run on enterprise module build variants, so they don't
+/// conflict with the normal tasks.
+///
+/// # Arguments
+///
+/// * `is_enterprise` - Whether the task is for an enterprise build variant.
+/// * `task` - Evergreen definition of task.
+///
+/// # Returns
+///
+/// Name to use for task.
+fn lookup_task_name(is_enterprise: bool, task_name: &str) -> String {
+    if is_enterprise {
+        format!("{}-{}", task_name, ENTERPRISE_MODULE)
+    } else {
+        task_name.to_string()
     }
 }
 
@@ -756,9 +807,12 @@ fn create_task_worker(
             .await
             .unwrap();
 
+        let is_enterprise = is_enterprise_build_variant(&build_variant);
+        let task_name = lookup_task_name(is_enterprise, &task_def.name);
+
         if let Some(generated_task) = generated_task {
             let mut generated_tasks = generated_tasks.lock().unwrap();
-            generated_tasks.insert(task_def.name.clone(), generated_task);
+            generated_tasks.insert(task_name, generated_task);
         }
     })
 }
@@ -916,5 +970,46 @@ mod tests {
             gen_task_service.determine_distro(&None, generated_task.as_ref(), "my_build_variant");
 
         assert!(distro.is_ok());
+    }
+
+    // tests for is_enterprise_build_variant.
+    #[test]
+    fn test_build_variant_with_enterprise_module_should_return_true() {
+        let build_variant = BuildVariant {
+            modules: Some(vec![ENTERPRISE_MODULE.to_string()]),
+            ..Default::default()
+        };
+
+        assert!(is_enterprise_build_variant(&build_variant));
+    }
+
+    #[rstest]
+    #[case(Some(vec![]))]
+    #[case(Some(vec!["Another Module".to_string(), "Not Enterprise".to_string()]))]
+    #[case(None)]
+    fn test_build_variant_with_out_enterprise_module_should_return_false(
+        #[case] modules: Option<Vec<String>>,
+    ) {
+        let build_variant = BuildVariant {
+            modules,
+            ..Default::default()
+        };
+
+        assert!(!is_enterprise_build_variant(&build_variant));
+    }
+
+    // tests for lookup_task_name.
+    #[rstest]
+    #[case(false, "my_task", "my_task")]
+    #[case(true, "my_task", "my_task-enterprise")]
+    fn test_lookup_task_name_should_use_enterprise_when_specified(
+        #[case] is_enterprise: bool,
+        #[case] task_name: &str,
+        #[case] expected_task_name: &str,
+    ) {
+        assert_eq!(
+            lookup_task_name(is_enterprise, task_name),
+            expected_task_name.to_string()
+        );
     }
 }

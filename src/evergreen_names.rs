@@ -1,5 +1,9 @@
 //! Names referencing items in the mongodb/mongo etc/evergreen.yml.
 
+// Module Names
+/// Name of enterprise module.
+pub const ENTERPRISE_MODULE: &str = "enterprise";
+
 // Functions to setup tasks
 /// Function setup authentication to evergreen API.
 pub const CONFIGURE_EVG_API_CREDS: &str = "configure evergreen api credentials";

@@ -9,11 +9,12 @@
 //! any work they have queued up before returning.
 use std::{path::PathBuf, sync::Arc};
 
-use anyhow::Result;
+use anyhow::{bail, Result};
 use async_trait::async_trait;
 use tokio::sync::{mpsc, oneshot};
 
 use crate::{
+    evergreen_names::ENTERPRISE_MODULE,
     resmoke::{resmoke_proxy::TestDiscovery, resmoke_suite::ResmokeSuiteConfig},
     utils::fs_service::FsService,
 };
@@ -203,8 +204,18 @@ impl WriteConfigActorImpl {
             .iter()
             .map(|s| {
                 let config = origin_config.with_new_tests(Some(&s.test_list), None);
+                let filename = if s.is_enterprise {
+                    format!(
+                        "{}_{}-{}.yml",
+                        target_name,
+                        s.index.unwrap(),
+                        ENTERPRISE_MODULE
+                    )
+                } else {
+                    format!("{}_{}.yml", target_name, s.index.unwrap())
+                };
                 let mut path = PathBuf::from(&self.target_dir);
-                path.push(format!("{}_{}.yml", target_name, s.index.unwrap()));
+                path.push(filename);
 
                 self.fs_service.write_file(&path, &config.to_string())?;
                 Ok(())
@@ -232,8 +243,16 @@ impl WriteConfigActorImpl {
             .flat_map(|s| s.test_list.clone())
             .collect();
         let misc_config = origin_config.with_new_tests(None, Some(&all_tests));
+        if sub_suites.is_empty() {
+            bail!("Received empty sub_suites: {}", target_name);
+        }
+        let filename = if sub_suites[0].is_enterprise {
+            format!("{}_misc-{}.yml", target_name, ENTERPRISE_MODULE)
+        } else {
+            format!("{}_misc.yml", target_name)
+        };
         let mut path = PathBuf::from(&self.target_dir);
-        path.push(format!("{}_misc.yml", target_name));
+        path.push(filename);
         self.fs_service
             .write_file(&path, &misc_config.to_string())?;
         Ok(())
@@ -495,12 +514,14 @@ mod tests {
                     name: "suite".to_string(),
                     test_list: vec!["test_0.js".to_string(), "test_1.js".to_string()],
                     mv_exclude_tags: None,
+                    is_enterprise: false,
                 },
                 SubSuite {
                     index: Some(1),
                     name: "suite".to_string(),
                     test_list: vec!["test_2.js".to_string(), "test_3.js".to_string()],
                     mv_exclude_tags: None,
+                    is_enterprise: false,
                 },
             ],
         };
@@ -532,12 +553,14 @@ mod tests {
                     name: "suite".to_string(),
                     test_list: vec!["test_0.js".to_string(), "test_1.js".to_string()],
                     mv_exclude_tags: None,
+                    is_enterprise: false,
                 },
                 SubSuite {
                     index: Some(1),
                     name: "suite".to_string(),
                     test_list: vec!["test_2.js".to_string(), "test_3.js".to_string()],
                     mv_exclude_tags: None,
+                    is_enterprise: false,
                 },
             ],
         };
@@ -585,12 +608,14 @@ mod tests {
                     name: "suite".to_string(),
                     test_list: vec!["test_0.js".to_string(), "test_1.js".to_string()],
                     mv_exclude_tags: None,
+                    is_enterprise: false,
                 },
                 SubSuite {
                     index: Some(1),
                     name: "suite".to_string(),
                     test_list: vec!["test_2.js".to_string(), "test_3.js".to_string()],
                     mv_exclude_tags: None,
+                    is_enterprise: false,
                 },
             ],
         };
