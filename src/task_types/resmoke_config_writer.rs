@@ -9,7 +9,7 @@
 //! any work they have queued up before returning.
 use std::{path::PathBuf, sync::Arc};
 
-use anyhow::Result;
+use anyhow::{bail, Result};
 use async_trait::async_trait;
 use tokio::sync::{mpsc, oneshot};
 
@@ -243,6 +243,9 @@ impl WriteConfigActorImpl {
             .flat_map(|s| s.test_list.clone())
             .collect();
         let misc_config = origin_config.with_new_tests(None, Some(&all_tests));
+        if sub_suites.is_empty() {
+            bail!("Received empty sub_suites: {}", target_name);
+        }
         let filename = if sub_suites[0].is_enterprise {
             format!("{}_misc-{}.yml", target_name, ENTERPRISE_MODULE)
         } else {
