@@ -37,7 +37,9 @@ use task_types::{
     generated_suite::GeneratedSuite,
     multiversion::MultiversionServiceImpl,
     resmoke_config_writer::{ResmokeConfigActor, ResmokeConfigActorService},
-    resmoke_tasks::{GenResmokeTaskService, GenResmokeTaskServiceImpl, ResmokeGenParams},
+    resmoke_tasks::{
+        GenResmokeConfig, GenResmokeTaskService, GenResmokeTaskServiceImpl, ResmokeGenParams,
+    },
 };
 use tracing::{event, Level};
 use utils::{fs_service::FsServiceImpl, task_name::remove_gen_suffix};
@@ -162,14 +164,21 @@ impl Dependencies {
                     .expect("Unexpected target directory"),
                 32,
             )));
+        let enterprise_dir = evg_config_service
+            .get_module_dir(ENTERPRISE_MODULE)
+            .expect("Could not find enterprise module configuration");
+        let gen_resmoke_config = GenResmokeConfig::new(
+            MAX_SUB_TASKS_PER_TASK,
+            use_task_split_fallback,
+            enterprise_dir,
+        );
         let gen_resmoke_task_service = Arc::new(GenResmokeTaskServiceImpl::new(
             task_history_service,
             discovery_service,
             resmoke_config_actor.clone(),
             multiversion_service,
             fs_service,
-            MAX_SUB_TASKS_PER_TASK,
-            use_task_split_fallback,
+            gen_resmoke_config,
         ));
         let gen_sub_tasks_config = project_info.get_generate_sub_tasks_config()?;
         let gen_task_service = Arc::new(GenerateTasksServiceImpl::new(
@@ -836,6 +845,10 @@ mod tests {
         }
 
         fn sort_build_variants_by_required(&self) -> Vec<String> {
+            todo!()
+        }
+
+        fn get_module_dir(&self, _module_name: &str) -> Option<String> {
             todo!()
         }
     }

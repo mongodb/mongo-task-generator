@@ -238,6 +238,40 @@ pub trait GenResmokeTaskService: Sync + Send {
     ) -> Result<Box<dyn GeneratedSuite>>;
 }
 
+#[derive(Debug, Clone)]
+pub struct GenResmokeConfig {
+    /// Max number of suites to split tasks into.
+    n_suites: usize,
+
+    /// Disable evergreen task-history queries and use task splitting fallback.
+    use_task_split_fallback: bool,
+
+    /// Enterprise directory.
+    enterprise_dir: String,
+}
+
+impl GenResmokeConfig {
+    /// Create a new GenResmokeConfig.
+    ///
+    /// # Arguments
+    ///
+    /// * `n_suite` - Number of sub-suites to split tasks into.
+    /// * `use_task_split_fallback` - Disable evergreen task-history queries and use task
+    ///    splitting fallback.
+    /// * `enterprise_dir` - Directory enterprise files are stored in.
+    ///
+    /// # Returns
+    ///
+    /// New instance of `GenResmokeConfig`.
+    pub fn new(n_suites: usize, use_task_split_fallback: bool, enterprise_dir: String) -> Self {
+        Self {
+            n_suites,
+            use_task_split_fallback,
+            enterprise_dir,
+        }
+    }
+}
+
 /// Implementation of service to generate resmoke tasks.
 #[derive(Clone)]
 pub struct GenResmokeTaskServiceImpl {
@@ -256,11 +290,8 @@ pub struct GenResmokeTaskServiceImpl {
     /// Service to interact with file system.
     fs_service: Arc<dyn FsService>,
 
-    /// Max number of suites to split tasks into.
-    n_suites: usize,
-
-    /// Disable evergreen task-history queries and use task splitting fallback.
-    use_task_split_fallback: bool,
+    /// Configuration for generating resmoke tasks.
+    config: GenResmokeConfig,
 }
 
 impl GenResmokeTaskServiceImpl {
@@ -271,9 +302,7 @@ impl GenResmokeTaskServiceImpl {
     /// * `task_history_service` - An instance of the service to query task history.
     /// * `test_discovery` - An instance of the service to query tests belonging to a task.
     /// * `fs_service` - An instance of the service too work with the file system.
-    /// * `n_suite` - Number of sub-suites to split tasks into.
-    /// * `use_task_split_fallback` - Disable evergreen task-history queries and use task
-    ///    splitting fallback.
+    /// * `gen_resmoke_config` - Configuration for how resmoke tasks should be generated.
     ///
     /// # Returns
     ///
@@ -284,8 +313,7 @@ impl GenResmokeTaskServiceImpl {
         resmoke_config_actor: Arc<Mutex<dyn ResmokeConfigActor>>,
         multiversion_service: Arc<dyn MultiversionService>,
         fs_service: Arc<dyn FsService>,
-        n_suites: usize,
-        use_task_split_fallback: bool,
+        config: GenResmokeConfig,
     ) -> Self {
         Self {
             task_history_service,
@@ -293,8 +321,7 @@ impl GenResmokeTaskServiceImpl {
             resmoke_config_actor,
             multiversion_service,
             fs_service,
-            n_suites,
-            use_task_split_fallback,
+            config,
         }
     }
 }
@@ -315,19 +342,13 @@ impl GenResmokeTaskServiceImpl {
         params: &ResmokeGenParams,
         task_stats: &TaskRuntimeHistory,
     ) -> Result<Vec<SubSuite>> {
-        let test_list: Vec<String> = self
-            .test_discovery
-            .discover_tests(&params.suite_name)?
-            .into_iter()
-            .filter(|s| self.fs_service.file_exists(s))
-            .collect();
-
+        let test_list = self.get_test_list(params)?;
         let total_runtime = task_stats
             .test_map
             .iter()
             .fold(0.0, |init, (_, item)| init + item.average_runtime);
 
-        let max_tasks = min(self.n_suites, test_list.len());
+        let max_tasks = min(self.config.n_suites, test_list.len());
         let runtime_per_subtask = total_runtime / max_tasks as f64;
         event!(
             Level::INFO,
@@ -375,6 +396,33 @@ impl GenResmokeTaskServiceImpl {
         Ok(sub_suites)
     }
 
+    /// Get the list of tests belonging to the suite being generated.
+    ///
+    /// # Arguments
+    ///
+    /// * `params` - Parameters about the suite being split.
+    ///
+    /// # Returns
+    ///
+    /// List of tests belonging to suite being split.
+    fn get_test_list(&self, params: &ResmokeGenParams) -> Result<Vec<String>> {
+        let mut test_list: Vec<String> = self
+            .test_discovery
+            .discover_tests(&params.suite_name)?
+            .into_iter()
+            .filter(|s| self.fs_service.file_exists(s))
+            .collect();
+
+        if !params.is_enterprise {
+            test_list = test_list
+                .into_iter()
+                .filter(|s| !s.starts_with(&self.config.enterprise_dir))
+                .collect();
+        }
+
+        Ok(test_list)
+    }
+
     /// Split a task with no historic runtime information.
     ///
     /// Since we don't have any runtime information, we will just split the tests evenly among
@@ -388,14 +436,8 @@ impl GenResmokeTaskServiceImpl {
     ///
     /// A list of sub-suites to run the tests is the given task.
     fn split_task_fallback(&self, params: &ResmokeGenParams) -> Result<Vec<SubSuite>> {
-        let test_list: Vec<String> = self
-            .test_discovery
-            .discover_tests(&params.suite_name)?
-            .into_iter()
-            .filter(|s| self.fs_service.file_exists(s))
-            .collect();
-
-        let n_suites = min(test_list.len(), self.n_suites);
+        let test_list = self.get_test_list(params)?;
+        let n_suites = min(test_list.len(), self.config.n_suites);
         let tasks_per_suite = test_list.len() / n_suites;
 
         let mut sub_suites = vec![];
@@ -537,7 +579,7 @@ impl GenResmokeTaskService for GenResmokeTaskServiceImpl {
         params: &ResmokeGenParams,
         build_variant: &str,
     ) -> Result<Box<dyn GeneratedSuite>> {
-        let mut sub_suites = if self.use_task_split_fallback {
+        let mut sub_suites = if self.config.use_task_split_fallback {
             self.split_task_fallback(params)?
         } else {
             let task_history = self
@@ -630,6 +672,8 @@ fn resmoke_commands(
 
 #[cfg(test)]
 mod tests {
+    use rstest::rstest;
+
     use crate::{
         evergreen::evg_task_history::TestRuntimeHistory,
         resmoke::{resmoke_proxy::MultiversionConfig, resmoke_suite::ResmokeSuiteConfig},
@@ -637,6 +681,8 @@ mod tests {
     };
 
     use super::*;
+
+    const MOCK_ENTERPRISE_DIR: &str = "src/enterprise";
 
     // ResmokeGenParams tests.
     #[test]
@@ -833,14 +879,15 @@ mod tests {
         let fs_service = MockFsService {};
         let resmoke_config_actor = MockResmokeConfigActor {};
 
+        let config = GenResmokeConfig::new(n_suites, false, MOCK_ENTERPRISE_DIR.to_string());
+
         GenResmokeTaskServiceImpl::new(
             Arc::new(task_history_service),
             Arc::new(test_discovery),
             Arc::new(Mutex::new(resmoke_config_actor)),
             Arc::new(multiversion_service),
             Arc::new(fs_service),
-            n_suites,
-            false,
+            config,
         )
     }
 
@@ -928,6 +975,45 @@ mod tests {
         let suite_2 = &sub_suites[2];
         assert!(suite_2.test_list.contains(&"test_4.js".to_string()));
         assert!(suite_2.test_list.contains(&"test_5.js".to_string()));
+    }
+
+    // tests for get_test_list.
+    #[rstest]
+    #[case(true, 12)]
+    #[case(false, 6)]
+    fn test_get_test_list_should_filter_enterprise_tests(
+        #[case] is_enterprise: bool,
+        #[case] expected_tests: usize,
+    ) {
+        let n_suites = 3;
+        let mut test_list: Vec<String> = (0..6)
+            .into_iter()
+            .map(|i| format!("test_{}.js", i))
+            .collect();
+        test_list.extend::<Vec<String>>(
+            (6..12)
+                .into_iter()
+                .map(|i| format!("{}/test_{}.js", MOCK_ENTERPRISE_DIR, i))
+                .collect(),
+        );
+        let task_history = TaskRuntimeHistory {
+            task_name: "my task".to_string(),
+            test_map: hashmap! {},
+        };
+        let gen_resmoke_service =
+            build_mocked_service(test_list, task_history.clone(), n_suites, vec![], vec![]);
+
+        let params = ResmokeGenParams {
+            is_enterprise,
+            ..Default::default()
+        };
+
+        let sub_suites = gen_resmoke_service.split_task_fallback(&params).unwrap();
+        let all_tests: Vec<String> = sub_suites
+            .iter()
+            .flat_map(|s| s.test_list.clone())
+            .collect();
+        assert_eq!(expected_tests, all_tests.len());
     }
 
     // create_multiversion_combinations tests.
