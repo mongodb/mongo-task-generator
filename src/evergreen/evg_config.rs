@@ -15,7 +15,7 @@ pub trait EvgConfigService: Sync + Send {
     /// Get a list of build variants with the required build variants at the start.
     fn sort_build_variants_by_required(&self) -> Vec<String>;
 
-    /// Get the prefix of the given module.
+    /// Get the directory of the given module.
     fn get_module_dir(&self, module_name: &str) -> Option<String>;
 }
 
