@@ -505,18 +505,6 @@ impl GenResmokeTaskServiceImpl {
                     is_enterprise: params.is_enterprise,
                 });
             }
-            // Add a `_misc` sub-task to the list of tasks.
-            mv_sub_suites.push(SubSuite {
-                index: None,
-                name: self.multiversion_service.name_multiversion_suite(
-                    &params.task_name,
-                    &old_version,
-                    &version_combination,
-                ),
-                test_list: vec![],
-                mv_exclude_tags: Some(old_version.clone()),
-                is_enterprise: params.is_enterprise,
-            });
         }
 
         Ok(mv_sub_suites)
