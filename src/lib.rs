@@ -164,13 +164,13 @@ impl Dependencies {
                     .expect("Unexpected target directory"),
                 32,
             )));
-        let enterprise_prefix = evg_config_service
-            .get_module_prefix(ENTERPRISE_MODULE)
+        let enterprise_dir = evg_config_service
+            .get_module_dir(ENTERPRISE_MODULE)
             .expect("Could not find enterprise module configuration");
         let gen_resmoke_config = GenResmokeConfig::new(
             MAX_SUB_TASKS_PER_TASK,
             use_task_split_fallback,
-            enterprise_prefix,
+            enterprise_dir,
         );
         let gen_resmoke_task_service = Arc::new(GenResmokeTaskServiceImpl::new(
             task_history_service,
@@ -848,7 +848,7 @@ mod tests {
             todo!()
         }
 
-        fn get_module_prefix(&self, _module_name: &str) -> Option<String> {
+        fn get_module_dir(&self, _module_name: &str) -> Option<String> {
             todo!()
         }
     }

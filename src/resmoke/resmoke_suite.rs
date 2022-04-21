@@ -89,6 +89,14 @@ pub struct ResmokeFixture {
     pub shard_options: Option<Box<Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub configsvr_options: Option<Box<Value>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enable_sharding: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub start_initial_sync_node: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub all_nodes_electable: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub replset_config_options: Option<Box<Value>>,
 }
 
 #[derive(Serialize, Debug, Clone, Deserialize)]

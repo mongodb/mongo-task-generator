@@ -16,7 +16,7 @@ pub trait EvgConfigService: Sync + Send {
     fn sort_build_variants_by_required(&self) -> Vec<String>;
 
     /// Get the prefix of the given module.
-    fn get_module_prefix(&self, module_name: &str) -> Option<String>;
+    fn get_module_dir(&self, module_name: &str) -> Option<String>;
 }
 
 /// Items needed to implement an evergreen configuration service.
@@ -80,12 +80,12 @@ impl EvgConfigService for EvgProjectConfig {
         build_variants
     }
 
-    /// Get the prefix of the given module.
-    fn get_module_prefix(&self, module_name: &str) -> Option<String> {
+    /// Get the directory of the given module.
+    fn get_module_dir(&self, module_name: &str) -> Option<String> {
         if let Some(modules) = &self.evg_project.modules {
             for module in modules {
                 if module.name == module_name {
-                    return Some(module.prefix.clone());
+                    return Some(format!("{}/{}", &module.prefix, module_name));
                 }
             }
         }

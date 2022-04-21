@@ -246,8 +246,8 @@ pub struct GenResmokeConfig {
     /// Disable evergreen task-history queries and use task splitting fallback.
     use_task_split_fallback: bool,
 
-    /// Enterprise directory prefix.
-    enterprise_prefix: String,
+    /// Enterprise directory.
+    enterprise_dir: String,
 }
 
 impl GenResmokeConfig {
@@ -258,15 +258,16 @@ impl GenResmokeConfig {
     /// * `n_suite` - Number of sub-suites to split tasks into.
     /// * `use_task_split_fallback` - Disable evergreen task-history queries and use task
     ///    splitting fallback.
+    /// * `enterprise_dir` - Directory enterprise files are stored in.
     ///
     /// # Returns
     ///
     /// New instance of `GenResmokeConfig`.
-    pub fn new(n_suites: usize, use_task_split_fallback: bool, enterprise_prefix: String) -> Self {
+    pub fn new(n_suites: usize, use_task_split_fallback: bool, enterprise_dir: String) -> Self {
         Self {
             n_suites,
             use_task_split_fallback,
-            enterprise_prefix,
+            enterprise_dir,
         }
     }
 }
@@ -415,7 +416,7 @@ impl GenResmokeTaskServiceImpl {
         if !params.is_enterprise {
             test_list = test_list
                 .into_iter()
-                .filter(|s| !s.starts_with(&self.config.enterprise_prefix))
+                .filter(|s| !s.starts_with(&self.config.enterprise_dir))
                 .collect();
         }
 
