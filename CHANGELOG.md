@@ -4,6 +4,7 @@
 
 * Remember fixture settings for created tasks.
 * Normalize test_files returned from evergreen.
+* Don't create multiversion _misc suites.
 
 ## 0.2.2 - 2022-04-20
 
