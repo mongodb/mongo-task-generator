@@ -67,39 +67,6 @@ pub struct ResmokeSelector {
 }
 
 #[derive(Serialize, Debug, Clone, Deserialize)]
-pub struct ResmokeFixture {
-    pub class: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub mongod_options: Option<Box<Value>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub mongos_options: Option<Box<Value>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub num_nodes: Option<usize>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub use_replica_set_connection_string: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub mixed_bin_versions: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub old_bin_version: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub num_rs_nodes_per_shard: Option<usize>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub num_shards: Option<usize>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub shard_options: Option<Box<Value>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub configsvr_options: Option<Box<Value>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub enable_sharding: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub start_initial_sync_node: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub all_nodes_electable: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub replset_config_options: Option<Box<Value>>,
-}
-
-#[derive(Serialize, Debug, Clone, Deserialize)]
 pub struct ResmokeExecutor {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub archive: Option<Box<Value>>,
@@ -108,7 +75,7 @@ pub struct ResmokeExecutor {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub config: Option<Box<Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub fixture: Option<ResmokeFixture>,
+    pub fixture: Option<Box<Value>>,
 }
 
 /// Configuration of a resmoke test suite.
@@ -155,12 +122,18 @@ impl ResmokeSuiteConfig {
     /// # Returns
     ///
     /// Type of fixture the suite uses.
-    fn get_type_from_fixture_class(fixture: &ResmokeFixture) -> SuiteFixtureType {
-        match fixture.class.as_str() {
-            SHARDED_CLUSTER_FIXTURE_NAME => SuiteFixtureType::Shard,
-            REPLICA_SET_FIXTURE_NAME => SuiteFixtureType::Repl,
-            _ => SuiteFixtureType::Other,
+    fn get_type_from_fixture_class(fixture: &Value) -> SuiteFixtureType {
+        if let Value::Mapping(map) = fixture {
+            if let Some(Value::String(fixture_class)) = map.get(&Value::String("class".to_string()))
+            {
+                return match fixture_class.as_str() {
+                    SHARDED_CLUSTER_FIXTURE_NAME => SuiteFixtureType::Shard,
+                    REPLICA_SET_FIXTURE_NAME => SuiteFixtureType::Repl,
+                    _ => SuiteFixtureType::Other,
+                };
+            }
         }
+        SuiteFixtureType::Other
     }
 
     /// Create a new resmoke suite configuration based on this one but running certain tests.

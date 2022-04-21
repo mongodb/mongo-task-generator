@@ -172,16 +172,17 @@ fn gather_test_stats(
 ) -> HashMap<String, TestRuntimeHistory> {
     let mut test_map: HashMap<String, TestRuntimeHistory> = HashMap::new();
     for stat in stat_list {
-        if !is_hook(&stat.test_file) {
-            let test_name = get_test_name(&stat.test_file);
+        let normalized_test_file = normalize_test_file(&stat.test_file);
+        if !is_hook(&normalized_test_file) {
+            let test_name = get_test_name(&normalized_test_file);
             if let Some(v) = test_map.get_mut(&test_name) {
-                v.test_name = stat.test_file.clone();
+                v.test_name = normalized_test_file;
                 v.average_runtime += stat.avg_duration_pass;
             } else {
                 test_map.insert(
                     test_name.clone(),
                     TestRuntimeHistory {
-                        test_name: stat.test_file.clone(),
+                        test_name: normalized_test_file,
                         average_runtime: stat.avg_duration_pass,
                         hooks: hook_map
                             .get(&test_name.to_string())
@@ -208,9 +209,10 @@ fn gather_test_stats(
 fn gather_hook_stats(stat_list: &[EvgTestStats]) -> HashMap<String, Vec<HookRuntimeHistory>> {
     let mut hook_map: HashMap<String, Vec<HookRuntimeHistory>> = HashMap::new();
     for stat in stat_list {
-        if is_hook(&stat.test_file) {
-            let test_name = hook_test_name(&stat.test_file);
-            let hook_name = hook_hook_name(&stat.test_file);
+        let normalized_test_file = normalize_test_file(&stat.test_file);
+        if is_hook(&normalized_test_file) {
+            let test_name = hook_test_name(&normalized_test_file);
+            let hook_name = hook_hook_name(&normalized_test_file);
             if let Some(v) = hook_map.get_mut(&test_name.to_string()) {
                 v.push(HookRuntimeHistory {
                     test_name: test_name.to_string(),
@@ -286,6 +288,21 @@ fn hook_hook_name(identifier: &str) -> &str {
     identifier.split(HOOK_DELIMITER).last().unwrap()
 }
 
+/// Normalize the given test files.
+///
+/// Converts windows path separators (\) to unix style (/).
+///
+/// # Arguments
+///
+/// * `test_file` - test file to normalize.
+///
+/// # Returns
+///
+/// Normalized test file.
+fn normalize_test_file(test_file: &str) -> String {
+    test_file.replace('\\', "/")
+}
+
 /// Get the base name of the given test file.
 ///
 /// # Arguments
@@ -323,6 +340,18 @@ mod tests {
     #[test]
     fn test_hook_hook_name() {
         assert_eq!(hook_hook_name("my_test:my_hook"), "my_hook");
+    }
+
+    // normalize test name tests.
+    #[rstest]
+    #[case("jstests\\core\\add1.js", "jstests/core/add1.js")]
+    #[case("jstests\\core\\add1", "jstests/core/add1")]
+    #[case("jstests/core/add1.js", "jstests/core/add1.js")]
+    #[case("jstests/core/add1", "jstests/core/add1")]
+    fn test_normalize_tests(#[case] test_file: &str, #[case] expected_name: &str) {
+        let normalized_name = normalize_test_file(test_file);
+
+        assert_eq!(&normalized_name, expected_name);
     }
 
     // get_test_name tests.

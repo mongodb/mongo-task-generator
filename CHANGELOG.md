@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.3 - 2022-04-21
+
+* Remember fixture settings for created tasks.
+* Normalize test_files returned from evergreen.
+
 ## 0.2.2 - 2022-04-20
 
 * Filter out enterprise tests from non-enterprise build variants.
