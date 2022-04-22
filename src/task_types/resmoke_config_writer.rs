@@ -103,11 +103,6 @@ impl WriteConfigActorImpl {
     /// * `suite_info` - Details about the suite that was generated.
     fn write_suite_files(&mut self, suite_info: ResmokeSuiteGenerationInfo) {
         let result = self.write_standard_suite(&suite_info);
-        // let result = if suite_info.generate_multiversion_combos {
-        //     self.write_multiversion_suite(&suite_info)
-        // } else {
-        //     self.write_standard_suite(&suite_info)
-        // };
 
         // If we encountered an error, save it off so we can report it on flush.
         if let Err(error) = result {
