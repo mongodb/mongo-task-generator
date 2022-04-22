@@ -304,13 +304,13 @@ impl ResmokeConfigCache {
     }
 
     /// Get the resmoke suite configuration for the given suite.
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `suite_name` - Name of suite to retrieve.
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// Resmoke suite configuration for given suite.
     pub fn get_config<'a>(&'a mut self, suite_name: &str) -> Result<&'a ResmokeSuiteConfig> {
         if !self.resmoke_configs.contains_key(suite_name) {

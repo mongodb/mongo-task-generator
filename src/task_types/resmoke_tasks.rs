@@ -577,16 +577,16 @@ impl GenResmokeTaskServiceImpl {
     }
 
     /// Create sub-suites based on the given information.
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `params` - Parameters for how tasks should be generated.
     /// * `build_variant` - Name of build variant to base generation off.
     /// * `multiversion_name` - Name of task if performing multiversion generation.
     /// * `multiversion_tags` - Tag to include when performing multiversion generation.
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// List of sub-suites that were generated.
     async fn create_tasks(
         &self,
