@@ -157,7 +157,6 @@ impl Dependencies {
         let resmoke_config_actor =
             Arc::new(tokio::sync::Mutex::new(ResmokeConfigActorService::new(
                 discovery_service.clone(),
-                multiversion_service.clone(),
                 fs_service.clone(),
                 target_directory
                     .to_str()

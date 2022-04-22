@@ -7,9 +7,9 @@
 //! When using this actor, to ensure that all in-flight requests have been completed, you
 //! will want to a `flush` message. This message will wait for all actor instance to complete
 //! any work they have queued up before returning.
-use std::{path::PathBuf, sync::Arc};
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
-use anyhow::{bail, Result};
+use anyhow::Result;
 use async_trait::async_trait;
 use tokio::sync::{mpsc, oneshot};
 
@@ -19,10 +19,7 @@ use crate::{
     utils::fs_service::FsService,
 };
 
-use super::{
-    multiversion::MultiversionService,
-    resmoke_tasks::{ResmokeSuiteGenerationInfo, SubSuite},
-};
+use super::resmoke_tasks::{ResmokeSuiteGenerationInfo, SubSuite};
 
 #[derive(Debug)]
 /// Messages that can be sent to the `ResmokeConfigWriter` actor.
@@ -38,8 +35,6 @@ enum ResmokeConfigMessage {
 struct WriteConfigActorImpl {
     /// Test discovery service.
     test_discovery: Arc<dyn TestDiscovery>,
-
-    multiversion_service: Arc<dyn MultiversionService>,
 
     /// Filesystem service.
     fs_service: Arc<dyn FsService>,
@@ -60,7 +55,6 @@ impl WriteConfigActorImpl {
     /// # Arguments
     ///
     /// * `test_discovery` - Instance of the test discovery service.
-    /// * `multiversion_service` - Service to get multiversion information.
     /// * `fs_service` - Service to work with the filesystem.
     /// * `receiver` - Mailbox to query for messages.
     /// * `target_dir` - Directory to write generated files to.
@@ -70,14 +64,12 @@ impl WriteConfigActorImpl {
     /// An instance of the actor.
     fn new(
         test_discovery: Arc<dyn TestDiscovery>,
-        multiversion_service: Arc<dyn MultiversionService>,
         fs_service: Arc<dyn FsService>,
         receiver: mpsc::Receiver<ResmokeConfigMessage>,
         target_dir: String,
     ) -> Self {
         WriteConfigActorImpl {
             test_discovery,
-            multiversion_service,
             fs_service,
             target_dir,
             receiver,
@@ -110,11 +102,7 @@ impl WriteConfigActorImpl {
     ///
     /// * `suite_info` - Details about the suite that was generated.
     fn write_suite_files(&mut self, suite_info: ResmokeSuiteGenerationInfo) {
-        let result = if suite_info.generate_multiversion_combos {
-            self.write_multiversion_suite(&suite_info)
-        } else {
-            self.write_standard_suite(&suite_info)
-        };
+        let result = self.write_standard_suite(&suite_info);
 
         // If we encountered an error, save it off so we can report it on flush.
         if let Err(error) = result {
@@ -123,66 +111,19 @@ impl WriteConfigActorImpl {
         }
     }
 
-    /// Write resmoke configurations for a multiversion generated resmoke task.
-    ///
-    /// # Arguments
-    ///
-    /// * `suite_info` - Details about the generated task.
-    fn write_multiversion_suite(&self, suite_info: &ResmokeSuiteGenerationInfo) -> Result<()> {
-        for (old_version, version_combination) in self
-            .multiversion_service
-            .multiversion_iter(&suite_info.origin_suite)?
-        {
-            // This is potentially confusing. We have 2 suite names, that are just slightly
-            // different. The first, `suite`, is the existing suite name to look up in resmoke.
-            // We look up the base suite configuration using this value. The second,
-            // `sub_task_name`, is the prefix of the suite file that we will write to disk and
-            // the generated tasks will use. Since multiple tasks can use the same suite, we
-            // cannot use the `suite` value for this, we have to base it off the task name.
-            let suite = self.multiversion_service.name_multiversion_suite(
-                &suite_info.origin_suite,
-                &old_version,
-                &version_combination,
-            );
-            let sub_task_name = self.multiversion_service.name_multiversion_suite(
-                &suite_info.task_name,
-                &old_version,
-                &version_combination,
-            );
-            let origin_config = self.test_discovery.get_suite_config(&suite)?;
-
-            // Create suite files for all the sub-suites.
-            self.write_sub_suites(&suite_info.sub_suites, &origin_config, &sub_task_name)?;
-            // Create a suite file for the '_misc' sub-task.
-            self.write_misc_suite(&suite_info.sub_suites, &origin_config, &sub_task_name)?;
-        }
-
-        Ok(())
-    }
-
     /// Write resmoke configurations for a standard generated resmoke task.
     ///
     /// # Arguments
     ///
     /// * `suite_info` - Details about the generated task.
     fn write_standard_suite(&self, suite_info: &ResmokeSuiteGenerationInfo) -> Result<()> {
-        let origin_config = self
-            .test_discovery
-            .get_suite_config(&suite_info.origin_suite)?;
+        let mut resmoke_config_cache = ResmokeConfigCache::new(self.test_discovery.clone());
 
         // Create suite files for all the sub-suites.
-        self.write_sub_suites(
-            &suite_info.sub_suites,
-            &origin_config,
-            &suite_info.task_name,
-        )?;
+        self.write_sub_suites(&suite_info.sub_suites, &mut resmoke_config_cache)?;
 
         // Create a suite file for the '_misc' sub-task.
-        self.write_misc_suite(
-            &suite_info.sub_suites,
-            &origin_config,
-            &suite_info.task_name,
-        )?;
+        self.write_misc_suites(&suite_info.sub_suites, &mut resmoke_config_cache)?;
 
         Ok(())
     }
@@ -192,27 +133,22 @@ impl WriteConfigActorImpl {
     /// # Arguments
     ///
     /// * `sub_suites` - List of sub-suites to write configuration for.
-    /// * `origin_config` - Configuration to base sub-suite configuration on.
-    /// * `target_name` - Name to base generated file on.
+    /// * `resmoke_config_cache` - Cache to get resmoke suite configurations.
     fn write_sub_suites(
         &self,
         sub_suites: &[SubSuite],
-        origin_config: &ResmokeSuiteConfig,
-        target_name: &str,
+        resmoke_config_cache: &mut ResmokeConfigCache,
     ) -> Result<()> {
         let results: Result<Vec<()>> = sub_suites
             .iter()
+            .filter(|s| s.exclude_test_list.is_none())
             .map(|s| {
+                let origin_config = resmoke_config_cache.get_config(&s.origin_suite)?;
                 let config = origin_config.with_new_tests(Some(&s.test_list), None);
                 let filename = if s.is_enterprise {
-                    format!(
-                        "{}_{}-{}.yml",
-                        target_name,
-                        s.index.unwrap(),
-                        ENTERPRISE_MODULE
-                    )
+                    format!("{}_{}-{}.yml", s.name, s.index.unwrap(), ENTERPRISE_MODULE)
                 } else {
-                    format!("{}_{}.yml", target_name, s.index.unwrap())
+                    format!("{}_{}.yml", s.name, s.index.unwrap())
                 };
                 let mut path = PathBuf::from(&self.target_dir);
                 path.push(filename);
@@ -230,31 +166,32 @@ impl WriteConfigActorImpl {
     /// # Arguments
     ///
     /// * `sub_suites` - List of sub-suites comprising the generated suite.
-    /// * `origin_config` - Configuration to base _misc configuration on.
-    /// * `target_name` - Name to base generated file on.
-    fn write_misc_suite(
+    /// * `resmoke_config_cache` - Cache to get resmoke suite configurations.
+    fn write_misc_suites(
         &self,
         sub_suites: &[SubSuite],
-        origin_config: &ResmokeSuiteConfig,
-        target_name: &str,
+        resmoke_config_cache: &mut ResmokeConfigCache,
     ) -> Result<()> {
-        let all_tests: Vec<String> = sub_suites
+        let results: Result<Vec<()>> = sub_suites
             .iter()
-            .flat_map(|s| s.test_list.clone())
+            .filter(|s| s.exclude_test_list.is_some())
+            .map(|s| {
+                let origin_config = resmoke_config_cache.get_config(&s.origin_suite)?;
+                let test_list = s.exclude_test_list.clone().unwrap();
+                let misc_config = origin_config.with_new_tests(None, Some(&test_list));
+                let filename = if s.is_enterprise {
+                    format!("{}_misc-{}.yml", s.name, ENTERPRISE_MODULE)
+                } else {
+                    format!("{}_misc.yml", s.name)
+                };
+                let mut path = PathBuf::from(&self.target_dir);
+                path.push(filename);
+                self.fs_service
+                    .write_file(&path, &misc_config.to_string())?;
+                Ok(())
+            })
             .collect();
-        let misc_config = origin_config.with_new_tests(None, Some(&all_tests));
-        if sub_suites.is_empty() {
-            bail!("Received empty sub_suites: {}", target_name);
-        }
-        let filename = if sub_suites[0].is_enterprise {
-            format!("{}_misc-{}.yml", target_name, ENTERPRISE_MODULE)
-        } else {
-            format!("{}_misc.yml", target_name)
-        };
-        let mut path = PathBuf::from(&self.target_dir);
-        path.push(filename);
-        self.fs_service
-            .write_file(&path, &misc_config.to_string())?;
+        results?;
         Ok(())
     }
 }
@@ -290,7 +227,6 @@ impl ResmokeConfigActorService {
     /// An instance of the actor.
     pub fn new(
         test_discovery: Arc<dyn TestDiscovery>,
-        multiversion_service: Arc<dyn MultiversionService>,
         fs_service: Arc<dyn FsService>,
         target_dir: &str,
         n_workers: usize,
@@ -303,7 +239,6 @@ impl ResmokeConfigActorService {
                 senders.push(sender);
                 let mut actor = WriteConfigActorImpl::new(
                     test_discovery.clone(),
-                    multiversion_service.clone(),
                     fs_service.clone(),
                     receiver,
                     target_dir.to_string(),
@@ -351,16 +286,52 @@ impl ResmokeConfigActor for ResmokeConfigActorService {
     }
 }
 
+/// A cache for querying resmoke suite configurations.
+struct ResmokeConfigCache {
+    /// Service to query test suite configurations.
+    test_discovery: Arc<dyn TestDiscovery>,
+    /// Resmoke suite configurations that have already been queried.
+    resmoke_configs: HashMap<String, ResmokeSuiteConfig>,
+}
+
+impl ResmokeConfigCache {
+    /// Create a new instance of a cache.
+    pub fn new(test_discovery: Arc<dyn TestDiscovery>) -> Self {
+        Self {
+            test_discovery,
+            resmoke_configs: HashMap::new(),
+        }
+    }
+
+    /// Get the resmoke suite configuration for the given suite.
+    ///
+    /// # Arguments
+    ///
+    /// * `suite_name` - Name of suite to retrieve.
+    ///
+    /// # Returns
+    ///
+    /// Resmoke suite configuration for given suite.
+    pub fn get_config<'a>(&'a mut self, suite_name: &str) -> Result<&'a ResmokeSuiteConfig> {
+        if !self.resmoke_configs.contains_key(suite_name) {
+            let config = self.test_discovery.get_suite_config(suite_name)?;
+            self.resmoke_configs.insert(suite_name.to_string(), config);
+        }
+
+        Ok(self
+            .resmoke_configs
+            .get(suite_name)
+            .expect("Could not find suite"))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::{cell::RefCell, collections::HashMap, ops::AddAssign, str::FromStr, sync::Mutex};
 
     use anyhow::bail;
 
-    use crate::{
-        resmoke::resmoke_suite::ResmokeSuiteConfig,
-        task_types::{multiversion::MultiversionIterator, resmoke_tasks::SubSuite},
-    };
+    use crate::{resmoke::resmoke_suite::ResmokeSuiteConfig, task_types::resmoke_tasks::SubSuite};
 
     use super::*;
 
@@ -446,64 +417,17 @@ mod tests {
         }
     }
 
-    struct MockMultiversionService {
-        old_version: Vec<String>,
-        version_combos: Vec<String>,
-    }
-    impl MultiversionService for MockMultiversionService {
-        fn get_version_combinations(&self, _suite_name: &str) -> anyhow::Result<Vec<String>> {
-            todo!()
-        }
-
-        fn multiversion_iter(
-            &self,
-            _suite: &str,
-        ) -> anyhow::Result<crate::task_types::multiversion::MultiversionIterator> {
-            Ok(MultiversionIterator::new(
-                &self.old_version,
-                &self.version_combos,
-            ))
-        }
-
-        fn name_multiversion_suite(
-            &self,
-            base_name: &str,
-            old_version: &str,
-            version_combination: &str,
-        ) -> String {
-            format!("{}_{}_{}", base_name, old_version, version_combination)
-        }
-
-        fn exclude_tags_for_task(&self, _task_name: &str) -> String {
-            todo!()
-        }
-    }
-
-    fn build_mock_service(
-        fs_service: Arc<dyn FsService>,
-        old_version: Vec<String>,
-        version_combos: Vec<String>,
-    ) -> WriteConfigActorImpl {
+    fn build_mock_service(fs_service: Arc<dyn FsService>) -> WriteConfigActorImpl {
         let test_discovery = Arc::new(MockTestDiscovery {});
-        let multiversion_service = Arc::new(MockMultiversionService {
-            old_version,
-            version_combos,
-        });
         let (_tx, rx) = mpsc::channel(1);
 
-        WriteConfigActorImpl::new(
-            test_discovery,
-            multiversion_service,
-            fs_service,
-            rx,
-            "target".to_string(),
-        )
+        WriteConfigActorImpl::new(test_discovery, fs_service, rx, "target".to_string())
     }
 
     #[test]
     fn test_write_suite_files() {
         let fs_service = Arc::new(MockFsService::new());
-        let mut resmoke_config_actor = build_mock_service(fs_service.clone(), vec![], vec![]);
+        let mut resmoke_config_actor = build_mock_service(fs_service.clone());
         let suite_info = ResmokeSuiteGenerationInfo {
             task_name: "my_task".to_string(),
             origin_suite: "original_suite".to_string(),
@@ -511,93 +435,42 @@ mod tests {
             sub_suites: vec![
                 SubSuite {
                     index: Some(0),
-                    name: "suite".to_string(),
+                    name: "suite_name".to_string(),
+                    origin_suite: "suite".to_string(),
                     test_list: vec!["test_0.js".to_string(), "test_1.js".to_string()],
-                    mv_exclude_tags: None,
-                    is_enterprise: false,
+                    ..Default::default()
                 },
                 SubSuite {
                     index: Some(1),
-                    name: "suite".to_string(),
+                    name: "suite_name".to_string(),
+                    origin_suite: "suite".to_string(),
                     test_list: vec!["test_2.js".to_string(), "test_3.js".to_string()],
-                    mv_exclude_tags: None,
-                    is_enterprise: false,
+                    ..Default::default()
+                },
+                SubSuite {
+                    index: None,
+                    name: "suite_name".to_string(),
+                    origin_suite: "suite".to_string(),
+                    test_list: vec![],
+                    exclude_test_list: Some((0..4).map(|i| format!("test_{}.js", i)).collect()),
+                    ..Default::default()
                 },
             ],
         };
 
         resmoke_config_actor.write_suite_files(suite_info);
 
-        assert_eq!(fs_service.get_call_counts("target/my_task_0.yml"), 1);
-        assert_eq!(fs_service.get_call_counts("target/my_task_1.yml"), 1);
-        assert_eq!(fs_service.get_call_counts("target/my_task_misc.yml"), 1);
-    }
-
-    #[test]
-    fn test_write_multiversion_suite_files() {
-        let old_version = vec!["last_lts".to_string(), "continuous".to_string()];
-        let version_combos = vec!["new_new_new".to_string(), "old_new_old".to_string()];
-        let fs_service = Arc::new(MockFsService::new());
-        let mut resmoke_config_actor = build_mock_service(
-            fs_service.clone(),
-            old_version.clone(),
-            version_combos.clone(),
-        );
-        let suite_info = ResmokeSuiteGenerationInfo {
-            task_name: "my_task".to_string(),
-            origin_suite: "original_suite".to_string(),
-            generate_multiversion_combos: true,
-            sub_suites: vec![
-                SubSuite {
-                    index: Some(0),
-                    name: "suite".to_string(),
-                    test_list: vec!["test_0.js".to_string(), "test_1.js".to_string()],
-                    mv_exclude_tags: None,
-                    is_enterprise: false,
-                },
-                SubSuite {
-                    index: Some(1),
-                    name: "suite".to_string(),
-                    test_list: vec!["test_2.js".to_string(), "test_3.js".to_string()],
-                    mv_exclude_tags: None,
-                    is_enterprise: false,
-                },
-            ],
-        };
-
-        resmoke_config_actor.write_suite_files(suite_info.clone());
-
-        for version in old_version {
-            for combo in &version_combos {
-                for sub_suite in &suite_info.sub_suites {
-                    let task_name = format!(
-                        "target/{}_{}_{}_{}.yml",
-                        &suite_info.task_name,
-                        version,
-                        combo,
-                        sub_suite.index.unwrap()
-                    );
-                    assert_eq!(fs_service.get_call_counts(&task_name), 1);
-                }
-            }
-        }
+        assert_eq!(fs_service.get_call_counts("target/suite_name_0.yml"), 1);
+        assert_eq!(fs_service.get_call_counts("target/suite_name_1.yml"), 1);
+        assert_eq!(fs_service.get_call_counts("target/suite_name_misc.yml"), 1);
     }
 
     #[tokio::test]
     async fn test_errors_encountered_during_execution() {
         let fs_service = Arc::new(MockFsService::new_failure_mode());
         let test_discovery = Arc::new(MockTestDiscovery {});
-        let multiversion_service = Arc::new(MockMultiversionService {
-            old_version: vec![],
-            version_combos: vec![],
-        });
-        let mut resmoke_config_actor = ResmokeConfigActorService::new(
-            test_discovery,
-            multiversion_service,
-            fs_service,
-            "target_dir",
-            3,
-        );
+        let mut resmoke_config_actor =
+            ResmokeConfigActorService::new(test_discovery, fs_service, "target_dir", 3);
         let suite_info = ResmokeSuiteGenerationInfo {
             task_name: "my_task".to_string(),
             origin_suite: "original_suite".to_string(),
@@ -606,16 +479,16 @@ mod tests {
                 SubSuite {
                     index: Some(0),
                     name: "suite".to_string(),
+                    origin_suite: "suite".to_string(),
                     test_list: vec!["test_0.js".to_string(), "test_1.js".to_string()],
-                    mv_exclude_tags: None,
-                    is_enterprise: false,
+                    ..Default::default()
                 },
                 SubSuite {
                     index: Some(1),
                     name: "suite".to_string(),
+                    origin_suite: "suite".to_string(),
                     test_list: vec!["test_2.js".to_string(), "test_3.js".to_string()],
-                    mv_exclude_tags: None,
-                    is_enterprise: false,
+                    ..Default::default()
                 },
             ],
         };

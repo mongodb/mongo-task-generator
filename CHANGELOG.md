@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.0 - 2022-04-22
+
+* Use matrix suites for looking up multiversion suite information.
+
 ## 0.2.3 - 2022-04-21
 
 * Remember fixture settings for created tasks.

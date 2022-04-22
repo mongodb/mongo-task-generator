@@ -165,6 +165,12 @@ pub struct SubSuite {
     /// List of tests belonging to sub-suite.
     pub test_list: Vec<String>,
 
+    /// Suite the generated suite is based off.
+    pub origin_suite: String,
+
+    /// List of tests that should be excluded from sub-suite.
+    pub exclude_test_list: Option<Vec<String>>,
+
     /// Multiversion exclude tags.
     pub mv_exclude_tags: Option<String>,
 
@@ -341,8 +347,10 @@ impl GenResmokeTaskServiceImpl {
         &self,
         params: &ResmokeGenParams,
         task_stats: &TaskRuntimeHistory,
+        multiversion_name: Option<&str>,
     ) -> Result<Vec<SubSuite>> {
-        let test_list = self.get_test_list(params)?;
+        let origin_suite = multiversion_name.unwrap_or(&params.suite_name);
+        let test_list = self.get_test_list(params, multiversion_name)?;
         let total_runtime = task_stats
             .test_map
             .iter()
@@ -370,8 +378,10 @@ impl GenResmokeTaskServiceImpl {
                 {
                     sub_suites.push(SubSuite {
                         index: Some(i),
-                        name: params.task_name.to_string(),
+                        name: multiversion_name.unwrap_or(&params.task_name).to_string(),
                         test_list: running_tests.clone(),
+                        origin_suite: origin_suite.to_string(),
+                        exclude_test_list: None,
                         mv_exclude_tags: None,
                         is_enterprise: params.is_enterprise,
                     });
@@ -386,8 +396,10 @@ impl GenResmokeTaskServiceImpl {
         if !running_tests.is_empty() {
             sub_suites.push(SubSuite {
                 index: Some(i),
-                name: params.task_name.to_string(),
+                name: multiversion_name.unwrap_or(&params.task_name).to_string(),
                 test_list: running_tests.clone(),
+                origin_suite: origin_suite.to_string(),
+                exclude_test_list: None,
                 mv_exclude_tags: None,
                 is_enterprise: params.is_enterprise,
             });
@@ -405,10 +417,15 @@ impl GenResmokeTaskServiceImpl {
     /// # Returns
     ///
     /// List of tests belonging to suite being split.
-    fn get_test_list(&self, params: &ResmokeGenParams) -> Result<Vec<String>> {
+    fn get_test_list(
+        &self,
+        params: &ResmokeGenParams,
+        multiversion_name: Option<&str>,
+    ) -> Result<Vec<String>> {
+        let suite_name = multiversion_name.unwrap_or(&params.suite_name);
         let mut test_list: Vec<String> = self
             .test_discovery
-            .discover_tests(&params.suite_name)?
+            .discover_tests(suite_name)?
             .into_iter()
             .filter(|s| self.fs_service.file_exists(s))
             .collect();
@@ -435,8 +452,13 @@ impl GenResmokeTaskServiceImpl {
     /// # Returns
     ///
     /// A list of sub-suites to run the tests is the given task.
-    fn split_task_fallback(&self, params: &ResmokeGenParams) -> Result<Vec<SubSuite>> {
-        let test_list = self.get_test_list(params)?;
+    fn split_task_fallback(
+        &self,
+        params: &ResmokeGenParams,
+        multiversion_name: Option<&str>,
+    ) -> Result<Vec<SubSuite>> {
+        let origin_suite = multiversion_name.unwrap_or(&params.suite_name);
+        let test_list = self.get_test_list(params, multiversion_name)?;
         let n_suites = min(test_list.len(), self.config.n_suites);
         let tasks_per_suite = test_list.len() / n_suites;
 
@@ -448,8 +470,10 @@ impl GenResmokeTaskServiceImpl {
             if current_tests.len() >= tasks_per_suite {
                 sub_suites.push(SubSuite {
                     index: Some(i),
-                    name: params.task_name.to_string(),
+                    name: multiversion_name.unwrap_or(&params.task_name).to_string(),
                     test_list: current_tests,
+                    origin_suite: origin_suite.to_string(),
+                    exclude_test_list: None,
                     mv_exclude_tags: None,
                     is_enterprise: params.is_enterprise,
                 });
@@ -461,8 +485,10 @@ impl GenResmokeTaskServiceImpl {
         if !current_tests.is_empty() {
             sub_suites.push(SubSuite {
                 index: Some(i),
-                name: params.task_name.to_string(),
+                name: multiversion_name.unwrap_or(&params.task_name).to_string(),
                 test_list: current_tests,
+                origin_suite: origin_suite.to_string(),
+                exclude_test_list: None,
                 mv_exclude_tags: None,
                 is_enterprise: params.is_enterprise,
             });
@@ -476,35 +502,36 @@ impl GenResmokeTaskServiceImpl {
     /// # Arguments
     ///
     /// * `params` - Parameters for how task should be generated.
-    /// * `sub_suites` - Sub-suites that were created for the task being generated.
+    /// * `build_variant` - Build variant to base generation off.
     ///
     /// # Returns
     ///
     /// List of sub-suites that includes versions fall all multiversion combinations.
-    fn create_multiversion_combinations(
+    async fn create_multiversion_combinations(
         &self,
         params: &ResmokeGenParams,
-        sub_suites: &[SubSuite],
+        build_variant: &str,
     ) -> Result<Vec<SubSuite>> {
         let mut mv_sub_suites = vec![];
         for (old_version, version_combination) in self
             .multiversion_service
             .multiversion_iter(&params.suite_name)?
         {
-            for sub_suite in sub_suites {
-                let suite = self.multiversion_service.name_multiversion_suite(
-                    &sub_suite.name,
-                    &old_version,
-                    &version_combination,
-                );
-                mv_sub_suites.push(SubSuite {
-                    index: sub_suite.index,
-                    name: suite,
-                    test_list: sub_suite.test_list.clone(),
-                    mv_exclude_tags: Some(old_version.clone()),
-                    is_enterprise: params.is_enterprise,
-                });
-            }
+            let multiversion_name = self.multiversion_service.name_multiversion_suite(
+                &params.suite_name,
+                &old_version,
+                &version_combination,
+            );
+            let multiversion_tags = Some(old_version.clone());
+            let suites = self
+                .create_tasks(
+                    params,
+                    build_variant,
+                    Some(&multiversion_name),
+                    multiversion_tags,
+                )
+                .await?;
+            mv_sub_suites.extend_from_slice(&suites);
         }
 
         Ok(mv_sub_suites)
@@ -548,6 +575,67 @@ impl GenResmokeTaskServiceImpl {
             ..Default::default()
         }
     }
+
+    /// Create sub-suites based on the given information.
+    ///
+    /// # Arguments
+    ///
+    /// * `params` - Parameters for how tasks should be generated.
+    /// * `build_variant` - Name of build variant to base generation off.
+    /// * `multiversion_name` - Name of task if performing multiversion generation.
+    /// * `multiversion_tags` - Tag to include when performing multiversion generation.
+    ///
+    /// # Returns
+    ///
+    /// List of sub-suites that were generated.
+    async fn create_tasks(
+        &self,
+        params: &ResmokeGenParams,
+        build_variant: &str,
+        multiversion_name: Option<&str>,
+        multiversion_tags: Option<String>,
+    ) -> Result<Vec<SubSuite>> {
+        let origin_suite = multiversion_name.unwrap_or(&params.suite_name);
+        let mut sub_suites = if self.config.use_task_split_fallback {
+            self.split_task_fallback(params, multiversion_name)?
+        } else {
+            let task_history = self
+                .task_history_service
+                .get_task_history(&params.task_name, build_variant)
+                .await;
+
+            match task_history {
+                Ok(task_history) => self.split_task(params, &task_history, multiversion_name)?,
+                Err(err) => {
+                    warn!(
+                        task_name = params.task_name.as_str(),
+                        error = err.to_string().as_str(),
+                        "Could not get task history from evergreen",
+                    );
+                    // If we couldn't get the task history, then fallback to splitting the tests evenly
+                    // among the desired number of sub-suites.
+                    self.split_task_fallback(params, multiversion_name)?
+                }
+            }
+        };
+
+        // Add a `_misc` sub-task to the list of tasks.
+        let full_test_list: Vec<String> = sub_suites
+            .iter()
+            .flat_map(|s| s.test_list.clone())
+            .collect();
+        sub_suites.push(SubSuite {
+            index: None,
+            name: multiversion_name.unwrap_or(&params.task_name).to_string(),
+            test_list: vec![],
+            origin_suite: origin_suite.to_string(),
+            exclude_test_list: Some(full_test_list),
+            mv_exclude_tags: multiversion_tags,
+            is_enterprise: params.is_enterprise,
+        });
+
+        Ok(sub_suites)
+    }
 }
 
 #[async_trait]
@@ -567,27 +655,11 @@ impl GenResmokeTaskService for GenResmokeTaskServiceImpl {
         params: &ResmokeGenParams,
         build_variant: &str,
     ) -> Result<Box<dyn GeneratedSuite>> {
-        let mut sub_suites = if self.config.use_task_split_fallback {
-            self.split_task_fallback(params)?
+        let sub_suites = if params.generate_multiversion_combos {
+            self.create_multiversion_combinations(params, build_variant)
+                .await?
         } else {
-            let task_history = self
-                .task_history_service
-                .get_task_history(&params.task_name, build_variant)
-                .await;
-
-            match task_history {
-                Ok(task_history) => self.split_task(params, &task_history)?,
-                Err(err) => {
-                    warn!(
-                        task_name = params.task_name.as_str(),
-                        error = err.to_string().as_str(),
-                        "Could not get task history from evergreen",
-                    );
-                    // If we couldn't get the task history, then fallback to splitting the tests evenly
-                    // among the desired number of sub-suites.
-                    self.split_task_fallback(params)?
-                }
-            }
+            self.create_tasks(params, build_variant, None, None).await?
         };
 
         let sub_task_total = sub_suites.len();
@@ -599,19 +671,6 @@ impl GenResmokeTaskService for GenResmokeTaskServiceImpl {
         };
         let mut resmoke_config_actor = self.resmoke_config_actor.lock().await;
         resmoke_config_actor.write_sub_suite(&suite_info).await;
-
-        if params.generate_multiversion_combos {
-            sub_suites = self.create_multiversion_combinations(params, &sub_suites)?;
-        } else {
-            // Add a `_misc` sub-task to the list of tasks.
-            sub_suites.push(SubSuite {
-                index: None,
-                name: params.task_name.to_string(),
-                test_list: vec![],
-                mv_exclude_tags: None,
-                is_enterprise: params.is_enterprise,
-            });
-        }
 
         Ok(Box::new(GeneratedResmokeSuite {
             task_name: params.task_name.clone(),
@@ -916,7 +975,7 @@ mod tests {
         };
 
         let sub_suites = gen_resmoke_service
-            .split_task(&params, &task_history)
+            .split_task(&params, &task_history, None)
             .unwrap();
 
         assert_eq!(sub_suites.len(), n_suites);
@@ -951,7 +1010,9 @@ mod tests {
             ..Default::default()
         };
 
-        let sub_suites = gen_resmoke_service.split_task_fallback(&params).unwrap();
+        let sub_suites = gen_resmoke_service
+            .split_task_fallback(&params, None)
+            .unwrap();
 
         assert_eq!(sub_suites.len(), n_suites);
         let suite_0 = &sub_suites[0];
@@ -996,7 +1057,9 @@ mod tests {
             ..Default::default()
         };
 
-        let sub_suites = gen_resmoke_service.split_task_fallback(&params).unwrap();
+        let sub_suites = gen_resmoke_service
+            .split_task_fallback(&params, None)
+            .unwrap();
         let all_tests: Vec<String> = sub_suites
             .iter()
             .flat_map(|s| s.test_list.clone())
@@ -1005,27 +1068,28 @@ mod tests {
     }
 
     // create_multiversion_combinations tests.
-    #[test]
-    fn test_create_multiversion_combinations() {
+    #[tokio::test]
+    async fn test_create_multiversion_combinations() {
         let old_version = vec!["last_lts".to_string(), "continuous".to_string()];
         let version_combos = vec!["new_new_new".to_string(), "old_new_old".to_string()];
         let sub_suites = vec![
             SubSuite {
                 index: Some(0),
                 name: "suite".to_string(),
+                origin_suite: "suite".to_string(),
                 test_list: vec!["test_0.js".to_string(), "test_1.js".to_string()],
-                mv_exclude_tags: None,
-                is_enterprise: false,
+                ..Default::default()
             },
             SubSuite {
                 index: Some(1),
                 name: "suite".to_string(),
+                origin_suite: "suite".to_string(),
                 test_list: vec!["test_2.js".to_string(), "test_3.js".to_string()],
-                mv_exclude_tags: None,
-                is_enterprise: false,
+                ..Default::default()
             },
         ];
         let params = ResmokeGenParams {
+            suite_name: "suite".to_string(),
             ..Default::default()
         };
         let task_history = TaskRuntimeHistory {
@@ -1041,7 +1105,8 @@ mod tests {
         );
 
         let suite_list = gen_resmoke_service
-            .create_multiversion_combinations(&params, &sub_suites)
+            .create_multiversion_combinations(&params, "build_variant")
+            .await
             .unwrap();
 
         for version in old_version {
