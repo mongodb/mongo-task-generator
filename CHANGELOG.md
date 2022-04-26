@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1 - 2022-04-26
+
+* Generate consistent suites names for large multiversion suites.
+
 ## 0.3.0 - 2022-04-22
 
 * Use matrix suites for looking up multiversion suite information.
