@@ -14,9 +14,8 @@ use async_trait::async_trait;
 use tokio::sync::{mpsc, oneshot};
 
 use crate::{
-    evergreen_names::ENTERPRISE_MODULE,
     resmoke::{resmoke_proxy::TestDiscovery, resmoke_suite::ResmokeSuiteConfig},
-    utils::fs_service::FsService,
+    utils::{fs_service::FsService, task_name::name_generated_task},
 };
 
 use super::resmoke_tasks::{ResmokeSuiteGenerationInfo, SubSuite};
@@ -139,17 +138,18 @@ impl WriteConfigActorImpl {
         sub_suites: &[SubSuite],
         resmoke_config_cache: &mut ResmokeConfigCache,
     ) -> Result<()> {
+        let total_tasks = sub_suites.len();
         let results: Result<Vec<()>> = sub_suites
             .iter()
             .filter(|s| s.exclude_test_list.is_none())
             .map(|s| {
                 let origin_config = resmoke_config_cache.get_config(&s.origin_suite)?;
                 let config = origin_config.with_new_tests(Some(&s.test_list), None);
-                let filename = if s.is_enterprise {
-                    format!("{}_{}-{}.yml", s.name, s.index.unwrap(), ENTERPRISE_MODULE)
-                } else {
-                    format!("{}_{}.yml", s.name, s.index.unwrap())
-                };
+
+                let filename = format!(
+                    "{}.yml",
+                    name_generated_task(&s.name, s.index, total_tasks, s.is_enterprise)
+                );
                 let mut path = PathBuf::from(&self.target_dir);
                 path.push(filename);
 
@@ -172,6 +172,7 @@ impl WriteConfigActorImpl {
         sub_suites: &[SubSuite],
         resmoke_config_cache: &mut ResmokeConfigCache,
     ) -> Result<()> {
+        let total_tasks = sub_suites.len();
         let results: Result<Vec<()>> = sub_suites
             .iter()
             .filter(|s| s.exclude_test_list.is_some())
@@ -179,11 +180,10 @@ impl WriteConfigActorImpl {
                 let origin_config = resmoke_config_cache.get_config(&s.origin_suite)?;
                 let test_list = s.exclude_test_list.clone().unwrap();
                 let misc_config = origin_config.with_new_tests(None, Some(&test_list));
-                let filename = if s.is_enterprise {
-                    format!("{}_misc-{}.yml", s.name, ENTERPRISE_MODULE)
-                } else {
-                    format!("{}_misc.yml", s.name)
-                };
+                let filename = format!(
+                    "{}.yml",
+                    name_generated_task(&s.name, s.index, total_tasks, s.is_enterprise)
+                );
                 let mut path = PathBuf::from(&self.target_dir);
                 path.push(filename);
                 self.fs_service

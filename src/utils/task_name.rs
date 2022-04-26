@@ -1,4 +1,6 @@
 //! Utilities for working with task names.
+
+use crate::evergreen_names::ENTERPRISE_MODULE;
 const GEN_SUFFIX: &str = "_gen";
 
 /// Generate a name for a generated task.
@@ -13,12 +15,25 @@ pub fn name_generated_task(
     display_name: &str,
     sub_task_index: Option<usize>,
     total_tasks: usize,
+    is_enterprise: bool,
 ) -> String {
+    let suffix = if is_enterprise {
+        format!("-{}", ENTERPRISE_MODULE)
+    } else {
+        "".to_string()
+    };
+
     if let Some(index) = sub_task_index {
         let alignment = (total_tasks as f64).log10().ceil() as usize;
-        format!("{}_{:0fill$}", display_name, index, fill = alignment)
+        format!(
+            "{}_{:0fill$}{}",
+            display_name,
+            index,
+            suffix,
+            fill = alignment
+        )
     } else {
-        format!("{}_misc", display_name)
+        format!("{}_misc{}", display_name, suffix)
     }
 }
 
@@ -46,17 +61,22 @@ mod tests {
     use rstest::*;
 
     #[rstest]
-    #[case("task", Some(0), 10, "task_0")]
-    #[case("task", Some(42), 1001, "task_0042")]
-    #[case("task", None, 1001, "task_misc")]
-    #[case("task", None, 0, "task_misc")]
+    #[case("task", Some(0), 10, false, "task_0")]
+    #[case("task", Some(42), 1001, false, "task_0042")]
+    #[case("task", None, 1001, false, "task_misc")]
+    #[case("task", None, 0, false, "task_misc")]
+    #[case("task", Some(0), 10, true, "task_0-enterprise")]
+    #[case("task", Some(42), 1001, true, "task_0042-enterprise")]
+    #[case("task", None, 1001, true, "task_misc-enterprise")]
+    #[case("task", None, 0, true, "task_misc-enterprise")]
     fn test_name_generated_task_should_not_include_suffix(
         #[case] name: &str,
         #[case] index: Option<usize>,
         #[case] total: usize,
+        #[case] is_enterprise: bool,
         #[case] expected: &str,
     ) {
-        let task_name = name_generated_task(name, index, total);
+        let task_name = name_generated_task(name, index, total, is_enterprise);
 
         assert_eq!(task_name, expected);
     }

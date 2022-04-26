@@ -23,7 +23,7 @@ use tracing::{event, warn, Level};
 use crate::{
     evergreen::evg_task_history::{get_test_name, TaskHistoryService, TaskRuntimeHistory},
     evergreen_names::{
-        ADD_GIT_TAG, CONFIGURE_EVG_API_CREDS, DO_MULTIVERSION_SETUP, DO_SETUP, ENTERPRISE_MODULE,
+        ADD_GIT_TAG, CONFIGURE_EVG_API_CREDS, DO_MULTIVERSION_SETUP, DO_SETUP,
         GEN_TASK_CONFIG_LOCATION, GET_PROJECT_WITH_NO_MODULES, MULTIVERSION_EXCLUDE_TAG,
         MULTIVERSION_EXCLUDE_TAGS_FILE, REQUIRE_MULTIVERSION_SETUP, RESMOKE_ARGS, RESMOKE_JOBS_MAX,
         RUN_GENERATED_TESTS, SUITE_NAME,
@@ -556,11 +556,12 @@ impl GenResmokeTaskServiceImpl {
         let exclude_tags = self
             .multiversion_service
             .exclude_tags_for_task(&params.task_name);
-        let mut suite_file =
-            name_generated_task(&sub_suite.name, sub_suite.index, total_sub_suites);
-        if params.is_enterprise {
-            suite_file = format!("{}-{}", suite_file, ENTERPRISE_MODULE);
-        }
+        let suite_file = name_generated_task(
+            &sub_suite.name,
+            sub_suite.index,
+            total_sub_suites,
+            params.is_enterprise,
+        );
 
         let run_test_vars = params.build_run_test_vars(&suite_file, sub_suite, &exclude_tags);
 
