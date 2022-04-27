@@ -37,6 +37,9 @@ use super::{
     resmoke_config_writer::ResmokeConfigActor,
 };
 
+/// Required number of tests needing stats to use historic data for task splitting.
+const REQUIRED_STATS_THRESHOLD: f32 = 0.8;
+
 /// Parameters describing how a specific resmoke suite should be generated.
 #[derive(Clone, Debug, Default)]
 pub struct ResmokeGenParams {
@@ -332,6 +335,20 @@ impl GenResmokeTaskServiceImpl {
     }
 }
 
+/// Calculate the number of tests that fit in the given percent.
+///
+/// # Arguments
+///
+/// * `n_tests` - Total number of tests.
+/// * `percent` - Percentage to calculate.
+///
+/// # Returns
+///
+/// Number of tests that fit in the given percentage.
+fn percent_of_tests(n_tests: usize, percent: f32) -> usize {
+    (n_tests as f32 * percent) as usize
+}
+
 impl GenResmokeTaskServiceImpl {
     /// Split the given task into a number of sub-tasks for parallel execution.
     ///
@@ -351,6 +368,18 @@ impl GenResmokeTaskServiceImpl {
     ) -> Result<Vec<SubSuite>> {
         let origin_suite = multiversion_name.unwrap_or(&params.suite_name);
         let test_list = self.get_test_list(params, multiversion_name)?;
+        let required_stats_count = percent_of_tests(test_list.len(), REQUIRED_STATS_THRESHOLD);
+        if task_stats.test_map.len() < required_stats_count {
+            event!(
+                Level::WARN,
+                "Incomplete runtime stats for {}, using fallback, stat_count={}, test_count={}, limit={}",
+                &params.suite_name,
+                task_stats.test_map.len(),
+                test_list.len(),
+                required_stats_count
+            );
+            return self.split_task_fallback(params, multiversion_name);
+        }
         let total_runtime = task_stats
             .test_map
             .iter()
@@ -991,6 +1020,41 @@ mod tests {
         assert!(suite_2.test_list.contains(&"test_5.js".to_string()));
     }
 
+    #[test]
+    fn test_split_task_with_missing_history_should_split_tasks_equally() {
+        let n_suites = 3;
+        let test_list: Vec<String> = (0..12)
+            .into_iter()
+            .map(|i| format!("test_{}.js", i))
+            .collect();
+        let task_history = TaskRuntimeHistory {
+            task_name: "my task".to_string(),
+            test_map: hashmap! {
+                "test_0".to_string() => build_mock_test_runtime("test_0.js", 100.0),
+                "test_1".to_string() => build_mock_test_runtime("test_1.js", 50.0),
+                "test_2".to_string() => build_mock_test_runtime("test_2.js", 50.0),
+            },
+        };
+        let gen_resmoke_service =
+            build_mocked_service(test_list, task_history.clone(), n_suites, vec![], vec![]);
+
+        let params = ResmokeGenParams {
+            ..Default::default()
+        };
+
+        let sub_suites = gen_resmoke_service
+            .split_task(&params, &task_history, None)
+            .unwrap();
+
+        assert_eq!(sub_suites.len(), n_suites);
+        let suite_0 = &sub_suites[0];
+        assert_eq!(suite_0.test_list.len(), 4);
+        let suite_1 = &sub_suites[1];
+        assert_eq!(suite_1.test_list.len(), 4);
+        let suite_2 = &sub_suites[2];
+        assert_eq!(suite_2.test_list.len(), 4);
+    }
+
     // split_task_fallback tests
 
     #[test]
@@ -1186,5 +1250,21 @@ mod tests {
         assert_eq!(get_evg_fn_name(&commands[2]), Some("do setup"));
         assert_eq!(get_evg_fn_name(&commands[4]), Some("do multiversion setup"));
         assert_eq!(get_evg_fn_name(&commands[5]), Some("run test"));
+    }
+
+    // percent_of_tests tests.
+    #[rstest]
+    #[case(100, 0.8, 80)]
+    #[case(100, 1.0, 100)]
+    #[case(101, 0.8, 80)]
+    #[case(99, 0.8, 79)]
+    fn test_percent_of_tests(
+        #[case] n_tests: usize,
+        #[case] percent: f32,
+        #[case] expected_result: usize,
+    ) {
+        let result = percent_of_tests(n_tests, percent);
+
+        assert_eq!(result, expected_result);
     }
 }
