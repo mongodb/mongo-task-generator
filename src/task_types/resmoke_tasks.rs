@@ -1257,7 +1257,7 @@ mod tests {
     #[case(100, 0.8, 80)]
     #[case(100, 1.0, 100)]
     #[case(101, 0.8, 80)]
-    #[case(99, 1.0, 99)]
+    #[case(99, 0.8, 79)]
     fn test_percent_of_tests(
         #[case] n_tests: usize,
         #[case] percent: f32,
