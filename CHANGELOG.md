@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.2 - 2022-04-27
+
+* Use fallback split method if historic information is incomplete.
+
 ## 0.3.1 - 2022-04-26
 
 * Generate consistent suites names for large multiversion suites.
