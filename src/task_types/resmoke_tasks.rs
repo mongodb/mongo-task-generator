@@ -1021,7 +1021,7 @@ mod tests {
     }
 
     #[test]
-    fn test_split_task_without_missing_history_should_split_tasks_equally() {
+    fn test_split_task_with_missing_history_should_split_tasks_equally() {
         let n_suites = 3;
         let test_list: Vec<String> = (0..12)
             .into_iter()
@@ -1256,6 +1256,8 @@ mod tests {
     #[rstest]
     #[case(100, 0.8, 80)]
     #[case(100, 1.0, 100)]
+    #[case(101, 0.8, 80)]
+    #[case(99, 1.0, 99)]
     fn test_percent_of_tests(
         #[case] n_tests: usize,
         #[case] percent: f32,
