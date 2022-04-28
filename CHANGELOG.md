@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.4 - 2022-04-28
+
+* Properly handle origin suites for multiversion tasks.
+
 ## 0.3.3 - 2022-04-28
 
 * Ensure multiversion tags are passed to sub-tasks.

@@ -83,9 +83,10 @@ impl ResmokeGenParams {
         sub_suite: &SubSuite,
         exclude_tags: &str,
     ) -> HashMap<String, ParamValue> {
+        let resmoke_args = self.build_resmoke_args(exclude_tags, &sub_suite.origin_suite);
         let mut run_test_vars = hashmap! {
             REQUIRE_MULTIVERSION_SETUP.to_string() => ParamValue::from(self.require_multiversion_setup),
-            RESMOKE_ARGS.to_string() => ParamValue::from(self.build_resmoke_args(exclude_tags).as_str()),
+            RESMOKE_ARGS.to_string() => ParamValue::from(resmoke_args.as_str()),
             SUITE_NAME.to_string() => ParamValue::from(format!("generated_resmoke_config/{}.yml", suite_file).as_str()),
             GEN_TASK_CONFIG_LOCATION.to_string() => ParamValue::from(self.config_location.as_str()),
         };
@@ -109,10 +110,15 @@ impl ResmokeGenParams {
 
     /// Build the resmoke arguments to use for a generate sub-task.
     ///
+    /// # Arguments
+    ///
+    /// * `exclude_tags` - Resmoke tags to exclude.
+    /// * `origin_suite` - Suite the generated suite is based on.
+    ///
     /// # Returns
     ///
     /// String of arguments to pass to resmoke.
-    fn build_resmoke_args(&self, exclude_tags: &str) -> String {
+    fn build_resmoke_args(&self, exclude_tags: &str, origin_suite: &str) -> String {
         let suffix = if self.require_multiversion_setup {
             format!(
                 "--tagFile=generated_resmoke_config/{} --excludeWithAnyTags={}",
@@ -130,7 +136,7 @@ impl ResmokeGenParams {
 
         format!(
             "--originSuite={} {} {} {}",
-            self.suite_name, self.resmoke_args, repeat_arg, suffix
+            origin_suite, self.resmoke_args, repeat_arg, suffix
         )
     }
 
@@ -829,6 +835,7 @@ mod tests {
         };
         let sub_suite = SubSuite {
             mv_exclude_tags: Some("mv_tag_0,mv_tag_1".to_string()),
+            origin_suite: "my_origin_suite".to_string(),
             ..Default::default()
         };
 
@@ -841,7 +848,7 @@ mod tests {
         );
         assert_eq!(
             test_vars.get("resmoke_args").unwrap(),
-            &ParamValue::from("--originSuite=my_suite resmoke args  --tagFile=generated_resmoke_config/multiversion_exclude_tags.yml --excludeWithAnyTags=tag_0,tag_1,tag_2")
+            &ParamValue::from("--originSuite=my_origin_suite resmoke args  --tagFile=generated_resmoke_config/multiversion_exclude_tags.yml --excludeWithAnyTags=tag_0,tag_1,tag_2")
         );
     }
 
@@ -854,9 +861,9 @@ mod tests {
             ..Default::default()
         };
 
-        let resmoke_args = params.build_resmoke_args("");
+        let resmoke_args = params.build_resmoke_args("", "my_origin_suite");
 
-        assert!(resmoke_args.contains("--originSuite=my_suite"));
+        assert!(resmoke_args.contains("--originSuite=my_origin_suite"));
         assert!(resmoke_args.contains("--args to --pass to resmoke"));
         assert!(resmoke_args.contains("--repeatSuites=3"));
     }
