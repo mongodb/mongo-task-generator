@@ -835,7 +835,7 @@ mod tests {
         };
         let sub_suite = SubSuite {
             mv_exclude_tags: Some("mv_tag_0,mv_tag_1".to_string()),
-            origin_suite: "my_origin_suite".to_string(), 
+            origin_suite: "my_origin_suite".to_string(),
             ..Default::default()
         };
 
