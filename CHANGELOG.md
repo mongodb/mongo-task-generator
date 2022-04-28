@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.3 - 2022-04-28
+
+* Ensure multiversion tags are passed to sub-tasks.
+
 ## 0.3.2 - 2022-04-27
 
 * Use fallback split method if historic information is incomplete.
