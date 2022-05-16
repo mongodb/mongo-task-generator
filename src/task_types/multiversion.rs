@@ -186,7 +186,9 @@ impl MultiversionService for MultiversionServiceImpl {
         let exclude_tags = if let Some(mode) = mv_mode {
             match mode.as_str() {
                 MULTIVERSION_LAST_LTS => self.multiversion_config.get_fcv_tags_for_lts(),
-                MULTIVERSION_LAST_CONTINUOUS => self.multiversion_config.get_fcv_tags_for_continuous(),
+                MULTIVERSION_LAST_CONTINUOUS => {
+                    self.multiversion_config.get_fcv_tags_for_continuous()
+                }
                 _ => panic!("Unknown multiversion mode: {}", &mode),
             }
         } else {
