@@ -596,7 +596,7 @@ impl GenResmokeTaskServiceImpl {
     ) -> EvgTask {
         let exclude_tags = self
             .multiversion_service
-            .exclude_tags_for_task(&params.task_name);
+            .exclude_tags_for_task(&params.task_name, sub_suite.mv_exclude_tags.clone());
         let suite_file = name_generated_task(
             &sub_suite.name,
             sub_suite.index,
@@ -951,7 +951,7 @@ mod tests {
             format!("{}_{}_{}", base_name, old_version, version_combination)
         }
 
-        fn exclude_tags_for_task(&self, _task_name: &str) -> String {
+        fn exclude_tags_for_task(&self, _task_name: &str, _mv_mode: Option<String>) -> String {
             "tag_0,tag_1".to_string()
         }
     }

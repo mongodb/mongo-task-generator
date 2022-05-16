@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.5 - 2022-05-16
+
+* Support separate exclude tags for last lts and last continuous.
+
 ## 0.3.4 - 2022-04-28
 
 * Properly handle origin suites for multiversion tasks.

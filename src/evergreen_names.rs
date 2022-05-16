@@ -93,3 +93,7 @@ pub const BACKPORT_REQUIRED_TAG: &str = "backport_required_multiversion";
 pub const MULTIVERSION_INCOMPATIBLE: &str = "multiversion_incompatible";
 /// Filename of multiversion exclude tags file.
 pub const MULTIVERSION_EXCLUDE_TAGS_FILE: &str = "multiversion_exclude_tags.yml";
+/// Name of last lts configuration.
+pub const MULTIVERSION_LAST_LTS: &str = "last_lts";
+/// Name of last continuous configuration.
+pub const MULTIVERSION_LAST_CONTINUOUS: &str = "last_continuous";

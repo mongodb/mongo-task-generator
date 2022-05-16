@@ -22,8 +22,14 @@ use std::sync::Arc;
 use anyhow::Result;
 
 use crate::{
-    evergreen_names::{BACKPORT_REQUIRED_TAG, MULTIVERSION_INCOMPATIBLE},
-    resmoke::{resmoke_proxy::TestDiscovery, resmoke_suite::SuiteFixtureType},
+    evergreen_names::{
+        BACKPORT_REQUIRED_TAG, MULTIVERSION_INCOMPATIBLE, MULTIVERSION_LAST_CONTINUOUS,
+        MULTIVERSION_LAST_LTS,
+    },
+    resmoke::{
+        resmoke_proxy::{MultiversionConfig, TestDiscovery},
+        resmoke_suite::SuiteFixtureType,
+    },
 };
 
 /// A service for helping generating multiversion tasks.
@@ -74,11 +80,12 @@ pub trait MultiversionService: Sync + Send {
     /// # Arguments
     ///
     /// * `task_name` - Name of task to query.
+    /// * `mv_mode` - Type of multiversion task being generated (last_lts, continuous).
     ///
     /// # Returns
     ///
     /// Exclude tags as a comma-separated string.
-    fn exclude_tags_for_task(&self, task_name: &str) -> String;
+    fn exclude_tags_for_task(&self, task_name: &str, mv_mode: Option<String>) -> String;
 }
 
 /// Implementation of Multiversion service.
@@ -86,11 +93,8 @@ pub struct MultiversionServiceImpl {
     /// Service to gather details about test suites.
     discovery_service: Arc<dyn TestDiscovery>,
 
-    /// Old versions that need to be tested against.
-    old_versions: Vec<String>,
-
-    /// Tags for required FCV version.
-    requires_fcv_tag: String,
+    /// Multiversion Configuration.
+    multiversion_config: MultiversionConfig,
 }
 
 /// Implementation of Multiversion service.
@@ -104,8 +108,7 @@ impl MultiversionServiceImpl {
         let multiversion_config = discovery_service.get_multiversion_config()?;
         Ok(Self {
             discovery_service,
-            old_versions: multiversion_config.last_versions,
-            requires_fcv_tag: multiversion_config.requires_fcv_tag,
+            multiversion_config,
         })
     }
 }
@@ -139,7 +142,7 @@ impl MultiversionService for MultiversionServiceImpl {
     fn multiversion_iter(&self, suite_name: &str) -> Result<MultiversionIterator> {
         let version_combinations = self.get_version_combinations(suite_name)?;
         Ok(MultiversionIterator::new(
-            &self.old_versions,
+            &self.multiversion_config.last_versions,
             &version_combinations,
         ))
     }
@@ -178,14 +181,21 @@ impl MultiversionService for MultiversionServiceImpl {
     /// # Returns
     ///
     /// Exclude tags as a comma-separated string.
-    fn exclude_tags_for_task(&self, task_name: &str) -> String {
+    fn exclude_tags_for_task(&self, task_name: &str, mv_mode: Option<String>) -> String {
         let task_tag = format!("{}_{}", task_name, BACKPORT_REQUIRED_TAG);
-        let tags = vec![
-            self.requires_fcv_tag.clone(),
+        let exclude_tags = mv_mode.map(|mode| match mode.as_str() {
+            MULTIVERSION_LAST_LTS => self.multiversion_config.get_fcv_tags_for_lts(),
+            MULTIVERSION_LAST_CONTINUOUS => self.multiversion_config.get_fcv_tags_for_continuous(),
+            _ => panic!("Unknown multiversion mode: {}", &mode),
+        });
+        let mut tags = vec![
             MULTIVERSION_INCOMPATIBLE.to_string(),
             BACKPORT_REQUIRED_TAG.to_string(),
             task_tag,
         ];
+        if let Some(exclude_tags) = exclude_tags {
+            tags.push(exclude_tags);
+        }
 
         tags.join(",")
     }
@@ -274,7 +284,9 @@ mod tests {
         fn get_multiversion_config(&self) -> Result<MultiversionConfig> {
             Ok(MultiversionConfig {
                 last_versions: self.old_versions.clone(),
-                requires_fcv_tag: "".to_string(),
+                requires_fcv_tag: "requires_fallback".to_string(),
+                requires_fcv_tag_lts: Some("requires_v6.0,requires_v5.3,requires_v5.2".to_string()),
+                requires_fcv_tag_continuous: Some("requires_v6.0".to_string()),
             })
         }
     }
@@ -386,5 +398,30 @@ mod tests {
         );
 
         assert_eq!(suite_name, expected_name);
+    }
+
+    // tests for exclude_tags_for_task.
+
+    #[rstest]
+    #[case(None, "sharding_backport_required_multiversion")]
+    #[case(Some("last_lts".to_string()), "sharding_backport_required_multiversion,requires_v6.0,requires_v5.3,requires_v5.2")]
+    #[case(Some("last_continuous".to_string()), "sharding_backport_required_multiversion,requires_v6.0")]
+    fn test_exclude_tags_for_task(#[case] mv_mode: Option<String>, #[case] extra_tags: &str) {
+        let discovery_service = Arc::new(MockTestDiscovery {
+            old_versions: vec![],
+            suite_config: None,
+        });
+        let multiversion_service = MultiversionServiceImpl::new(discovery_service).unwrap();
+
+        let task_name = "sharding";
+        let tags = multiversion_service.exclude_tags_for_task(task_name, mv_mode);
+
+        assert_eq!(
+            tags,
+            format!(
+                "multiversion_incompatible,backport_required_multiversion,{}",
+                extra_tags
+            )
+        );
     }
 }
