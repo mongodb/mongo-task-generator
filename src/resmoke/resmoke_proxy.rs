@@ -133,8 +133,15 @@ impl TestDiscovery for ResmokeProxy {
 pub struct MultiversionConfig {
     /// Previous version of MongoDB to test against.
     pub last_versions: Vec<String>,
+
     /// Tags for required FCV version.
     pub requires_fcv_tag: String,
+
+    /// Tags for last LTS FCV versions.
+    pub requires_fcv_tag_lts: Option<String>,
+
+    /// Tags for last continuous FCV versions.
+    pub requires_fcv_tag_continuous: Option<String>,
 }
 
 impl MultiversionConfig {
@@ -144,5 +151,81 @@ impl MultiversionConfig {
             $cmd $[script] multiversion-config
         )?;
         Ok(serde_yaml::from_str(&cmd_output)?)
+    }
+
+    /// Get the required FCV tag for the lts version.
+    pub fn get_fcv_tags_for_lts(&self) -> String {
+        if let Some(requires_fcv_tag_lts) = &self.requires_fcv_tag_lts {
+            requires_fcv_tag_lts.clone()
+        } else {
+            self.requires_fcv_tag.clone()
+        }
+    }
+
+    /// Get the required FCV tag for the continuous version.
+    pub fn get_fcv_tags_for_continuous(&self) -> String {
+        if let Some(requires_fcv_tag_continuous) = &self.requires_fcv_tag_continuous {
+            requires_fcv_tag_continuous.clone()
+        } else {
+            self.requires_fcv_tag.clone()
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // tests for get_fcv_tags_for_lts.
+    #[test]
+    fn test_get_fcv_tags_for_lts_should_use_lts_if_provided() {
+        let mv_config = MultiversionConfig {
+            last_versions: vec![],
+            requires_fcv_tag: "fcv_fallback".to_string(),
+            requires_fcv_tag_lts: Some("fcv_lts_explicit".to_string()),
+            requires_fcv_tag_continuous: None,
+        };
+
+        assert_eq!(&mv_config.get_fcv_tags_for_lts(), "fcv_lts_explicit")
+    }
+
+    #[test]
+    fn test_get_fcv_tags_for_lts_should_fallback_if_no_lts_provided() {
+        let mv_config = MultiversionConfig {
+            last_versions: vec![],
+            requires_fcv_tag: "fcv_fallback".to_string(),
+            requires_fcv_tag_lts: None,
+            requires_fcv_tag_continuous: None,
+        };
+
+        assert_eq!(&mv_config.get_fcv_tags_for_lts(), "fcv_fallback")
+    }
+
+    // tests for get_fcv_tags_for_continuous.
+    #[test]
+    fn test_get_fcv_tags_for_continuous_should_use_continuous_if_provided() {
+        let mv_config = MultiversionConfig {
+            last_versions: vec![],
+            requires_fcv_tag: "fcv_fallback".to_string(),
+            requires_fcv_tag_lts: None,
+            requires_fcv_tag_continuous: Some("fcv_continuous_explicit".to_string()),
+        };
+
+        assert_eq!(
+            &mv_config.get_fcv_tags_for_continuous(),
+            "fcv_continuous_explicit"
+        )
+    }
+
+    #[test]
+    fn test_get_fcv_tags_for_continuous_should_fallback_if_no_continuous_provided() {
+        let mv_config = MultiversionConfig {
+            last_versions: vec![],
+            requires_fcv_tag: "fcv_fallback".to_string(),
+            requires_fcv_tag_lts: None,
+            requires_fcv_tag_continuous: None,
+        };
+
+        assert_eq!(&mv_config.get_fcv_tags_for_continuous(), "fcv_fallback")
     }
 }
