@@ -183,19 +183,23 @@ impl MultiversionService for MultiversionServiceImpl {
     /// Exclude tags as a comma-separated string.
     fn exclude_tags_for_task(&self, task_name: &str, mv_mode: Option<String>) -> String {
         let task_tag = format!("{}_{}", task_name, BACKPORT_REQUIRED_TAG);
-        let exclude_tags = mv_mode.map(|mode| match mode.as_str() {
-            MULTIVERSION_LAST_LTS => self.multiversion_config.get_fcv_tags_for_lts(),
-            MULTIVERSION_LAST_CONTINUOUS => self.multiversion_config.get_fcv_tags_for_continuous(),
-            _ => panic!("Unknown multiversion mode: {}", &mode),
-        });
-        let mut tags = vec![
+        let exclude_tags = if let Some(mode) = mv_mode {
+            match mode.as_str() {
+                MULTIVERSION_LAST_LTS => self.multiversion_config.get_fcv_tags_for_lts(),
+                MULTIVERSION_LAST_CONTINUOUS => {
+                    self.multiversion_config.get_fcv_tags_for_continuous()
+                }
+                _ => panic!("Unknown multiversion mode: {}", &mode),
+            }
+        } else {
+            self.multiversion_config.requires_fcv_tag.clone()
+        };
+        let tags = vec![
             MULTIVERSION_INCOMPATIBLE.to_string(),
             BACKPORT_REQUIRED_TAG.to_string(),
             task_tag,
+            exclude_tags,
         ];
-        if let Some(exclude_tags) = exclude_tags {
-            tags.push(exclude_tags);
-        }
 
         tags.join(",")
     }
@@ -403,7 +407,7 @@ mod tests {
     // tests for exclude_tags_for_task.
 
     #[rstest]
-    #[case(None, "sharding_backport_required_multiversion")]
+    #[case(None, "sharding_backport_required_multiversion,requires_fallback")]
     #[case(Some("last_lts".to_string()), "sharding_backport_required_multiversion,requires_v6.0,requires_v5.3,requires_v5.2")]
     #[case(Some("last_continuous".to_string()), "sharding_backport_required_multiversion,requires_v6.0")]
     fn test_exclude_tags_for_task(#[case] mv_mode: Option<String>, #[case] extra_tags: &str) {
