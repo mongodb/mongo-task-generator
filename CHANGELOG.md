@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.6 - 2022-05-16
+
+* Support using the fallback multiverion
+
 ## 0.3.5 - 2022-05-16
 
 * Support separate exclude tags for last lts and last continuous.
