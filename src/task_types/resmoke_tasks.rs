@@ -65,6 +65,8 @@ pub struct ResmokeGenParams {
     pub dependencies: Vec<String>,
     /// Is this task for enterprise builds.
     pub is_enterprise: bool,
+    /// Arguments to pass to 'run tests' function.
+    pub pass_through_vars: Option<HashMap<String, ParamValue>>,
 }
 
 impl ResmokeGenParams {
@@ -83,13 +85,18 @@ impl ResmokeGenParams {
         sub_suite: &SubSuite,
         exclude_tags: &str,
     ) -> HashMap<String, ParamValue> {
+        let mut run_test_vars: HashMap<String, ParamValue> = hashmap! {};
+        if let Some(pass_through_vars) = &self.pass_through_vars {
+            run_test_vars.extend(pass_through_vars.clone());
+        }
+
         let resmoke_args = self.build_resmoke_args(exclude_tags, &sub_suite.origin_suite);
-        let mut run_test_vars = hashmap! {
+        run_test_vars.extend(hashmap! {
             REQUIRE_MULTIVERSION_SETUP.to_string() => ParamValue::from(self.require_multiversion_setup),
             RESMOKE_ARGS.to_string() => ParamValue::from(resmoke_args.as_str()),
             SUITE_NAME.to_string() => ParamValue::from(format!("generated_resmoke_config/{}.yml", suite_file).as_str()),
             GEN_TASK_CONFIG_LOCATION.to_string() => ParamValue::from(self.config_location.as_str()),
-        };
+        });
 
         if let Some(mv_exclude_tags) = &sub_suite.mv_exclude_tags {
             run_test_vars.insert(
@@ -784,6 +791,10 @@ mod tests {
         let params = ResmokeGenParams {
             suite_name: "my_suite".to_string(),
             resmoke_args: "resmoke args".to_string(),
+            pass_through_vars: Some(hashmap! {
+                "suite".to_string() => ParamValue::from("my_suite"),
+                "resmoke_args".to_string() => ParamValue::from("resmoke args"),
+            }),
             ..Default::default()
         };
         let sub_suite = SubSuite {
@@ -806,6 +817,11 @@ mod tests {
             suite_name: "my_suite".to_string(),
             resmoke_args: "resmoke args".to_string(),
             resmoke_jobs_max: Some(5),
+            pass_through_vars: Some(hashmap! {
+                "suite".to_string() => ParamValue::from("my_suite"),
+                "resmoke_args".to_string() => ParamValue::from("resmoke args"),
+                "resmoke_jobs_max".to_string() => ParamValue::from(5),
+            }),
             ..Default::default()
         };
         let sub_suite = SubSuite {
@@ -831,10 +847,14 @@ mod tests {
             suite_name: "my_suite".to_string(),
             resmoke_args: "resmoke args".to_string(),
             require_multiversion_setup: true,
+            pass_through_vars: Some(hashmap! {
+                "suite".to_string() => ParamValue::from("my_suite"),
+                "resmoke_args".to_string() => ParamValue::from("resmoke args"),
+            }),
             ..Default::default()
         };
         let sub_suite = SubSuite {
-            mv_exclude_tags: Some("mv_tag_0,mv_tag_1".to_string()),
+            mv_exclude_tags: Some("last_lts".to_string()),
             origin_suite: "my_origin_suite".to_string(),
             ..Default::default()
         };
@@ -844,11 +864,71 @@ mod tests {
         assert_eq!(test_vars.len(), 5);
         assert_eq!(
             test_vars.get("multiversion_exclude_tags_version").unwrap(),
-            &ParamValue::from("mv_tag_0,mv_tag_1")
+            &ParamValue::from("last_lts")
         );
         assert_eq!(
             test_vars.get("resmoke_args").unwrap(),
             &ParamValue::from("--originSuite=my_origin_suite resmoke args  --tagFile=generated_resmoke_config/multiversion_exclude_tags.yml --excludeWithAnyTags=tag_0,tag_1,tag_2")
+        );
+    }
+
+    #[test]
+    fn test_build_run_test_vars_with_pass_through_params() {
+        let params = ResmokeGenParams {
+            suite_name: "my_suite".to_string(),
+            resmoke_args: "resmoke args".to_string(),
+            pass_through_vars: Some(hashmap! {
+                "suite".to_string() => ParamValue::from("my_suite"),
+                "resmoke_args".to_string() => ParamValue::from("resmoke args"),
+                "multiversion_exclude_tags_version".to_string() => ParamValue::from("last_lts"),
+            }),
+            ..Default::default()
+        };
+        let sub_suite = SubSuite {
+            ..Default::default()
+        };
+
+        let test_vars = params.build_run_test_vars("my_suite_0", &sub_suite, "");
+
+        assert_eq!(test_vars.len(), 5);
+        assert_eq!(
+            test_vars.get("multiversion_exclude_tags_version").unwrap(),
+            &ParamValue::from("last_lts")
+        );
+        assert_eq!(
+            test_vars.get("suite").unwrap(),
+            &ParamValue::from("generated_resmoke_config/my_suite_0.yml")
+        );
+    }
+
+    #[test]
+    fn test_build_run_test_vars_pass_through_params_does_are_overridden() {
+        let params = ResmokeGenParams {
+            suite_name: "my_suite".to_string(),
+            resmoke_args: "resmoke args".to_string(),
+            pass_through_vars: Some(hashmap! {
+                "suite".to_string() => ParamValue::from("my_suite"),
+                "resmoke_args".to_string() => ParamValue::from("resmoke args"),
+                "multiversion_exclude_tags_version".to_string() => ParamValue::from("last_continuous"),
+            }),
+            ..Default::default()
+        };
+        let sub_suite = SubSuite {
+            mv_exclude_tags: Some("last_lts".to_string()),
+            origin_suite: "my_origin_suite".to_string(),
+            ..Default::default()
+        };
+
+        let test_vars = params.build_run_test_vars("my_suite_0", &sub_suite, "");
+
+        assert_eq!(test_vars.len(), 5);
+        assert_eq!(
+            test_vars.get("multiversion_exclude_tags_version").unwrap(),
+            &ParamValue::from("last_lts")
+        );
+        assert_eq!(
+            test_vars.get("suite").unwrap(),
+            &ParamValue::from("generated_resmoke_config/my_suite_0.yml")
         );
     }
 

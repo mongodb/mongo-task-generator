@@ -741,6 +741,7 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
             config_location: config_location.to_string(),
             dependencies: self.determine_task_dependencies(task_def),
             is_enterprise,
+            pass_through_vars: self.evg_config_utils.get_gen_task_vars(task_def),
         })
     }
 }
