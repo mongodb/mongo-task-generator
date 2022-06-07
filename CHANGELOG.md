@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.0 - 2022-06-06
+
+* Pass through vars from `generate resmoke tasks` to `run generated tests` func.
+
 ## 0.3.6 - 2022-05-16
 
 * Support using the fallback multiversion

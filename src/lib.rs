@@ -242,11 +242,13 @@ pub async fn generate_configuration(
     let generated_build_variants =
         generate_tasks_service.generate_build_variants(generated_tasks.clone())?;
 
-    let generated_tasks = generated_tasks.lock().unwrap();
-    let task_defs: Vec<EvgTask> = generated_tasks
-        .values()
-        .flat_map(|g| g.sub_tasks())
-        .collect();
+    let task_defs: Vec<EvgTask> = {
+        let generated_tasks = generated_tasks.lock().unwrap();
+        generated_tasks
+            .values()
+            .flat_map(|g| g.sub_tasks())
+            .collect()
+    };
 
     let gen_evg_project = EvgProject {
         buildvariants: generated_build_variants.to_vec(),
@@ -741,6 +743,7 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
             config_location: config_location.to_string(),
             dependencies: self.determine_task_dependencies(task_def),
             is_enterprise,
+            pass_through_vars: self.evg_config_utils.get_gen_task_vars(task_def),
         })
     }
 }

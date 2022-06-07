@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use anyhow::{bail, Result};
 use lazy_static::lazy_static;
@@ -84,6 +84,17 @@ pub trait EvgConfigUtils: Sync + Send {
     ///
     /// Value of given variable in the 'generate resmoke task' vars.
     fn get_gen_task_var<'a>(&self, task: &'a EvgTask, var: &str) -> Option<&'a str>;
+
+    /// Get vars HashMap of the 'generate resmoke task' func.
+    ///
+    /// # Arguments
+    ///
+    /// * `task` - Shrub task to query.
+    ///
+    /// # Returns
+    ///
+    /// HashMap of vars in the 'generate resmoke task'.
+    fn get_gen_task_vars(&self, task: &EvgTask) -> Option<HashMap<String, ParamValue>>;
 
     /// Lookup the given 'run_var' in the build variant 'vars' and provide the value.
     ///
@@ -317,6 +328,25 @@ impl EvgConfigUtils for EvgConfigUtilsImpl {
                 if let Some(ParamValue::String(value)) = vars.get(var) {
                     return Some(value);
                 }
+            }
+        }
+        None
+    }
+
+    /// Get vars HashMap of the 'generate resmoke task' func.
+    ///
+    /// # Arguments
+    ///
+    /// * `task` - Shrub task to query.
+    ///
+    /// # Returns
+    ///
+    /// HashMap of vars in the 'generate resmoke task'.
+    fn get_gen_task_vars(&self, task: &EvgTask) -> Option<HashMap<String, ParamValue>> {
+        let generate_func = get_generate_resmoke_func(task);
+        if let Some(func) = generate_func {
+            if let Some(vars) = &func.vars {
+                return Some(vars.clone());
             }
         }
         None
@@ -716,10 +746,10 @@ mod tests {
         assert!(dependencies.contains(&"dep2".to_string()));
     }
 
-    // get_gen_task_vars tests.
+    // get_gen_task_var tests.
 
     #[test]
-    fn test_get_gen_task_vars_should_return_none_if_no_func() {
+    fn test_get_gen_task_var_should_return_none_if_no_func() {
         let evg_task = EvgTask {
             commands: Some(vec![fn_call("hello world"), fn_call("run tests")]),
             ..Default::default()
@@ -735,7 +765,7 @@ mod tests {
     }
 
     #[test]
-    fn test_get_gen_task_vars_should_return_none_if_no_func_vars() {
+    fn test_get_gen_task_var_should_return_none_if_no_func_vars() {
         let evg_task = EvgTask {
             commands: Some(vec![
                 fn_call("hello world"),
@@ -755,7 +785,7 @@ mod tests {
     }
 
     #[test]
-    fn test_get_gen_task_vars_should_return_none_if_missing_var() {
+    fn test_get_gen_task_var_should_return_none_if_missing_var() {
         let evg_task = EvgTask {
             commands: Some(vec![
                 fn_call("hello world"),
@@ -781,7 +811,7 @@ mod tests {
     }
 
     #[test]
-    fn test_get_gen_task_vars_should_return_var_value_if_it_exists() {
+    fn test_get_gen_task_var_should_return_var_value_if_it_exists() {
         let evg_task = EvgTask {
             commands: Some(vec![
                 fn_call("hello world"),
@@ -802,6 +832,66 @@ mod tests {
         assert_eq!(
             evg_config_utils.get_gen_task_var(&evg_task, "my var"),
             Some("my value")
+        );
+    }
+
+    // get_gen_task_vars tests.
+    #[test]
+    fn test_get_gen_task_vars_should_return_none_if_no_func() {
+        let evg_task = EvgTask {
+            commands: Some(vec![fn_call("hello world"), fn_call("run tests")]),
+            ..Default::default()
+        };
+        let evg_config_utils = EvgConfigUtilsImpl::new();
+
+        assert_eq!(
+            evg_config_utils.get_gen_task_vars(&evg_task).is_none(),
+            true
+        );
+    }
+
+    #[test]
+    fn test_get_gen_task_vars_should_return_none_if_no_func_vars() {
+        let evg_task = EvgTask {
+            commands: Some(vec![
+                fn_call("hello world"),
+                fn_call("generate resmoke tasks"),
+                fn_call("run tests"),
+            ]),
+            ..Default::default()
+        };
+        let evg_config_utils = EvgConfigUtilsImpl::new();
+
+        assert_eq!(
+            evg_config_utils.get_gen_task_vars(&evg_task).is_none(),
+            true
+        );
+    }
+
+    #[test]
+    fn test_get_gen_task_vars_should_return_vars_hashmap_if_it_exists() {
+        let evg_task = EvgTask {
+            commands: Some(vec![
+                fn_call("hello world"),
+                fn_call_with_params(
+                    "generate resmoke tasks",
+                    hashmap! {
+                        "var1".to_string() => ParamValue::from("value1"),
+                        "var2".to_string() => ParamValue::from("value2"),
+                    },
+                ),
+                fn_call("run tests"),
+            ]),
+            ..Default::default()
+        };
+        let evg_config_utils = EvgConfigUtilsImpl::new();
+
+        assert_eq!(
+            evg_config_utils.get_gen_task_vars(&evg_task),
+            Some(hashmap! {
+                "var1".to_string() => ParamValue::from("value1"),
+                "var2".to_string() => ParamValue::from("value2"),
+            })
         );
     }
 
