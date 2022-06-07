@@ -410,47 +410,71 @@ impl GenResmokeTaskServiceImpl {
             runtime_per_subtask,
             test_list.len()
         );
-        let mut sub_suites = vec![];
-        let mut running_tests = vec![];
-        let mut running_runtime = 0.0;
-        let mut i = 0;
-        for test in test_list {
-            let test_name = get_test_name(&test);
-            if let Some(test_stats) = task_stats.test_map.get(&test_name) {
-                if (running_runtime + test_stats.average_runtime > runtime_per_subtask)
-                    && !running_tests.is_empty()
-                    && sub_suites.len() < max_tasks - 1
-                {
-                    sub_suites.push(SubSuite {
-                        index: Some(i),
-                        name: multiversion_name.unwrap_or(&params.task_name).to_string(),
-                        test_list: running_tests.clone(),
-                        origin_suite: origin_suite.to_string(),
-                        exclude_test_list: None,
-                        mv_exclude_tags: multiversion_tags.clone(),
-                        is_enterprise: params.is_enterprise,
-                    });
-                    running_tests = vec![];
-                    running_runtime = 0.0;
-                    i += 1;
-                }
-                running_runtime += test_stats.average_runtime;
-            }
-            running_tests.push(test.clone());
-        }
-        if !running_tests.is_empty() {
-            sub_suites.push(SubSuite {
-                index: Some(i),
-                name: multiversion_name.unwrap_or(&params.task_name).to_string(),
-                test_list: running_tests.clone(),
-                origin_suite: origin_suite.to_string(),
-                exclude_test_list: None,
-                mv_exclude_tags: multiversion_tags,
-                is_enterprise: params.is_enterprise,
-            });
+        // let mut sub_suites = vec![];
+        // let mut running_tests = vec![];
+        // let mut running_runtime = 0.0;
+        // let mut i = 0;
+
+        let mut test_entries: Vec<_> = task_stats.test_map.iter().collect();
+
+        test_entries.sort_by(|a, b| b.1.average_runtime.partial_cmp(&a.1.average_runtime).unwrap());
+
+        let mut test_lists: Vec<Vec<String>> = (0..max_tasks).into_iter().map(|_i| vec![]).collect();
+        for (i, entry) in test_entries.iter().enumerate() {
+            let test_name = entry.0;
+            test_lists[i % max_tasks].push(test_name.clone());
         }
 
-        Ok(sub_suites)
+        Ok(test_lists.into_iter().enumerate().map(|(i, test_list)| {
+            SubSuite {
+                index: Some(i),
+                name: multiversion_name.unwrap_or(&params.task_name).to_string(),
+                test_list,
+                origin_suite: origin_suite.to_string(),
+                exclude_test_list: None,
+                mv_exclude_tags: multiversion_tags.clone(),
+                is_enterprise: params.is_enterprise,
+            }
+        }).collect())
+
+
+        // for test in test_list {
+        //     let test_name = get_test_name(&test);
+        //     if let Some(test_stats) = task_stats.test_map.get(&test_name) {
+        //         if (running_runtime + test_stats.average_runtime > runtime_per_subtask)
+        //             && !running_tests.is_empty()
+        //             && sub_suites.len() < max_tasks - 1
+        //         {
+        //             sub_suites.push(SubSuite {
+        //                 index: Some(i),
+        //                 name: multiversion_name.unwrap_or(&params.task_name).to_string(),
+        //                 test_list: running_tests.clone(),
+        //                 origin_suite: origin_suite.to_string(),
+        //                 exclude_test_list: None,
+        //                 mv_exclude_tags: multiversion_tags.clone(),
+        //                 is_enterprise: params.is_enterprise,
+        //             });
+        //             running_tests = vec![];
+        //             running_runtime = 0.0;
+        //             i += 1;
+        //         }
+        //         running_runtime += test_stats.average_runtime;
+        //     }
+        //     running_tests.push(test.clone());
+        // }
+        // if !running_tests.is_empty() {
+        //     sub_suites.push(SubSuite {
+        //         index: Some(i),
+        //         name: multiversion_name.unwrap_or(&params.task_name).to_string(),
+        //         test_list: running_tests.clone(),
+        //         origin_suite: origin_suite.to_string(),
+        //         exclude_test_list: None,
+        //         mv_exclude_tags: multiversion_tags,
+        //         is_enterprise: params.is_enterprise,
+        //     });
+        // }
+
+        // Ok(sub_suites)
     }
 
     /// Get the list of tests belonging to the suite being generated.
