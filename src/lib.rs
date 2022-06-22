@@ -18,36 +18,31 @@ use evergreen::{
     evg_config_utils::{EvgConfigUtils, EvgConfigUtilsImpl},
     evg_task_history::TaskHistoryServiceImpl,
 };
-use evergreen_names::{
-    CONTINUE_ON_FAILURE, ENTERPRISE_MODULE, FUZZER_PARAMETERS, GENERATOR_TASKS, IDLE_TIMEOUT,
-    LARGE_DISTRO_EXPANSION, MULTIVERSION, NO_MULTIVERSION_ITERATION, NPM_COMMAND, NUM_FUZZER_FILES,
-    NUM_FUZZER_TASKS, REPEAT_SUITES, RESMOKE_ARGS, RESMOKE_JOBS_MAX, SHOULD_SHUFFLE_TESTS,
-    USE_LARGE_DISTRO,
-};
+use evergreen_names::{ENTERPRISE_MODULE, GENERATOR_TASKS, LARGE_DISTRO_EXPANSION};
 use evg_api_rs::EvgClient;
 use generate_sub_tasks_config::GenerateSubTasksConfig;
 use resmoke::resmoke_proxy::ResmokeProxy;
+use services::config_extraction::{ConfigExtractionService, ConfigExtractionServiceImpl};
 use shrub_rs::models::{
     project::EvgProject,
     task::{EvgTask, TaskRef},
     variant::{BuildVariant, DisplayTask},
 };
 use task_types::{
-    fuzzer_tasks::{FuzzerGenTaskParams, GenFuzzerService, GenFuzzerServiceImpl},
+    fuzzer_tasks::{GenFuzzerService, GenFuzzerServiceImpl},
     generated_suite::GeneratedSuite,
     multiversion::MultiversionServiceImpl,
     resmoke_config_writer::{ResmokeConfigActor, ResmokeConfigActorService},
-    resmoke_tasks::{
-        GenResmokeConfig, GenResmokeTaskService, GenResmokeTaskServiceImpl, ResmokeGenParams,
-    },
+    resmoke_tasks::{GenResmokeConfig, GenResmokeTaskService, GenResmokeTaskServiceImpl},
 };
 use tracing::{event, Level};
-use utils::{fs_service::FsServiceImpl, task_name::remove_gen_suffix};
+use utils::fs_service::FsServiceImpl;
 
 mod evergreen;
 mod evergreen_names;
 mod generate_sub_tasks_config;
 mod resmoke;
+mod services;
 mod task_types;
 mod utils;
 
@@ -113,6 +108,7 @@ impl ProjectInfo {
 /// Collection of services needed to execution.
 #[derive(Clone)]
 pub struct Dependencies {
+    evg_config_utils: Arc<dyn EvgConfigUtils>,
     gen_task_service: Arc<dyn GenerateTasksService>,
     resmoke_config_actor: Arc<tokio::sync::Mutex<dyn ResmokeConfigActor>>,
 }
@@ -139,6 +135,7 @@ impl Dependencies {
         resmoke_command: &str,
         target_directory: &Path,
         generating_task: &str,
+        config_location: &str,
     ) -> Result<Self> {
         let fs_service = Arc::new(FsServiceImpl::new());
         let discovery_service = Arc::new(ResmokeProxy::new(resmoke_command));
@@ -147,6 +144,11 @@ impl Dependencies {
         let evg_config_service = Arc::new(project_info.get_project_config()?);
         let evg_config_utils = Arc::new(EvgConfigUtilsImpl::new());
         let gen_fuzzer_service = Arc::new(GenFuzzerServiceImpl::new(multiversion_service.clone()));
+        let config_extraction_service = Arc::new(ConfigExtractionServiceImpl::new(
+            evg_config_utils.clone(),
+            generating_task.to_string(),
+            config_location.to_string(),
+        ));
         let evg_client =
             Arc::new(EvgClient::from_file(evg_auth_file).expect("Cannot find evergreen auth file"));
         let task_history_service = Arc::new(TaskHistoryServiceImpl::new(
@@ -182,14 +184,15 @@ impl Dependencies {
         let gen_sub_tasks_config = project_info.get_generate_sub_tasks_config()?;
         let gen_task_service = Arc::new(GenerateTasksServiceImpl::new(
             evg_config_service,
-            evg_config_utils,
+            evg_config_utils.clone(),
             gen_fuzzer_service,
             gen_resmoke_task_service,
-            generating_task.to_string(),
+            config_extraction_service,
             gen_sub_tasks_config,
         ));
 
         Ok(Self {
+            evg_config_utils,
             gen_task_service,
             resmoke_config_actor,
         })
@@ -221,21 +224,14 @@ impl GeneratedConfig {
 /// # Arguments
 ///
 /// * `deps` - Dependencies needed to perform generation.
-/// * `config_location` - Pointer to S3 location that configuration will be uploaded to.
 /// * `target_directory` - Directory to store generated configuration.
-pub async fn generate_configuration(
-    deps: &Dependencies,
-    config_location: &str,
-    target_directory: &Path,
-) -> Result<()> {
+pub async fn generate_configuration(deps: &Dependencies, target_directory: &Path) -> Result<()> {
     let generate_tasks_service = deps.gen_task_service.clone();
     std::fs::create_dir_all(target_directory)?;
 
     // We are going to do 2 passes through the project build variants. In this first pass, we
     // are actually going to create all the generated tasks that we discover.
-    let generated_tasks = generate_tasks_service
-        .build_generated_tasks(deps, config_location)
-        .await?;
+    let generated_tasks = generate_tasks_service.build_generated_tasks(deps).await?;
 
     // Now that we have generated all the tasks we want to make another pass through all the
     // build variants and add references to the generated tasks that each build variant includes.
@@ -277,7 +273,7 @@ trait GenerateTasksService: Sync + Send {
     ///
     /// # Arguments
     ///
-    /// * `config_location` - Location in S3 where generated configuration will be stored.
+    /// * `deps` - Service dependencies.
     ///
     /// Returns
     ///
@@ -285,7 +281,6 @@ trait GenerateTasksService: Sync + Send {
     async fn build_generated_tasks(
         &self,
         deps: &Dependencies,
-        config_location: &str,
     ) -> Result<Arc<Mutex<GenTaskCollection>>>;
 
     /// Create build variants definitions containing all the generated tasks for each build variant.
@@ -302,31 +297,12 @@ trait GenerateTasksService: Sync + Send {
         generated_tasks: Arc<Mutex<GenTaskCollection>>,
     ) -> Result<Vec<BuildVariant>>;
 
-    /// Build the configuration for generated a fuzzer based on the evergreen task definition.
-    ///
-    /// # Arguments
-    ///
-    /// * `task-def` - Task definition of fuzzer to generate.
-    /// * `build_variant` -
-    /// * `config_location` - Location where generated configuration will be stored in S3.
-    ///
-    /// # Returns
-    ///
-    /// Parameters to configure how fuzzer task should be generated.
-    fn task_def_to_fuzzer_params(
-        &self,
-        task_def: &EvgTask,
-        build_variant: &BuildVariant,
-        config_location: &str,
-    ) -> Result<FuzzerGenTaskParams>;
-
     /// Generate a task for the given task definition.
     ///
     /// # Arguments
     ///
     /// * `task_def` - Task definition to base generated task on.
     /// * `build_variant` - Build Variant to base generated task on.
-    /// * `config_location` - Location where generated task configuration will be stored.
     ///
     /// # Returns
     ///
@@ -335,25 +311,7 @@ trait GenerateTasksService: Sync + Send {
         &self,
         task_def: &EvgTask,
         build_variant: &BuildVariant,
-        config_location: &str,
     ) -> Result<Option<Box<dyn GeneratedSuite>>>;
-
-    /// Build the configuration for generated a resmoke based on the evergreen task definition.
-    ///
-    /// # Arguments
-    ///
-    /// * `task-def` - Task definition of task to generate.
-    /// * `config_location` - Location where generated configuration will be stored in S3.
-    ///
-    /// # Returns
-    ///
-    /// Parameters to configure how resmoke task should be generated.
-    fn task_def_to_resmoke_params(
-        &self,
-        task_def: &EvgTask,
-        config_location: &str,
-        is_enterprise: bool,
-    ) -> Result<ResmokeGenParams>;
 }
 
 struct GenerateTasksServiceImpl {
@@ -361,7 +319,7 @@ struct GenerateTasksServiceImpl {
     evg_config_utils: Arc<dyn EvgConfigUtils>,
     gen_fuzzer_service: Arc<dyn GenFuzzerService>,
     gen_resmoke_service: Arc<dyn GenResmokeTaskService>,
-    generating_task: String,
+    config_extraction_service: Arc<dyn ConfigExtractionService>,
     gen_sub_tasks_config: Option<GenerateSubTasksConfig>,
 }
 
@@ -374,14 +332,14 @@ impl GenerateTasksServiceImpl {
     /// * `evg_config_utils` - Utilities to work with evergreen project configuration.
     /// * `gen_fuzzer_service` - Service to generate fuzzer tasks.
     /// * `gen_resmoke_service` - Service for generating resmoke tasks.
-    /// * `generating_task` - Name of task creating the generated tasks.
+    /// * `config_extraction_service` - Service to extraction configuration from evergreen config.
     /// * `gen_sub_tasks_config` - Configuration for generating sub-tasks.
     pub fn new(
         evg_config_service: Arc<dyn EvgConfigService>,
         evg_config_utils: Arc<dyn EvgConfigUtils>,
         gen_fuzzer_service: Arc<dyn GenFuzzerService>,
         gen_resmoke_service: Arc<dyn GenResmokeTaskService>,
-        generating_task: String,
+        config_extraction_service: Arc<dyn ConfigExtractionService>,
         gen_sub_tasks_config: Option<GenerateSubTasksConfig>,
     ) -> Self {
         Self {
@@ -389,30 +347,9 @@ impl GenerateTasksServiceImpl {
             evg_config_utils,
             gen_fuzzer_service,
             gen_resmoke_service,
-            generating_task,
+            config_extraction_service,
             gen_sub_tasks_config,
         }
-    }
-
-    /// Determine the dependencies to add to tasks generated from the given task definition.
-    ///
-    /// A generated tasks should depend on all tasks listed in its "_gen" tasks depends_on
-    /// section except for the task generated the configuration.
-    ///
-    /// # Arguments
-    ///
-    /// * `task_def` - Definition of task being generated from.
-    ///
-    /// # Returns
-    ///
-    /// List of tasks that should be included as dependencies.
-    fn determine_task_dependencies(&self, task_def: &EvgTask) -> Vec<String> {
-        let depends_on = self.evg_config_utils.get_task_dependencies(task_def);
-
-        depends_on
-            .into_iter()
-            .filter(|t| t != &self.generating_task)
-            .collect()
     }
 
     /// Determine which distro the given sub-tasks should run on.
@@ -471,7 +408,7 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
     ///
     /// # Arguments
     ///
-    /// * `config_location` - Location in S3 where generated configuration will be stored.
+    /// * `deps` - Service dependencies.
     ///
     /// Returns
     ///
@@ -479,7 +416,6 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
     async fn build_generated_tasks(
         &self,
         deps: &Dependencies,
-        config_location: &str,
     ) -> Result<Arc<Mutex<GenTaskCollection>>> {
         let build_variant_list = self.evg_config_service.sort_build_variants_by_required();
         let build_variant_map = self.evg_config_service.get_build_variant_map();
@@ -491,7 +427,9 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
         let mut seen_tasks = HashSet::new();
         for build_variant in &build_variant_list {
             let build_variant = build_variant_map.get(build_variant).unwrap();
-            let is_enterprise = is_enterprise_build_variant(build_variant);
+            let is_enterprise = self
+                .evg_config_utils
+                .is_enterprise_build_variant(build_variant);
             for task in &build_variant.tasks {
                 // Skip tasks that have already been seen.
                 let task_name = lookup_task_name(is_enterprise, &task.name);
@@ -507,7 +445,6 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                             deps,
                             task_def,
                             build_variant,
-                            config_location,
                             generated_tasks.clone(),
                         ));
                     }
@@ -528,7 +465,6 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
     ///
     /// * `task_def` - Task definition to base generated task on.
     /// * `build_variant` - Build Variant to base generated task on.
-    /// * `config_location` - Location where generated task configuration will be stored.
     ///
     /// # Returns
     ///
@@ -537,20 +473,23 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
         &self,
         task_def: &EvgTask,
         build_variant: &BuildVariant,
-        config_location: &str,
     ) -> Result<Option<Box<dyn GeneratedSuite>>> {
         let generated_task = if self.evg_config_utils.is_task_fuzzer(task_def) {
             event!(Level::INFO, "Generating fuzzer: {}", task_def.name);
 
-            let params =
-                self.task_def_to_fuzzer_params(task_def, build_variant, config_location)?;
+            let params = self
+                .config_extraction_service
+                .task_def_to_fuzzer_params(task_def, build_variant)?;
 
             Some(self.gen_fuzzer_service.generate_fuzzer_task(&params)?)
         } else {
             event!(Level::INFO, "Generating resmoke task: {}", task_def.name);
-            let is_enterprise = is_enterprise_build_variant(build_variant);
-            let params =
-                self.task_def_to_resmoke_params(task_def, config_location, is_enterprise)?;
+            let is_enterprise = self
+                .evg_config_utils
+                .is_enterprise_build_variant(build_variant);
+            let params = self
+                .config_extraction_service
+                .task_def_to_resmoke_params(task_def, is_enterprise)?;
             Some(
                 self.gen_resmoke_service
                     .generate_resmoke_task(&params, &build_variant.name)
@@ -578,7 +517,9 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
 
         let build_variant_map = self.evg_config_service.get_build_variant_map();
         for (bv_name, build_variant) in build_variant_map {
-            let is_enterprise = is_enterprise_build_variant(build_variant);
+            let is_enterprise = self
+                .evg_config_utils
+                .is_enterprise_build_variant(build_variant);
             let mut gen_config = GeneratedConfig::new();
             let mut generating_tasks = vec![];
             let large_distro_name = self
@@ -629,140 +570,6 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
 
         Ok(generated_build_variants)
     }
-
-    /// Build the configuration for generated a fuzzer based on the evergreen task definition.
-    ///
-    /// # Arguments
-    ///
-    /// * `task_def` - Task definition of fuzzer to generate.
-    /// * `build_variant` - Build variant task is being generated based off.
-    /// * `config_location` - Location where generated configuration will be stored in S3.
-    ///
-    /// # Returns
-    ///
-    /// Parameters to configure how fuzzer task should be generated.
-    fn task_def_to_fuzzer_params(
-        &self,
-        task_def: &EvgTask,
-        build_variant: &BuildVariant,
-        config_location: &str,
-    ) -> Result<FuzzerGenTaskParams> {
-        let evg_config_utils = self.evg_config_utils.clone();
-        let is_enterprise = is_enterprise_build_variant(build_variant);
-        let task_name = remove_gen_suffix(&task_def.name).to_string();
-        let num_files = evg_config_utils
-            .translate_run_var(
-                evg_config_utils
-                    .get_gen_task_var(task_def, NUM_FUZZER_FILES)
-                    .unwrap_or_else(|| {
-                        panic!(
-                            "`{}` missing for task: '{}'",
-                            NUM_FUZZER_FILES, task_def.name
-                        )
-                    }),
-                build_variant,
-            )
-            .unwrap();
-
-        let suite = evg_config_utils.find_suite_name(task_def).to_string();
-        Ok(FuzzerGenTaskParams {
-            task_name,
-            variant: build_variant.name.to_string(),
-            suite,
-            num_files,
-            num_tasks: evg_config_utils.lookup_required_param_u64(task_def, NUM_FUZZER_TASKS)?,
-            resmoke_args: evg_config_utils.lookup_required_param_str(task_def, RESMOKE_ARGS)?,
-            npm_command: evg_config_utils.lookup_default_param_str(
-                task_def,
-                NPM_COMMAND,
-                "jstestfuzz",
-            ),
-            jstestfuzz_vars: evg_config_utils
-                .get_gen_task_var(task_def, FUZZER_PARAMETERS)
-                .map(|j| j.to_string()),
-            continue_on_failure: evg_config_utils
-                .lookup_required_param_bool(task_def, CONTINUE_ON_FAILURE)?,
-            resmoke_jobs_max: evg_config_utils
-                .lookup_required_param_u64(task_def, RESMOKE_JOBS_MAX)?,
-            should_shuffle: evg_config_utils
-                .lookup_required_param_bool(task_def, SHOULD_SHUFFLE_TESTS)?,
-            timeout_secs: evg_config_utils.lookup_required_param_u64(task_def, IDLE_TIMEOUT)?,
-            require_multiversion_setup: evg_config_utils
-                .get_task_tags(task_def)
-                .contains(MULTIVERSION),
-            config_location: config_location.to_string(),
-            dependencies: self.determine_task_dependencies(task_def),
-            is_enterprise,
-        })
-    }
-
-    /// Build the configuration for generated a resmoke based on the evergreen task definition.
-    ///
-    /// # Arguments
-    ///
-    /// * `task_def` - Task definition of task to generate.
-    /// * `config_location` - Location where generated configuration will be stored in S3.
-    /// * `is_enterprise` - Is this being generated for an enterprise build variant.
-    ///
-    /// # Returns
-    ///
-    /// Parameters to configure how resmoke task should be generated.
-    fn task_def_to_resmoke_params(
-        &self,
-        task_def: &EvgTask,
-        config_location: &str,
-        is_enterprise: bool,
-    ) -> Result<ResmokeGenParams> {
-        let task_name = remove_gen_suffix(&task_def.name).to_string();
-        let suite = self.evg_config_utils.find_suite_name(task_def).to_string();
-        let task_tags = self.evg_config_utils.get_task_tags(task_def);
-        let require_multiversion_setup = task_tags.contains(MULTIVERSION);
-        let no_multiversion_iteration = task_tags.contains(NO_MULTIVERSION_ITERATION);
-
-        Ok(ResmokeGenParams {
-            task_name,
-            suite_name: suite,
-            use_large_distro: self.evg_config_utils.lookup_default_param_bool(
-                task_def,
-                USE_LARGE_DISTRO,
-                false,
-            )?,
-            require_multiversion_setup,
-            generate_multiversion_combos: require_multiversion_setup && !no_multiversion_iteration,
-            repeat_suites: self
-                .evg_config_utils
-                .lookup_optional_param_u64(task_def, REPEAT_SUITES)?,
-            resmoke_args: self.evg_config_utils.lookup_default_param_str(
-                task_def,
-                RESMOKE_ARGS,
-                "",
-            ),
-            resmoke_jobs_max: self
-                .evg_config_utils
-                .lookup_optional_param_u64(task_def, RESMOKE_JOBS_MAX)?,
-            config_location: config_location.to_string(),
-            dependencies: self.determine_task_dependencies(task_def),
-            is_enterprise,
-            pass_through_vars: self.evg_config_utils.get_gen_task_vars(task_def),
-        })
-    }
-}
-
-/// Check if the given build variant includes the enterprise module.
-///
-/// # Arguments
-///
-/// * `build_variant` - Build variant to check.
-///
-/// # Returns
-///
-/// true if given build variant includes the enterprise module.
-fn is_enterprise_build_variant(build_variant: &BuildVariant) -> bool {
-    if let Some(modules) = &build_variant.modules {
-        modules.contains(&ENTERPRISE_MODULE.to_string())
-    } else {
-        false
-    }
 }
 
 /// Determine the task name to use.
@@ -793,7 +600,6 @@ fn lookup_task_name(is_enterprise: bool, task_name: &str) -> String {
 /// * `deps` - Service dependencies.
 /// * `task_def` - Evergreen task definition to base generated task off.
 /// * `build_variant` - Build variant to query timing information from.
-/// * `config_location` - S3 location where generated config will be stored.
 /// * `generated_tasks` - Map to stored generated to in.
 ///
 /// # Returns
@@ -803,22 +609,21 @@ fn create_task_worker(
     deps: &Dependencies,
     task_def: &EvgTask,
     build_variant: &BuildVariant,
-    config_location: &str,
     generated_tasks: Arc<Mutex<GenTaskCollection>>,
 ) -> tokio::task::JoinHandle<()> {
     let generate_task_service = deps.gen_task_service.clone();
+    let evg_config_utils = deps.evg_config_utils.clone();
     let task_def = task_def.clone();
     let build_variant = build_variant.clone();
-    let config_location = config_location.to_string();
     let generated_tasks = generated_tasks.clone();
 
     tokio::spawn(async move {
         let generated_task = generate_task_service
-            .generate_task(&task_def, &build_variant, &config_location)
+            .generate_task(&task_def, &build_variant)
             .await
             .unwrap();
 
-        let is_enterprise = is_enterprise_build_variant(&build_variant);
+        let is_enterprise = evg_config_utils.is_enterprise_build_variant(&build_variant);
         let task_name = lookup_task_name(is_enterprise, &task_def.name);
 
         if let Some(generated_task) = generated_task {
@@ -832,7 +637,8 @@ fn create_task_worker(
 mod tests {
     use maplit::hashset;
     use rstest::rstest;
-    use shrub_rs::models::task::TaskDependency;
+
+    use crate::task_types::{fuzzer_tasks::FuzzerGenTaskParams, resmoke_tasks::ResmokeGenParams};
 
     use super::*;
 
@@ -877,50 +683,19 @@ mod tests {
     }
 
     fn build_mock_generate_tasks_service() -> GenerateTasksServiceImpl {
+        let evg_config_utils = Arc::new(EvgConfigUtilsImpl::new());
         GenerateTasksServiceImpl::new(
             Arc::new(MockConfigService {}),
-            Arc::new(EvgConfigUtilsImpl::new()),
+            evg_config_utils.clone(),
             Arc::new(MockGenFuzzerService {}),
             Arc::new(MockGenResmokeTasksService {}),
-            "generating_task".to_string(),
+            Arc::new(ConfigExtractionServiceImpl::new(
+                evg_config_utils,
+                "generating_task".to_string(),
+                "config_location".to_string(),
+            )),
             None,
         )
-    }
-
-    // Tests for determine_task_dependencies.
-    #[rstest]
-    #[case(
-        vec![], vec![]
-    )]
-    #[case(vec!["dependency_0", "dependency_1"], vec!["dependency_0", "dependency_1"])]
-    #[case(vec!["dependency_0", "generating_task"], vec!["dependency_0"])]
-    fn test_determine_task_dependencies(
-        #[case] depends_on: Vec<&str>,
-        #[case] expected_deps: Vec<&str>,
-    ) {
-        let gen_task_service = build_mock_generate_tasks_service();
-        let evg_task = EvgTask {
-            depends_on: Some(
-                depends_on
-                    .into_iter()
-                    .map(|d| TaskDependency {
-                        name: d.to_string(),
-                        variant: None,
-                    })
-                    .collect(),
-            ),
-            ..Default::default()
-        };
-
-        let deps = gen_task_service.determine_task_dependencies(&evg_task);
-
-        assert_eq!(
-            deps,
-            expected_deps
-                .into_iter()
-                .map(|d| d.to_string())
-                .collect::<Vec<String>>()
-        );
     }
 
     // Tests for determine_distro.
@@ -985,32 +760,6 @@ mod tests {
             gen_task_service.determine_distro(&None, generated_task.as_ref(), "my_build_variant");
 
         assert!(distro.is_ok());
-    }
-
-    // tests for is_enterprise_build_variant.
-    #[test]
-    fn test_build_variant_with_enterprise_module_should_return_true() {
-        let build_variant = BuildVariant {
-            modules: Some(vec![ENTERPRISE_MODULE.to_string()]),
-            ..Default::default()
-        };
-
-        assert!(is_enterprise_build_variant(&build_variant));
-    }
-
-    #[rstest]
-    #[case(Some(vec![]))]
-    #[case(Some(vec!["Another Module".to_string(), "Not Enterprise".to_string()]))]
-    #[case(None)]
-    fn test_build_variant_with_out_enterprise_module_should_return_false(
-        #[case] modules: Option<Vec<String>>,
-    ) {
-        let build_variant = BuildVariant {
-            modules,
-            ..Default::default()
-        };
-
-        assert!(!is_enterprise_build_variant(&build_variant));
     }
 
     // tests for lookup_task_name.

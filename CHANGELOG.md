@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.1 - 2022-06-22
+
+* Refactor extraction of evergreen config into a service.
+
 ## 0.4.0 - 2022-06-06
 
 * Pass through vars from `generate resmoke tasks` to `run generated tests` func.

@@ -108,16 +108,12 @@ async fn main() {
         &args.resmoke_command,
         &expand_path(&args.target_directory),
         &evg_expansions.task_name,
+        &evg_expansions.config_location(),
     )
     .unwrap();
 
     let start = Instant::now();
-    let result = generate_configuration(
-        &deps,
-        &evg_expansions.config_location(),
-        &args.target_directory,
-    )
-    .await;
+    let result = generate_configuration(&deps, &args.target_directory).await;
     event!(
         Level::INFO,
         "generation completed: {} seconds",
