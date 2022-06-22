@@ -57,13 +57,13 @@ pub struct ConfigExtractionServiceImpl {
 
 impl ConfigExtractionServiceImpl {
     /// Create a new instance of the config extraction service.
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `evg_config_utils` - Utilities for looking up evergreen project configuration.
     /// * `generating_task` - Name of task running task generation.
     /// * `config_location` - Location where generated configuration will be stored.
-    /// 
+    ///
     pub fn new(
         evg_config_utils: Arc<dyn EvgConfigUtils>,
         generating_task: String,
