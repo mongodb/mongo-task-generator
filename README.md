@@ -23,7 +23,6 @@ Dynamically split evergreen tasks into subtasks for testing the mongodb/mongo pr
     - [Versioning](#versioning)
     - [Code Review](#code-review)
     - [Deployment](#deployment)
-    - [Evergreen configuration](#evergreen-configuration)
   - [Resources](#resources)
 
 ## Description
@@ -187,26 +186,6 @@ git push origin --tags
 
 The tagged version will be deployed to the [github release](https://github.com/mongodb/mongo-task-generator/releases)
 for the project.
-
-### Evergreen configuration
-
-This project uses [evg-bonsai](https://github.com/dbradf/evg-bonsai) for generating its evergreen
-configuration. If you need to make a change to the evergreen configuration, change the
-[evergreen.landscape.yml](evergreen.landscape.yml) file and then regenerate the configuration
-for evergreen with the `evg-bonsai` command.
-
-You should not edit the [evergreen.yml](evergreen.yml) file directly.
-
-You can get the `evg-bonsai` command [here](https://github.com/dbradf/evg-bonsai/releases/latest).
-
-To regenerate the evergreen configuration use the following:
-
-```bash
-evg-bonsai build --source-file evergreen.landscape.yml
-```
-
-Both the generated `evergreen.yml` and the `evergreen.landscape.yml` files should be checked into
-git.
 
 ## Resources
 
