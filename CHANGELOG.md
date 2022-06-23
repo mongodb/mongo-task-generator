@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.2 - 2022-06-23
+
+* Remove usage of evg-bonsai for evergreen configuration.
+
 ## 0.4.1 - 2022-06-22
 
 * Refactor extraction of evergreen config into a service.

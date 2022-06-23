@@ -1,6 +1,3 @@
-# Generated from bonsai
-# Generated at: 2022-03-22 19:48:24.600743 UTC
----
 buildvariants:
   - name: ubuntu1804
     tasks:
@@ -12,6 +9,7 @@ buildvariants:
     display_name: Ubuntu 18.04
     run_on:
       - ubuntu1804-test
+
 tasks:
   - name: unit_tests
     commands:
@@ -19,24 +17,28 @@ tasks:
         vars:
           target_dir: src
           cargo_command: nextest run --profile ci
+
   - name: format
     commands:
       - func: cargo_run
         vars:
           cargo_command: fmt --check
           target_dir: src
+
   - name: lint
     commands:
       - func: cargo_run
         vars:
           cargo_command: clippy -- -D warnings
           target_dir: src
+
   - name: build
     commands:
       - func: cargo_run
         vars:
           target_dir: src
           cargo_command: build
+
   - name: check_version
     commands:
       - func: version-check_run
@@ -44,31 +46,69 @@ tasks:
           package_type: rust
           publish_type: github-release
           target_dir: src
+
 functions:
   cargo_enable nextest:
     - command: shell.exec
       params:
-        script: "set -o errexit\n\nexport RUSTUP_HOME=\"$PWD/bonsai/rustup\"\nexport CARGO_HOME=\"$PWD/bonsai/cargo\"\nexport PATH=\"$PATH:$CARGO_HOME/bin\"\n\ncurl -LsSf https://get.nexte.st/latest/linux | tar zxf - -C \"$CARGO_HOME/bin\"\n"
+        script: |
+          set -o errexit
+
+          export RUSTUP_HOME="$PWD/bonsai/rustup"
+          export CARGO_HOME="$PWD/bonsai/cargo"
+          export PATH="$PATH:$CARGO_HOME/bin"
+          
+          curl -LsSf https://get.nexte.st/latest/linux | tar zxf - -C "$CARGO_HOME/bin"
+
   cargo_run:
     - command: shell.exec
       params:
-        script: "set -o errexit\n\nexport RUSTUP_HOME=\"$PWD/bonsai/rustup\"\nexport CARGO_HOME=\"$PWD/bonsai/cargo\"\nexport PATH=\"$PATH:$CARGO_HOME/bin:$HOME:/\"\n\ncd ${target_dir}\n\ncargo ${cargo_command}\n"
+        script: |
+          set -o errexit
+          
+          export RUSTUP_HOME="$PWD/bonsai/rustup"
+          export CARGO_HOME="$PWD/bonsai/cargo"
+          export PATH="$PATH:$CARGO_HOME/bin:$HOME:/"
+
+          cd ${target_dir}
+          cargo ${cargo_command}
+
   cargo_install rust:
     - command: shell.exec
       params:
-        script: "set -o errexit\n\nexport RUSTUP_HOME=\"$PWD/bonsai/rustup\"\nexport CARGO_HOME=\"$PWD/bonsai/cargo\"\nexport PATH=\"$PATH:$CARGO_HOME/bin\"\ncurl https://sh.rustup.rs -sSf | sh -s -- -y\nrustup default ${rust_version}\n"
+        script: |
+          set -o errexit
+          
+          export RUSTUP_HOME="$PWD/bonsai/rustup"
+          export CARGO_HOME="$PWD/bonsai/cargo"
+          export PATH="$PATH:$CARGO_HOME/bin"
+          
+          curl https://sh.rustup.rs -sSf | sh -s -- -y
+          rustup default ${rust_version}
+
   version-check_run:
     - command: shell.exec
       params:
-        script: "set -o errexit\n\nif [ \"${is_patch}\" = \"true\" ]; then\n  wget -q https://github.com/dbradf/pypi-version-check/releases/download/v0.3.0/pypi-version-check\n  chmod +x pypi-version-check\n  ./pypi-version-check --package-type ${package_type} --publish-type ${publish_type} --project-path ${target_dir} --check-changelog\nfi\n"
+        script: |
+          set -o errexit
+          
+          if [ "${is_patch}" = "true" ]; then
+            wget -q https://github.com/dbradf/pypi-version-check/releases/download/v0.3.0/pypi-version-check
+            chmod +x pypi-version-check
+            ./pypi-version-check --package-type ${package_type} --publish-type ${publish_type} --project-path ${target_dir} --check-changelog
+          fi
+
 pre:
   - command: git.get_project
     params:
       directory: src
+
   - func: cargo_install rust
     vars:
       rust_version: stable
+
   - func: cargo_enable nextest
+
 post:
   - command: attach.xunit_results
     params:
