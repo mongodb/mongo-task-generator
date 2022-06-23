@@ -7,7 +7,7 @@ use shrub_rs::models::commands::EvgCommand::Function;
 use shrub_rs::models::params::ParamValue;
 use shrub_rs::models::{commands::FunctionCall, task::EvgTask, variant::BuildVariant};
 
-use crate::evergreen_names::{GENERATE_RESMOKE_TASKS, IS_FUZZER};
+use crate::evergreen_names::{ENTERPRISE_MODULE, GENERATE_RESMOKE_TASKS, IS_FUZZER};
 use crate::utils::task_name::remove_gen_suffix;
 
 lazy_static! {
@@ -202,6 +202,17 @@ pub trait EvgConfigUtils: Sync + Send {
     ///
     /// Value of run_var for the given task if it exists.
     fn lookup_optional_param_u64(&self, task_def: &EvgTask, run_var: &str) -> Result<Option<u64>>;
+
+    /// Check if the given build variant includes the enterprise module.
+    ///
+    /// # Arguments
+    ///
+    /// * `build_variant` - Build variant to check.
+    ///
+    /// # Returns
+    ///
+    /// true if given build variant includes the enterprise module.
+    fn is_enterprise_build_variant(&self, build_variant: &BuildVariant) -> bool;
 }
 
 /// Service for utilities to help interpret evergreen configuration.
@@ -515,6 +526,23 @@ impl EvgConfigUtils for EvgConfigUtilsImpl {
             _ => None,
         })
     }
+
+    /// Check if the given build variant includes the enterprise module.
+    ///
+    /// # Arguments
+    ///
+    /// * `build_variant` - Build variant to check.
+    ///
+    /// # Returns
+    ///
+    /// true if given build variant includes the enterprise module.
+    fn is_enterprise_build_variant(&self, build_variant: &BuildVariant) -> bool {
+        if let Some(modules) = &build_variant.modules {
+            modules.contains(&ENTERPRISE_MODULE.to_string())
+        } else {
+            false
+        }
+    }
 }
 
 /// Get the shrub function make the 'generate resmoke task' call in the given task.
@@ -551,6 +579,7 @@ fn get_generate_resmoke_func(task: &EvgTask) -> Option<&FunctionCall> {
 mod tests {
     use maplit::btreemap;
     use maplit::hashmap;
+    use rstest::rstest;
     use shrub_rs::models::commands::{fn_call, fn_call_with_params};
     use shrub_rs::models::params::ParamValue;
     use shrub_rs::models::task::TaskDependency;
@@ -1125,5 +1154,33 @@ mod tests {
 
         let result = evg_config_utils.lookup_optional_param_u64(&task_def, "var_u64");
         assert_eq!(result.unwrap(), Some(12345));
+    }
+
+    // tests for is_enterprise_build_variant.
+    #[test]
+    fn test_build_variant_with_enterprise_module_should_return_true() {
+        let build_variant = BuildVariant {
+            modules: Some(vec![ENTERPRISE_MODULE.to_string()]),
+            ..Default::default()
+        };
+        let evg_config_utils = EvgConfigUtilsImpl::new();
+
+        assert!(evg_config_utils.is_enterprise_build_variant(&build_variant));
+    }
+
+    #[rstest]
+    #[case(Some(vec![]))]
+    #[case(Some(vec!["Another Module".to_string(), "Not Enterprise".to_string()]))]
+    #[case(None)]
+    fn test_build_variant_with_out_enterprise_module_should_return_false(
+        #[case] modules: Option<Vec<String>>,
+    ) {
+        let build_variant = BuildVariant {
+            modules,
+            ..Default::default()
+        };
+        let evg_config_utils = EvgConfigUtilsImpl::new();
+
+        assert!(!evg_config_utils.is_enterprise_build_variant(&build_variant));
     }
 }
