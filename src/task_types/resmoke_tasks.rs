@@ -269,7 +269,7 @@ pub struct GenResmokeConfig {
     use_task_split_fallback: bool,
 
     /// Enterprise directory.
-    enterprise_dir: String,
+    enterprise_dir: Option<String>,
 }
 
 impl GenResmokeConfig {
@@ -285,7 +285,11 @@ impl GenResmokeConfig {
     /// # Returns
     ///
     /// New instance of `GenResmokeConfig`.
-    pub fn new(n_suites: usize, use_task_split_fallback: bool, enterprise_dir: String) -> Self {
+    pub fn new(
+        n_suites: usize,
+        use_task_split_fallback: bool,
+        enterprise_dir: Option<String>,
+    ) -> Self {
         Self {
             n_suites,
             use_task_split_fallback,
@@ -476,10 +480,12 @@ impl GenResmokeTaskServiceImpl {
             .collect();
 
         if !params.is_enterprise {
-            test_list = test_list
-                .into_iter()
-                .filter(|s| !s.starts_with(&self.config.enterprise_dir))
-                .collect();
+            if let Some(enterprise_dir) = &self.config.enterprise_dir {
+                test_list = test_list
+                    .into_iter()
+                    .filter(|s| !s.starts_with(enterprise_dir))
+                    .collect();
+            }
         }
 
         Ok(test_list)
@@ -1054,7 +1060,7 @@ mod tests {
         let fs_service = MockFsService {};
         let resmoke_config_actor = MockResmokeConfigActor {};
 
-        let config = GenResmokeConfig::new(n_suites, false, MOCK_ENTERPRISE_DIR.to_string());
+        let config = GenResmokeConfig::new(n_suites, false, Some(MOCK_ENTERPRISE_DIR.to_string()));
 
         GenResmokeTaskServiceImpl::new(
             Arc::new(task_history_service),
@@ -1255,6 +1261,47 @@ mod tests {
         };
         let gen_resmoke_service =
             build_mocked_service(test_list, task_history.clone(), n_suites, vec![], vec![]);
+
+        let params = ResmokeGenParams {
+            is_enterprise,
+            ..Default::default()
+        };
+
+        let sub_suites = gen_resmoke_service
+            .split_task_fallback(&params, None, None)
+            .unwrap();
+        let all_tests: Vec<String> = sub_suites
+            .iter()
+            .flat_map(|s| s.test_list.clone())
+            .collect();
+        assert_eq!(expected_tests, all_tests.len());
+    }
+
+    #[rstest]
+    #[case(true, 12)]
+    #[case(false, 12)]
+    fn test_get_test_list_should_work_with_missing_enterprise_details(
+        #[case] is_enterprise: bool,
+        #[case] expected_tests: usize,
+    ) {
+        let n_suites = 3;
+        let mut test_list: Vec<String> = (0..6)
+            .into_iter()
+            .map(|i| format!("test_{}.js", i))
+            .collect();
+        test_list.extend::<Vec<String>>(
+            (6..12)
+                .into_iter()
+                .map(|i| format!("{}/test_{}.js", MOCK_ENTERPRISE_DIR, i))
+                .collect(),
+        );
+        let task_history = TaskRuntimeHistory {
+            task_name: "my task".to_string(),
+            test_map: hashmap! {},
+        };
+        let mut gen_resmoke_service =
+            build_mocked_service(test_list, task_history.clone(), n_suites, vec![], vec![]);
+        gen_resmoke_service.config.enterprise_dir = None;
 
         let params = ResmokeGenParams {
             is_enterprise,

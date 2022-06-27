@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.3 - 2022-06-28
+
+* Relax requirement to have the enterprise repo configuration defined.
+
 ## 0.4.2 - 2022-06-23
 
 * Remove usage of evg-bonsai for evergreen configuration.
