@@ -165,9 +165,7 @@ impl Dependencies {
                     .expect("Unexpected target directory"),
                 32,
             )));
-        let enterprise_dir = evg_config_service
-            .get_module_dir(ENTERPRISE_MODULE)
-            .expect("Could not find enterprise module configuration");
+        let enterprise_dir = evg_config_service.get_module_dir(ENTERPRISE_MODULE);
         let gen_resmoke_config = GenResmokeConfig::new(
             MAX_SUB_TASKS_PER_TASK,
             use_task_split_fallback,
