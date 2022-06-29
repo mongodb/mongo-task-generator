@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.5 - 2022-07-01
+
+* Add support for burn_in_tests generation.
+
 ## 0.4.4 - 2022-06-30
 
 * Randomize test order when creating sub-tasks and historic runtime information is not available.

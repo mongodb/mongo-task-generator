@@ -6,7 +6,9 @@ use std::{
 
 use anyhow::Result;
 use clap::Parser;
-use mongo_task_generator::{generate_configuration, Dependencies, ProjectInfo};
+use mongo_task_generator::{
+    generate_configuration, Dependencies, ExecutionConfiguration, ProjectInfo,
+};
 use serde::Deserialize;
 use tracing::{event, Level};
 use tracing_subscriber::fmt::format;
@@ -78,6 +80,10 @@ struct Args {
     /// File containing configuration for generating sub-tasks.
     #[clap(long, parse(from_os_str))]
     generate_sub_tasks_config: Option<PathBuf>,
+
+    /// Generate burn_in related tasks.
+    #[clap(long)]
+    burn_in: bool,
 }
 
 /// Configure logging for the command execution.
@@ -101,16 +107,17 @@ async fn main() {
         &evg_expansions.project,
         gen_sub_tasks_config_file.as_ref(),
     );
-    let deps = Dependencies::new(
-        &project_info,
-        &expand_path(&args.evg_auth_file),
-        args.use_task_split_fallback,
-        &args.resmoke_command,
-        &expand_path(&args.target_directory),
-        &evg_expansions.task_name,
-        &evg_expansions.config_location(),
-    )
-    .unwrap();
+    let execution_config = ExecutionConfiguration {
+        project_info: &project_info,
+        evg_auth_file: &expand_path(&args.evg_auth_file),
+        use_task_split_fallback: args.use_task_split_fallback,
+        resmoke_command: &args.resmoke_command,
+        target_directory: &expand_path(&args.target_directory),
+        generating_task: &evg_expansions.task_name,
+        config_location: &evg_expansions.config_location(),
+        gen_burn_in: args.burn_in,
+    };
+    let deps = Dependencies::new(execution_config).unwrap();
 
     let start = Instant::now();
     let result = generate_configuration(&deps, &args.target_directory).await;

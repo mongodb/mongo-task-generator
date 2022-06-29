@@ -1,4 +1,5 @@
 use anyhow::Result;
+use maplit::hashmap;
 use std::{collections::HashMap, path::Path, process::Command};
 
 use shrub_rs::models::{project::EvgProject, task::EvgTask, variant::BuildVariant};
@@ -10,7 +11,7 @@ pub trait EvgConfigService: Sync + Send {
     fn get_build_variant_map(&self) -> HashMap<String, &BuildVariant>;
 
     /// Get a map of task name to task definitions.
-    fn get_task_def_map(&self) -> HashMap<String, &EvgTask>;
+    fn get_task_def_map(&self) -> HashMap<String, EvgTask>;
 
     /// Get a list of build variants with the required build variants at the start.
     fn sort_build_variants_by_required(&self) -> Vec<String>;
@@ -44,8 +45,12 @@ impl EvgConfigService for EvgProjectConfig {
     }
 
     /// Get a map of task name to task definitions.
-    fn get_task_def_map(&self) -> HashMap<String, &EvgTask> {
-        self.evg_project.task_def_map()
+    fn get_task_def_map(&self) -> HashMap<String, EvgTask> {
+        let mut task_map = hashmap! {};
+        for (k, v) in self.evg_project.task_def_map() {
+            task_map.insert(k, v.clone());
+        }
+        task_map
     }
 
     /// Get a list of build variants with the required build variants at the start.

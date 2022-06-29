@@ -127,11 +127,12 @@ graph TD
     C -->|Yes| D{task is fuzzer?}
     D -->|Yes| E[Generate Fuzzer based on task definition]
     E --> B
-    C -->|No| F[Lookup task runtime history from Evergreen]
+    D -->|No| F[Lookup task runtime history from Evergreen]
     F --> G{valid history obtained?}
     G --> |Yes| H[Split task by test runtimes]
     G --> |No| I[Split task by counts]
     H --> J[Generate resmoke suite config]
+    I -> J
     J --> |generated task definitions|B
     B --> |done|K[For each Build Variant]
     K --> L[Create task specs and display tasks in Build Variant]

@@ -1,3 +1,4 @@
+pub mod burn_in_tests;
 pub mod fuzzer_tasks;
 pub mod generated_suite;
 pub mod multiversion;
