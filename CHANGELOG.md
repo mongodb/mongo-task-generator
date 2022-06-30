@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.4 - 2022-06-30
+
+* Randomize test order when creating sub-tasks and historic runtime information is not available.
+
 ## 0.4.3 - 2022-06-28
 
 * Relax requirement to have the enterprise repo configuration defined.
