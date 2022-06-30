@@ -12,6 +12,7 @@ use std::{cmp::min, collections::HashMap, sync::Arc};
 use anyhow::Result;
 use async_trait::async_trait;
 use maplit::hashmap;
+use rand::{prelude::SliceRandom, thread_rng};
 use shrub_rs::models::{
     commands::{fn_call, fn_call_with_params, EvgCommand},
     params::ParamValue,
@@ -512,7 +513,8 @@ impl GenResmokeTaskServiceImpl {
         multiversion_tags: Option<String>,
     ) -> Result<Vec<SubSuite>> {
         let origin_suite = multiversion_name.unwrap_or(&params.suite_name);
-        let test_list = self.get_test_list(params, multiversion_name)?;
+        let mut test_list = self.get_test_list(params, multiversion_name)?;
+        test_list.shuffle(&mut thread_rng());
         let n_suites = min(test_list.len(), self.config.n_suites);
         let tasks_per_suite = test_list.len() / n_suites;
 
@@ -1205,7 +1207,8 @@ mod tests {
     #[test]
     fn test_split_task_fallback_should_split_tasks_count() {
         let n_suites = 3;
-        let test_list: Vec<String> = (0..6)
+        let n_tests = 6;
+        let test_list: Vec<String> = (0..n_tests)
             .into_iter()
             .map(|i| format!("test_{}.js", i))
             .collect();
@@ -1225,15 +1228,15 @@ mod tests {
             .unwrap();
 
         assert_eq!(sub_suites.len(), n_suites);
-        let suite_0 = &sub_suites[0];
-        assert!(suite_0.test_list.contains(&"test_0.js".to_string()));
-        assert!(suite_0.test_list.contains(&"test_1.js".to_string()));
-        let suite_1 = &sub_suites[1];
-        assert!(suite_1.test_list.contains(&"test_2.js".to_string()));
-        assert!(suite_1.test_list.contains(&"test_3.js".to_string()));
-        let suite_2 = &sub_suites[2];
-        assert!(suite_2.test_list.contains(&"test_4.js".to_string()));
-        assert!(suite_2.test_list.contains(&"test_5.js".to_string()));
+        for sub_suite in &sub_suites {
+            assert_eq!(sub_suite.test_list.len(), n_tests / n_suites);
+        }
+
+        let all_tests: Vec<String> = sub_suites
+            .iter()
+            .flat_map(|s| s.test_list.clone())
+            .collect();
+        assert_eq!(all_tests.len(), n_tests);
     }
 
     // tests for get_test_list.
