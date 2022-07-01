@@ -686,7 +686,7 @@ fn create_task_worker(
 ///
 /// * `deps` - Service dependencies.
 /// * `build_variant` - Build variant to query timing information from.
-/// * `generated_tasks` - Map to stored generated to in.
+/// * `generated_tasks` - Map to stored generated tasks in.
 ///
 /// # Returns
 ///

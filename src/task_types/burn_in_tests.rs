@@ -31,7 +31,7 @@ pub trait BurnInService: Sync + Send {
     ///
     /// # Returns
     ///
-    /// A generated task for burn_in on the given build variant..
+    /// A generated task for burn_in on the given build variant.
     fn generate_burn_in_suite(
         &self,
         build_variant: &str,
@@ -143,10 +143,8 @@ impl BurnInServiceImpl {
             let mut params = self
                 .config_extraction_service
                 .task_def_to_resmoke_params(task_def, false)?;
-            params.resmoke_args = format!(
-                "{} {} {}",
-                params.resmoke_args, BURN_IN_REPEAT_CONFIG, &test
-            );
+            update_resmoke_params_for_burn_in(&mut params, test);
+
             if params.generate_multiversion_combos {
                 for (old_version, version_combination) in self
                     .multiversion_service
@@ -261,8 +259,28 @@ impl BurnInService for BurnInServiceImpl {
     }
 }
 
+/// Update the given resmoke parameters to include burn_in configuration for the given test.
+///
+/// # Arguments
+///
+/// * `params` - resmoke parameters to update.
+/// * `test_name` - Name of test to run.
+fn update_resmoke_params_for_burn_in(params: &mut ResmokeGenParams, test_name: &str) {
+    params.resmoke_args = format!(
+        "{} {} {}",
+        params.resmoke_args, BURN_IN_REPEAT_CONFIG, test_name
+    );
+}
+
 #[cfg(test)]
 mod tests {
+    use async_trait::async_trait;
+    use shrub_rs::models::variant::BuildVariant;
+
+    use crate::task_types::{
+        fuzzer_tasks::FuzzerGenTaskParams, multiversion::MultiversionIterator,
+    };
+
     use super::*;
 
     // build_origin_suite tests.
@@ -330,5 +348,166 @@ mod tests {
         assert!(display_name.contains(BURN_IN_LABEL));
         assert!(display_name.contains(task_name));
         assert!(display_name.contains(build_variant));
+    }
+
+    // Mocks
+    struct MockBurnInDiscovery {}
+    impl BurnInDiscovery for MockBurnInDiscovery {
+        fn discover_tasks(&self, _build_variant: &str) -> Result<Vec<DiscoveredTask>> {
+            todo!()
+        }
+    }
+
+    struct MockGenResmokeTasksService {}
+    #[async_trait]
+    impl GenResmokeTaskService for MockGenResmokeTasksService {
+        async fn generate_resmoke_task(
+            &self,
+            _params: &ResmokeGenParams,
+            _build_variant: &str,
+        ) -> Result<Box<dyn GeneratedSuite>> {
+            todo!()
+        }
+
+        fn build_resmoke_sub_task(
+            &self,
+            _sub_suite: &SubSuite,
+            _total_sub_suites: usize,
+            _params: &ResmokeGenParams,
+            _suite_override: Option<String>,
+        ) -> EvgTask {
+            EvgTask {
+                ..Default::default()
+            }
+        }
+    }
+
+    struct MockConfigExtractionService {
+        pub is_multiversion: bool,
+    }
+    impl ConfigExtractionService for MockConfigExtractionService {
+        fn task_def_to_fuzzer_params(
+            &self,
+            _task_def: &EvgTask,
+            _build_variant: &BuildVariant,
+        ) -> Result<FuzzerGenTaskParams> {
+            todo!()
+        }
+
+        fn task_def_to_resmoke_params(
+            &self,
+            _task_def: &EvgTask,
+            _is_enterprise: bool,
+        ) -> Result<ResmokeGenParams> {
+            Ok(ResmokeGenParams {
+                generate_multiversion_combos: self.is_multiversion,
+                ..Default::default()
+            })
+        }
+    }
+
+    struct MockMultiversionService {
+        old_version: Vec<String>,
+        version_combos: Vec<String>,
+    }
+    impl MultiversionService for MockMultiversionService {
+        fn get_version_combinations(&self, _suite_name: &str) -> Result<Vec<String>> {
+            todo!()
+        }
+
+        fn multiversion_iter(&self, _suite_name: &str) -> Result<MultiversionIterator> {
+            Ok(MultiversionIterator::new(
+                &self.old_version,
+                &self.version_combos,
+            ))
+        }
+
+        fn name_multiversion_suite(
+            &self,
+            base_name: &str,
+            _old_version: &str,
+            _version_combination: &str,
+        ) -> String {
+            base_name.to_string()
+        }
+
+        fn exclude_tags_for_task(&self, _task_name: &str, _mv_mode: Option<String>) -> String {
+            todo!()
+        }
+    }
+
+    fn build_mocked_service() -> BurnInServiceImpl {
+        BurnInServiceImpl::new(
+            Arc::new(MockBurnInDiscovery {}),
+            Arc::new(MockGenResmokeTasksService {}),
+            Arc::new(MockConfigExtractionService {
+                is_multiversion: false,
+            }),
+            Arc::new(MockMultiversionService {
+                old_version: vec![],
+                version_combos: vec![],
+            }),
+        )
+    }
+
+    fn build_mv_mocked_service(
+        old_version: Vec<String>,
+        version_combos: Vec<String>,
+    ) -> BurnInServiceImpl {
+        BurnInServiceImpl::new(
+            Arc::new(MockBurnInDiscovery {}),
+            Arc::new(MockGenResmokeTasksService {}),
+            Arc::new(MockConfigExtractionService {
+                is_multiversion: true,
+            }),
+            Arc::new(MockMultiversionService {
+                old_version,
+                version_combos,
+            }),
+        )
+    }
+
+    // build_tests_for_task tests.
+    #[test]
+    fn test_build_test_for_tasks_creates_task_for_each_test() {
+        let discovered_task = DiscoveredTask {
+            task_name: "my task".to_string(),
+            test_list: vec!["test_0.js".to_string(), "test_1.js".to_string()],
+        };
+        let task_def = EvgTask {
+            ..Default::default()
+        };
+        let build_variant = "my_build_variant";
+        let burn_in_service = build_mocked_service();
+
+        let tasks = burn_in_service
+            .build_tests_for_task(&discovered_task, &task_def, build_variant)
+            .unwrap();
+
+        assert_eq!(tasks.len(), discovered_task.test_list.len());
+    }
+
+    #[test]
+    fn test_build_test_for_tasks_creates_task_for_each_multiversion_iteration_and_test() {
+        let discovered_task = DiscoveredTask {
+            task_name: "my task".to_string(),
+            test_list: vec!["test_0.js".to_string(), "test_1.js".to_string()],
+        };
+        let task_def = EvgTask {
+            ..Default::default()
+        };
+        let build_variant = "my_build_variant";
+        let old_version = vec!["lts".to_string(), "continuous".to_string()];
+        let version_combos = vec!["new_old_new".to_string(), "old_new_old".to_string()];
+        let burn_in_service = build_mv_mocked_service(old_version.clone(), version_combos.clone());
+
+        let tasks = burn_in_service
+            .build_tests_for_task(&discovered_task, &task_def, build_variant)
+            .unwrap();
+
+        assert_eq!(
+            tasks.len(),
+            discovered_task.test_list.len() * old_version.len() * version_combos.len()
+        );
     }
 }
