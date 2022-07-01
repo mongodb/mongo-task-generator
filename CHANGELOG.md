@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.5 - 2022-07-01
+
+* Randomize test order when creating all resmoke sub-tasks.
+
 ## 0.4.4 - 2022-06-30
 
 * Randomize test order when creating sub-tasks and historic runtime information is not available.
