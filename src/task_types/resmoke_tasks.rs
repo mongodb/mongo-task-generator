@@ -489,6 +489,8 @@ impl GenResmokeTaskServiceImpl {
             }
         }
 
+        test_list.shuffle(&mut thread_rng());
+
         Ok(test_list)
     }
 
@@ -513,8 +515,7 @@ impl GenResmokeTaskServiceImpl {
         multiversion_tags: Option<String>,
     ) -> Result<Vec<SubSuite>> {
         let origin_suite = multiversion_name.unwrap_or(&params.suite_name);
-        let mut test_list = self.get_test_list(params, multiversion_name)?;
-        test_list.shuffle(&mut thread_rng());
+        let test_list = self.get_test_list(params, multiversion_name)?;
         let n_suites = min(test_list.len(), self.config.n_suites);
         let tasks_per_suite = test_list.len() / n_suites;
 
@@ -1088,7 +1089,8 @@ mod tests {
         // a single test. The second 2 tests and the third 3 tests. We will set the test runtimes
         // to make this happen.
         let n_suites = 3;
-        let test_list: Vec<String> = (0..6)
+        let n_tests = 6;
+        let test_list: Vec<String> = (0..n_tests)
             .into_iter()
             .map(|i| format!("test_{}.js", i))
             .collect();
@@ -1103,8 +1105,13 @@ mod tests {
                 "test_5".to_string() => build_mock_test_runtime("test_5.js", 34.0),
             },
         };
-        let gen_resmoke_service =
-            build_mocked_service(test_list, task_history.clone(), n_suites, vec![], vec![]);
+        let gen_resmoke_service = build_mocked_service(
+            test_list.clone(),
+            task_history.clone(),
+            n_suites,
+            vec![],
+            vec![],
+        );
 
         let params = ResmokeGenParams {
             ..Default::default()
@@ -1115,15 +1122,14 @@ mod tests {
             .unwrap();
 
         assert_eq!(sub_suites.len(), n_suites);
-        let suite_0 = &sub_suites[0];
-        assert!(suite_0.test_list.contains(&"test_0.js".to_string()));
-        let suite_1 = &sub_suites[1];
-        assert!(suite_1.test_list.contains(&"test_1.js".to_string()));
-        assert!(suite_1.test_list.contains(&"test_2.js".to_string()));
-        let suite_2 = &sub_suites[2];
-        assert!(suite_2.test_list.contains(&"test_3.js".to_string()));
-        assert!(suite_2.test_list.contains(&"test_4.js".to_string()));
-        assert!(suite_2.test_list.contains(&"test_5.js".to_string()));
+        let all_tests: Vec<String> = sub_suites
+            .iter()
+            .flat_map(|s| s.test_list.clone())
+            .collect();
+        assert_eq!(all_tests.len(), n_tests);
+        for test_name in test_list {
+            assert!(all_tests.contains(&test_name.to_string()));
+        }
     }
 
     #[test]
@@ -1216,8 +1222,13 @@ mod tests {
             task_name: "my task".to_string(),
             test_map: hashmap! {},
         };
-        let gen_resmoke_service =
-            build_mocked_service(test_list, task_history.clone(), n_suites, vec![], vec![]);
+        let gen_resmoke_service = build_mocked_service(
+            test_list.clone(),
+            task_history.clone(),
+            n_suites,
+            vec![],
+            vec![],
+        );
 
         let params = ResmokeGenParams {
             ..Default::default()
@@ -1237,6 +1248,9 @@ mod tests {
             .flat_map(|s| s.test_list.clone())
             .collect();
         assert_eq!(all_tests.len(), n_tests);
+        for test_name in test_list {
+            assert!(all_tests.contains(&test_name.to_string()));
+        }
     }
 
     // tests for get_test_list.
