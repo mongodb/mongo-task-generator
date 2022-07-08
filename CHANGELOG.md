@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.6 - 2022-07-01
+
+* Add support for burn_in_tests generation.
+
 ## 0.4.5 - 2022-07-01
 
 * Randomize test order when creating all resmoke sub-tasks.

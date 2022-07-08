@@ -85,6 +85,7 @@ impl ResmokeGenParams {
         suite_file: &str,
         sub_suite: &SubSuite,
         exclude_tags: &str,
+        suite_override: Option<String>,
     ) -> HashMap<String, ParamValue> {
         let mut run_test_vars: HashMap<String, ParamValue> = hashmap! {};
         if let Some(pass_through_vars) = &self.pass_through_vars {
@@ -92,10 +93,16 @@ impl ResmokeGenParams {
         }
 
         let resmoke_args = self.build_resmoke_args(exclude_tags, &sub_suite.origin_suite);
+        let suite = if let Some(suite_override) = suite_override {
+            suite_override
+        } else {
+            format!("generated_resmoke_config/{}.yml", suite_file)
+        };
+
         run_test_vars.extend(hashmap! {
             REQUIRE_MULTIVERSION_SETUP.to_string() => ParamValue::from(self.require_multiversion_setup),
             RESMOKE_ARGS.to_string() => ParamValue::from(resmoke_args.as_str()),
-            SUITE_NAME.to_string() => ParamValue::from(format!("generated_resmoke_config/{}.yml", suite_file).as_str()),
+            SUITE_NAME.to_string() => ParamValue::from(suite.as_str()),
             GEN_TASK_CONFIG_LOCATION.to_string() => ParamValue::from(self.config_location.as_str()),
         });
 
@@ -144,7 +151,7 @@ impl ResmokeGenParams {
 
         format!(
             "--originSuite={} {} {} {}",
-            origin_suite, self.resmoke_args, repeat_arg, suffix
+            origin_suite, repeat_arg, suffix, self.resmoke_args
         )
     }
 
@@ -259,6 +266,24 @@ pub trait GenResmokeTaskService: Sync + Send {
         params: &ResmokeGenParams,
         build_variant: &str,
     ) -> Result<Box<dyn GeneratedSuite>>;
+
+    /// Build a shrub task to execute a split sub-task.
+    ///
+    /// # Arguments
+    ///
+    /// * `sub_suite` - Sub task to create task for.
+    /// * `params` - Parameters for how task should be generated.
+    ///
+    /// # Returns
+    ///
+    /// A shrub task to execute the given sub-suite.
+    fn build_resmoke_sub_task(
+        &self,
+        sub_suite: &SubSuite,
+        total_sub_suites: usize,
+        params: &ResmokeGenParams,
+        suite_override: Option<String>,
+    ) -> EvgTask;
 }
 
 #[derive(Debug, Clone)]
@@ -594,46 +619,6 @@ impl GenResmokeTaskServiceImpl {
         Ok(mv_sub_suites)
     }
 
-    /// Build a shrub task to execute a split sub-task.
-    ///
-    /// # Arguments
-    ///
-    /// * `sub_suite` - Sub task to create task for.
-    /// * `params` - Parameters for how task should be generated.
-    ///
-    /// # Returns
-    ///
-    /// A shrub task to execute the given sub-suite.
-    fn build_resmoke_sub_task(
-        &self,
-        sub_suite: &SubSuite,
-        total_sub_suites: usize,
-        params: &ResmokeGenParams,
-    ) -> EvgTask {
-        let exclude_tags = self
-            .multiversion_service
-            .exclude_tags_for_task(&params.task_name, sub_suite.mv_exclude_tags.clone());
-        let suite_file = name_generated_task(
-            &sub_suite.name,
-            sub_suite.index,
-            total_sub_suites,
-            params.is_enterprise,
-        );
-
-        let run_test_vars = params.build_run_test_vars(&suite_file, sub_suite, &exclude_tags);
-
-        EvgTask {
-            name: suite_file,
-            commands: Some(resmoke_commands(
-                RUN_GENERATED_TESTS,
-                run_test_vars,
-                params.require_multiversion_setup,
-            )),
-            depends_on: params.get_dependencies(),
-            ..Default::default()
-        }
-    }
-
     /// Create sub-suites based on the given information.
     ///
     /// # Arguments
@@ -739,10 +724,52 @@ impl GenResmokeTaskService for GenResmokeTaskServiceImpl {
             task_name: params.task_name.clone(),
             sub_suites: sub_suites
                 .into_iter()
-                .map(|s| self.build_resmoke_sub_task(&s, sub_task_total, params))
+                .map(|s| self.build_resmoke_sub_task(&s, sub_task_total, params, None))
                 .collect(),
             use_large_distro: params.use_large_distro,
         }))
+    }
+
+    /// Build a shrub task to execute a split sub-task.
+    ///
+    /// # Arguments
+    ///
+    /// * `sub_suite` - Sub task to create task for.
+    /// * `params` - Parameters for how task should be generated.
+    ///
+    /// # Returns
+    ///
+    /// A shrub task to execute the given sub-suite.
+    fn build_resmoke_sub_task(
+        &self,
+        sub_suite: &SubSuite,
+        total_sub_suites: usize,
+        params: &ResmokeGenParams,
+        suite_override: Option<String>,
+    ) -> EvgTask {
+        let exclude_tags = self
+            .multiversion_service
+            .exclude_tags_for_task(&params.task_name, sub_suite.mv_exclude_tags.clone());
+        let suite_file = name_generated_task(
+            &sub_suite.name,
+            sub_suite.index,
+            total_sub_suites,
+            params.is_enterprise,
+        );
+
+        let run_test_vars =
+            params.build_run_test_vars(&suite_file, sub_suite, &exclude_tags, suite_override);
+
+        EvgTask {
+            name: suite_file,
+            commands: Some(resmoke_commands(
+                RUN_GENERATED_TESTS,
+                run_test_vars,
+                params.require_multiversion_setup,
+            )),
+            depends_on: params.get_dependencies(),
+            ..Default::default()
+        }
     }
 }
 
@@ -810,7 +837,7 @@ mod tests {
             ..Default::default()
         };
 
-        let test_vars = params.build_run_test_vars("my_suite_0", &sub_suite, "");
+        let test_vars = params.build_run_test_vars("my_suite_0", &sub_suite, "", None);
 
         assert_eq!(test_vars.len(), 4);
         assert!(!test_vars.contains_key("resmoke_jobs_max"));
@@ -837,7 +864,7 @@ mod tests {
             ..Default::default()
         };
 
-        let test_vars = params.build_run_test_vars("my_suite_0", &sub_suite, "");
+        let test_vars = params.build_run_test_vars("my_suite_0", &sub_suite, "", None);
 
         assert_eq!(test_vars.len(), 5);
         assert_eq!(
@@ -868,7 +895,8 @@ mod tests {
             ..Default::default()
         };
 
-        let test_vars = params.build_run_test_vars("my_suite_0", &sub_suite, "tag_0,tag_1,tag_2");
+        let test_vars =
+            params.build_run_test_vars("my_suite_0", &sub_suite, "tag_0,tag_1,tag_2", None);
 
         assert_eq!(test_vars.len(), 5);
         assert_eq!(
@@ -877,7 +905,7 @@ mod tests {
         );
         assert_eq!(
             test_vars.get("resmoke_args").unwrap(),
-            &ParamValue::from("--originSuite=my_origin_suite resmoke args  --tagFile=generated_resmoke_config/multiversion_exclude_tags.yml --excludeWithAnyTags=tag_0,tag_1,tag_2")
+            &ParamValue::from("--originSuite=my_origin_suite  --tagFile=generated_resmoke_config/multiversion_exclude_tags.yml --excludeWithAnyTags=tag_0,tag_1,tag_2 resmoke args")
         );
     }
 
@@ -897,7 +925,7 @@ mod tests {
             ..Default::default()
         };
 
-        let test_vars = params.build_run_test_vars("my_suite_0", &sub_suite, "");
+        let test_vars = params.build_run_test_vars("my_suite_0", &sub_suite, "", None);
 
         assert_eq!(test_vars.len(), 5);
         assert_eq!(
@@ -928,7 +956,7 @@ mod tests {
             ..Default::default()
         };
 
-        let test_vars = params.build_run_test_vars("my_suite_0", &sub_suite, "");
+        let test_vars = params.build_run_test_vars("my_suite_0", &sub_suite, "", None);
 
         assert_eq!(test_vars.len(), 5);
         assert_eq!(

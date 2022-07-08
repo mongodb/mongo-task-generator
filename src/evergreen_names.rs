@@ -32,6 +32,8 @@ pub const GENERATE_RESMOKE_TASKS: &str = "generate resmoke tasks";
 // Tasks
 /// Name of display task to hide all "_gen" tasks behind.
 pub const GENERATOR_TASKS: &str = "generator_tasks";
+/// Name of burn_in_tests task.
+pub const BURN_IN_TESTS: &str = "burn_in_tests_gen";
 
 // Vars
 /// Variable that indicates a task is a fuzzer.

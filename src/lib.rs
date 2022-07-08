@@ -18,10 +18,10 @@ use evergreen::{
     evg_config_utils::{EvgConfigUtils, EvgConfigUtilsImpl},
     evg_task_history::TaskHistoryServiceImpl,
 };
-use evergreen_names::{ENTERPRISE_MODULE, GENERATOR_TASKS, LARGE_DISTRO_EXPANSION};
+use evergreen_names::{BURN_IN_TESTS, ENTERPRISE_MODULE, GENERATOR_TASKS, LARGE_DISTRO_EXPANSION};
 use evg_api_rs::EvgClient;
 use generate_sub_tasks_config::GenerateSubTasksConfig;
-use resmoke::resmoke_proxy::ResmokeProxy;
+use resmoke::{burn_in_proxy::BurnInProxy, resmoke_proxy::ResmokeProxy};
 use services::config_extraction::{ConfigExtractionService, ConfigExtractionServiceImpl};
 use shrub_rs::models::{
     project::EvgProject,
@@ -29,6 +29,7 @@ use shrub_rs::models::{
     variant::{BuildVariant, DisplayTask},
 };
 use task_types::{
+    burn_in_tests::{BurnInService, BurnInServiceImpl},
     fuzzer_tasks::{GenFuzzerService, GenFuzzerServiceImpl},
     generated_suite::GeneratedSuite,
     multiversion::MultiversionServiceImpl,
@@ -105,12 +106,33 @@ impl ProjectInfo {
     }
 }
 
+/// Configuration required to execute generating tasks.
+pub struct ExecutionConfiguration<'a> {
+    /// Information about the project being generated under.
+    pub project_info: &'a ProjectInfo,
+    /// Path to the evergreen API authentication file.
+    pub evg_auth_file: &'a Path,
+    /// Should task splitting use the fallback method by default.
+    pub use_task_split_fallback: bool,
+    /// Command to execute resmoke.
+    pub resmoke_command: &'a str,
+    /// Directory to place generated configuration files.
+    pub target_directory: &'a Path,
+    /// Task generating the configuration.
+    pub generating_task: &'a str,
+    /// Location in S3 where generated configuration will be uploaded.
+    pub config_location: &'a str,
+    /// Should burn_in tasks be generated.
+    pub gen_burn_in: bool,
+}
+
 /// Collection of services needed to execution.
 #[derive(Clone)]
 pub struct Dependencies {
     evg_config_utils: Arc<dyn EvgConfigUtils>,
     gen_task_service: Arc<dyn GenerateTasksService>,
     resmoke_config_actor: Arc<tokio::sync::Mutex<dyn ResmokeConfigActor>>,
+    burn_in_service: Arc<dyn BurnInService>,
 }
 
 impl Dependencies {
@@ -118,49 +140,39 @@ impl Dependencies {
     ///
     /// # Arguments
     ///
-    /// * `evg_auth_file` - Path to evergreen API auth file.
-    /// * `use_task_split_fallback` - Disable evergreen task-history queries and use task
-    ///    splitting fallback.
-    /// * `resmoke_command` - Command to execute resmoke.
-    /// * `target_directory` - Directory to store generated configuration.
-    /// * `generating_task` - Name of task running the generation.
+    /// * `execution_config` - Information about how generation to take place.
     ///
     /// # Returns
     ///
     /// A set of dependencies to run against.
-    pub fn new(
-        project_info: &ProjectInfo,
-        evg_auth_file: &Path,
-        use_task_split_fallback: bool,
-        resmoke_command: &str,
-        target_directory: &Path,
-        generating_task: &str,
-        config_location: &str,
-    ) -> Result<Self> {
+    pub fn new(execution_config: ExecutionConfiguration) -> Result<Self> {
         let fs_service = Arc::new(FsServiceImpl::new());
-        let discovery_service = Arc::new(ResmokeProxy::new(resmoke_command));
+        let discovery_service = Arc::new(ResmokeProxy::new(execution_config.resmoke_command));
         let multiversion_service =
             Arc::new(MultiversionServiceImpl::new(discovery_service.clone())?);
-        let evg_config_service = Arc::new(project_info.get_project_config()?);
+        let evg_config_service = Arc::new(execution_config.project_info.get_project_config()?);
         let evg_config_utils = Arc::new(EvgConfigUtilsImpl::new());
         let gen_fuzzer_service = Arc::new(GenFuzzerServiceImpl::new(multiversion_service.clone()));
         let config_extraction_service = Arc::new(ConfigExtractionServiceImpl::new(
             evg_config_utils.clone(),
-            generating_task.to_string(),
-            config_location.to_string(),
+            execution_config.generating_task.to_string(),
+            execution_config.config_location.to_string(),
         ));
-        let evg_client =
-            Arc::new(EvgClient::from_file(evg_auth_file).expect("Cannot find evergreen auth file"));
+        let evg_client = Arc::new(
+            EvgClient::from_file(execution_config.evg_auth_file)
+                .expect("Cannot find evergreen auth file"),
+        );
         let task_history_service = Arc::new(TaskHistoryServiceImpl::new(
             evg_client,
             HISTORY_LOOKBACK_DAYS,
-            project_info.evg_project.clone(),
+            execution_config.project_info.evg_project.clone(),
         ));
         let resmoke_config_actor =
             Arc::new(tokio::sync::Mutex::new(ResmokeConfigActorService::new(
                 discovery_service.clone(),
                 fs_service.clone(),
-                target_directory
+                execution_config
+                    .target_directory
                     .to_str()
                     .expect("Unexpected target directory"),
                 32,
@@ -168,31 +180,43 @@ impl Dependencies {
         let enterprise_dir = evg_config_service.get_module_dir(ENTERPRISE_MODULE);
         let gen_resmoke_config = GenResmokeConfig::new(
             MAX_SUB_TASKS_PER_TASK,
-            use_task_split_fallback,
+            execution_config.use_task_split_fallback,
             enterprise_dir,
         );
         let gen_resmoke_task_service = Arc::new(GenResmokeTaskServiceImpl::new(
             task_history_service,
             discovery_service,
             resmoke_config_actor.clone(),
-            multiversion_service,
+            multiversion_service.clone(),
             fs_service,
             gen_resmoke_config,
         ));
-        let gen_sub_tasks_config = project_info.get_generate_sub_tasks_config()?;
+        let gen_sub_tasks_config = execution_config
+            .project_info
+            .get_generate_sub_tasks_config()?;
         let gen_task_service = Arc::new(GenerateTasksServiceImpl::new(
             evg_config_service,
             evg_config_utils.clone(),
             gen_fuzzer_service,
+            gen_resmoke_task_service.clone(),
+            config_extraction_service.clone(),
+            gen_sub_tasks_config,
+            execution_config.gen_burn_in,
+        ));
+
+        let burn_in_discovery = Arc::new(BurnInProxy::new());
+        let burn_in_service = Arc::new(BurnInServiceImpl::new(
+            burn_in_discovery,
             gen_resmoke_task_service,
             config_extraction_service,
-            gen_sub_tasks_config,
+            multiversion_service,
         ));
 
         Ok(Self {
             evg_config_utils,
             gen_task_service,
             resmoke_config_actor,
+            burn_in_service,
         })
     }
 }
@@ -319,6 +343,7 @@ struct GenerateTasksServiceImpl {
     gen_resmoke_service: Arc<dyn GenResmokeTaskService>,
     config_extraction_service: Arc<dyn ConfigExtractionService>,
     gen_sub_tasks_config: Option<GenerateSubTasksConfig>,
+    gen_burn_in: bool,
 }
 
 impl GenerateTasksServiceImpl {
@@ -339,6 +364,7 @@ impl GenerateTasksServiceImpl {
         gen_resmoke_service: Arc<dyn GenResmokeTaskService>,
         config_extraction_service: Arc<dyn ConfigExtractionService>,
         gen_sub_tasks_config: Option<GenerateSubTasksConfig>,
+        gen_burn_in: bool,
     ) -> Self {
         Self {
             evg_config_service,
@@ -347,6 +373,7 @@ impl GenerateTasksServiceImpl {
             gen_resmoke_service,
             config_extraction_service,
             gen_sub_tasks_config,
+            gen_burn_in,
         }
     }
 
@@ -417,7 +444,7 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
     ) -> Result<Arc<Mutex<GenTaskCollection>>> {
         let build_variant_list = self.evg_config_service.sort_build_variants_by_required();
         let build_variant_map = self.evg_config_service.get_build_variant_map();
-        let task_map = self.evg_config_service.get_task_def_map();
+        let task_map = Arc::new(self.evg_config_service.get_task_def_map());
 
         let mut thread_handles = vec![];
 
@@ -429,6 +456,20 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                 .evg_config_utils
                 .is_enterprise_build_variant(build_variant);
             for task in &build_variant.tasks {
+                // Burn in tasks could be different for each build variant, so we will always
+                // handle them.
+                if task.name == BURN_IN_TESTS {
+                    if self.gen_burn_in {
+                        thread_handles.push(create_burn_in_worker(
+                            deps,
+                            task_map.clone(),
+                            build_variant,
+                            generated_tasks.clone(),
+                        ));
+                    }
+                    continue;
+                }
+
                 // Skip tasks that have already been seen.
                 let task_name = lookup_task_name(is_enterprise, &task.name);
                 if seen_tasks.contains(&task_name) {
@@ -526,7 +567,11 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
             for task in &build_variant.tasks {
                 let generated_tasks = generated_tasks.lock().unwrap();
 
-                let task_name = lookup_task_name(is_enterprise, &task.name);
+                let task_name = if task.name == BURN_IN_TESTS {
+                    format!("burn_in_tests-{}", build_variant.name)
+                } else {
+                    lookup_task_name(is_enterprise, &task.name)
+                };
 
                 if let Some(generated_task) = generated_tasks.get(&task_name) {
                     let distro = self.determine_distro(
@@ -584,6 +629,10 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
 ///
 /// Name to use for task.
 fn lookup_task_name(is_enterprise: bool, task_name: &str) -> String {
+    if task_name == BURN_IN_TESTS {
+        return task_name.to_string();
+    }
+
     if is_enterprise {
         format!("{}-{}", task_name, ENTERPRISE_MODULE)
     } else {
@@ -631,12 +680,48 @@ fn create_task_worker(
     })
 }
 
+/// Spawn a tokio task to perform the burn_in_test generation work.
+///
+/// # Arguments
+///
+/// * `deps` - Service dependencies.
+/// * `build_variant` - Build variant to query timing information from.
+/// * `generated_tasks` - Map to stored generated tasks in.
+///
+/// # Returns
+///
+/// Handle to created tokio worker.
+fn create_burn_in_worker(
+    deps: &Dependencies,
+    task_map: Arc<HashMap<String, EvgTask>>,
+    build_variant: &BuildVariant,
+    generated_tasks: Arc<Mutex<GenTaskCollection>>,
+) -> tokio::task::JoinHandle<()> {
+    let burn_in_service = deps.burn_in_service.clone();
+    let build_variant = build_variant.clone();
+    let generated_tasks = generated_tasks.clone();
+
+    tokio::spawn(async move {
+        let generated_task = burn_in_service
+            .generate_burn_in_suite(&build_variant.name, task_map)
+            .unwrap();
+
+        let task_name = format!("burn_in_tests-{}", build_variant.name);
+
+        let mut generated_tasks = generated_tasks.lock().unwrap();
+        generated_tasks.insert(task_name, generated_task);
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use maplit::hashset;
     use rstest::rstest;
 
-    use crate::task_types::{fuzzer_tasks::FuzzerGenTaskParams, resmoke_tasks::ResmokeGenParams};
+    use crate::task_types::{
+        fuzzer_tasks::FuzzerGenTaskParams,
+        resmoke_tasks::{ResmokeGenParams, SubSuite},
+    };
 
     use super::*;
 
@@ -646,7 +731,7 @@ mod tests {
             todo!()
         }
 
-        fn get_task_def_map(&self) -> HashMap<String, &EvgTask> {
+        fn get_task_def_map(&self) -> HashMap<String, EvgTask> {
             todo!()
         }
 
@@ -678,6 +763,16 @@ mod tests {
         ) -> Result<Box<dyn GeneratedSuite>> {
             todo!()
         }
+
+        fn build_resmoke_sub_task(
+            &self,
+            _sub_suite: &SubSuite,
+            _total_sub_suites: usize,
+            _params: &ResmokeGenParams,
+            _suite_override: Option<String>,
+        ) -> EvgTask {
+            todo!()
+        }
     }
 
     fn build_mock_generate_tasks_service() -> GenerateTasksServiceImpl {
@@ -693,6 +788,7 @@ mod tests {
                 "config_location".to_string(),
             )),
             None,
+            false,
         )
     }
 
