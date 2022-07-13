@@ -132,7 +132,7 @@ graph TD
     G --> |Yes| H[Split task by test runtimes]
     G --> |No| I[Split task by counts]
     H --> J[Generate resmoke suite config]
-    I -> J
+    I --> J
     J --> |generated task definitions|B
     B --> |done|K[For each Build Variant]
     K --> L[Create task specs and display tasks in Build Variant]
