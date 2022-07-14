@@ -5,7 +5,7 @@ use shrub_rs::models::{
 };
 use std::{
     collections::{BTreeMap, HashMap},
-    sync::{Arc, MutexGuard},
+    sync::Arc,
 };
 
 use crate::{
@@ -13,7 +13,6 @@ use crate::{
     resmoke::burn_in_proxy::{BurnInDiscovery, DiscoveredTask},
     services::config_extraction::ConfigExtractionService,
     task_types::resmoke_tasks::{GeneratedResmokeSuite, SubSuite},
-    GenTaskCollection,
 };
 
 use super::{
@@ -53,7 +52,8 @@ pub trait BurnInService: Sync + Send {
     /// # Arguments
     ///
     /// * `base_build_variant` - Build variant to generate burn_in_tags build variant based on.
-    /// * `generated_tasks` - Map of task names and their generated configuration.
+    /// * `run_build_variant_name` - Build variant name to run burn_in_tests task on.
+    /// * `generated_task` - Generated burn_in_tests task.
     ///
     /// # Returns
     ///
@@ -61,7 +61,8 @@ pub trait BurnInService: Sync + Send {
     fn generate_burn_in_tags_build_variant(
         &self,
         base_build_variant: &BuildVariant,
-        generated_tasks: MutexGuard<GenTaskCollection>,
+        run_build_variant_name: String,
+        generated_task: &dyn GeneratedSuite,
     ) -> BuildVariant;
 }
 
@@ -319,7 +320,8 @@ impl BurnInService for BurnInServiceImpl {
     /// # Arguments
     ///
     /// * `base_build_variant` - Build variant to generate burn_in_tags build variant based on.
-    /// * `generated_tasks` - Map of task names and their generated configuration.
+    /// * `run_build_variant_name` - Build variant name to run burn_in_tests task on.
+    /// * `generated_task` - Generated burn_in_tests task.
     ///
     /// # Returns
     ///
@@ -327,18 +329,16 @@ impl BurnInService for BurnInServiceImpl {
     fn generate_burn_in_tags_build_variant(
         &self,
         base_build_variant: &BuildVariant,
-        generated_tasks: MutexGuard<GenTaskCollection>,
+        run_build_variant_name: String,
+        generated_task: &dyn GeneratedSuite,
     ) -> BuildVariant {
         let mut gen_config = BurnInTagsGeneratedConfig::new();
 
-        gen_config.build_variant_name = format!("{}-required", base_build_variant.name);
-        gen_config.build_variant_display_name = Some(format!(
-            "! {}",
-            base_build_variant
-                .display_name
-                .as_ref()
-                .unwrap_or(&gen_config.build_variant_name)
-        ));
+        gen_config.build_variant_name = run_build_variant_name;
+        gen_config.build_variant_display_name = base_build_variant
+            .display_name
+            .as_ref()
+            .map(|s| format!("! {}", s));
 
         gen_config.expansions = base_build_variant.expansions.clone().unwrap_or_default();
         gen_config.expansions.insert(
@@ -352,15 +352,12 @@ impl BurnInService for BurnInServiceImpl {
             activate: Some(false),
         });
 
-        let burn_in_tests_task_name = format!("burn_in_tests-{}", gen_config.build_variant_name);
-        if let Some(generated_task) = generated_tasks.get(&burn_in_tests_task_name) {
-            gen_config
-                .gen_task_specs
-                .extend(generated_task.build_task_ref(None));
-            gen_config
-                .display_tasks
-                .push(generated_task.build_display_task())
-        }
+        gen_config
+            .gen_task_specs
+            .extend(generated_task.build_task_ref(None));
+        gen_config
+            .display_tasks
+            .push(generated_task.build_display_task());
 
         BuildVariant {
             name: gen_config.build_variant_name.clone(),

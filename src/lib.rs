@@ -486,11 +486,14 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                                 build_variant,
                             )
                         {
+                            let base_build_variant = build_variant_map.get(&base_bv_name).unwrap();
+                            let run_build_variant_name =
+                                format!("{}-required", base_build_variant.name);
                             thread_handles.push(create_burn_in_worker(
                                 deps,
                                 task_map.clone(),
-                                build_variant_map.get(&base_bv_name).unwrap(),
-                                format!("{}-required", base_bv_name),
+                                base_build_variant,
+                                run_build_variant_name,
                                 generated_tasks.clone(),
                             ));
                         }
@@ -658,10 +661,18 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
         for base_bv_name in burn_in_tag_build_variant_names {
             let generated_tasks = generated_tasks.lock().unwrap();
             let base_build_variant = build_variant_map.get(&base_bv_name).unwrap();
-            generated_build_variants.push(
-                deps.burn_in_service
-                    .generate_burn_in_tags_build_variant(base_build_variant, generated_tasks),
-            );
+            let run_build_variant_name = format!("{}-required", base_build_variant.name);
+            let task_name = format!("burn_in_tests-{}", run_build_variant_name);
+
+            if let Some(generated_task) = generated_tasks.get(&task_name) {
+                generated_build_variants.push(
+                    deps.burn_in_service.generate_burn_in_tags_build_variant(
+                        base_build_variant,
+                        run_build_variant_name,
+                        generated_task.as_ref(),
+                    ),
+                );
+            }
         }
 
         Ok(generated_build_variants)
@@ -764,8 +775,10 @@ fn create_burn_in_worker(
 
         let task_name = format!("burn_in_tests-{}", run_build_variant_name);
 
-        let mut generated_tasks = generated_tasks.lock().unwrap();
-        generated_tasks.insert(task_name, generated_task);
+        if !generated_task.sub_tasks().is_empty() {
+            let mut generated_tasks = generated_tasks.lock().unwrap();
+            generated_tasks.insert(task_name, generated_task);
+        }
     })
 }
 
