@@ -224,17 +224,17 @@ impl BurnInServiceImpl {
         )
     }
 
-    /// Cache the list of tasks that explicitly specify distros; assume those are the tasks
-    /// that need to use large distros.
+    /// Determines whether to use large distros based on the list of tasks that explicitly specify distros;
+    /// assuming those are the tasks that need to use large distros.
     ///
     /// # Arguments
-    /// 
+    ///
     /// * `variant_task_refs` - Vec of of task refs on a build variant definition with the distro information.
     /// * `discovered_tasks` - Vec of tasks determined to be run by burn_in.
-    /// 
+    ///
     /// # Returns
-    /// 
-    /// a boolean of whether a large distro should be used for burn_in. 
+    ///
+    /// a boolean of whether a large distro should be used for burn_in.
     fn should_use_large_distro(
         &self,
         variant_task_refs: &Vec<TaskRef>,
@@ -546,5 +546,23 @@ mod tests {
             tasks.len(),
             discovered_task.test_list.len() * old_version.len() * version_combos.len()
         );
+    }
+
+    // should_use_large_distro tests.
+    #[test]
+    fn test_should_use_large_distro_uses_large_distro() {
+        let task_name = "large_distro_task";
+        let discovered_task = DiscoveredTask {
+            task_name: task_name.to_string(),
+            test_list: vec![],
+        };
+
+        let variant_task_ref = TaskRef {
+            name: task_name.to_string(),
+            distros: Some(vec!["some_large_distro".to_string()]),
+            activate: None,
+        };
+
+        // TODO: build burn_in_service.
     }
 }
