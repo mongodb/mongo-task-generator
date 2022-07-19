@@ -703,7 +703,7 @@ fn create_burn_in_worker(
 
     tokio::spawn(async move {
         let generated_task = burn_in_service
-            .generate_burn_in_suite(&build_variant.name, task_map)
+            .generate_burn_in_suite(&build_variant, task_map)
             .unwrap();
 
         let task_name = format!("burn_in_tests-{}", build_variant.name);

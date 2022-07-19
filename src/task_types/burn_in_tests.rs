@@ -1,6 +1,9 @@
 use anyhow::Result;
-use shrub_rs::models::task::EvgTask;
-use std::{collections::HashMap, sync::Arc};
+use shrub_rs::models::{task::EvgTask, task::TaskRef, variant::BuildVariant};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use crate::{
     resmoke::burn_in_proxy::{BurnInDiscovery, DiscoveredTask},
@@ -26,7 +29,7 @@ pub trait BurnInService: Sync + Send {
     ///
     /// # Arguments
     ///
-    /// * `build_variant` - Name of build variant to generate burn_in for.
+    /// * `build_variant` - BuildVariant to generate burn_in_tests for.
     /// * `task_map` - Map of task definitions found in the evergreen project configuration.
     ///
     /// # Returns
@@ -34,7 +37,7 @@ pub trait BurnInService: Sync + Send {
     /// A generated task for burn_in on the given build variant.
     fn generate_burn_in_suite(
         &self,
-        build_variant: &str,
+        build_variant: &BuildVariant,
         task_map: Arc<HashMap<String, EvgTask>>,
     ) -> Result<Box<dyn GeneratedSuite>>;
 }
@@ -220,6 +223,39 @@ impl BurnInServiceImpl {
             Some(origin_suite),
         )
     }
+
+    /// Cache the list of tasks that explicitly specify distros; assume those are the tasks
+    /// that need to use large distros.
+    ///
+    /// # Arguments
+    /// 
+    /// * `variant_task_refs` - Vec of of task refs on a build variant definition with the distro information.
+    /// * `discovered_tasks` - Vec of tasks determined to be run by burn_in.
+    /// 
+    /// # Returns
+    /// 
+    /// a boolean of whether a large distro should be used for burn_in. 
+    fn should_use_large_distro(
+        &self,
+        variant_task_refs: &Vec<TaskRef>,
+        discovered_tasks: &Vec<DiscoveredTask>,
+    ) -> bool {
+        let mut large_distro_tasks = HashSet::new();
+
+        for task_ref in variant_task_refs {
+            if task_ref.distros.is_some() {
+                large_distro_tasks.insert(task_ref.name.clone());
+            }
+        }
+
+        for discovered_task in discovered_tasks {
+            if large_distro_tasks.contains(&discovered_task.task_name) {
+                return true;
+            }
+        }
+
+        false
+    }
 }
 
 impl BurnInService for BurnInServiceImpl {
@@ -227,7 +263,7 @@ impl BurnInService for BurnInServiceImpl {
     ///
     /// # Arguments
     ///
-    /// * `build_variant` - Name of build variant to generate burn_in_tests for.
+    /// * `build_variant` - BuildVariant to generate burn_in_tests for.
     /// * `task_map` - Map of task definitions in evergreen project configuration.
     ///
     /// # Returns
@@ -235,18 +271,19 @@ impl BurnInService for BurnInServiceImpl {
     /// A generated suite to use for generating burn_in_tests.
     fn generate_burn_in_suite(
         &self,
-        build_variant: &str,
+        build_variant: &BuildVariant,
         task_map: Arc<HashMap<String, EvgTask>>,
     ) -> Result<Box<dyn GeneratedSuite>> {
         let mut sub_suites = vec![];
-        let discovered_tasks = self.burn_in_discovery.discover_tasks(build_variant)?;
-        for discovered_task in discovered_tasks {
+        let discovered_tasks = self.burn_in_discovery.discover_tasks(&build_variant.name)?;
+
+        for discovered_task in &discovered_tasks {
             let task_name = &discovered_task.task_name;
             if let Some(task_def) = task_map.get(task_name) {
                 sub_suites.extend(self.build_tests_for_task(
-                    &discovered_task,
+                    discovered_task,
                     task_def,
-                    build_variant,
+                    &build_variant.name,
                 )?);
             }
         }
@@ -254,7 +291,7 @@ impl BurnInService for BurnInServiceImpl {
         Ok(Box::new(GeneratedResmokeSuite {
             task_name: "burn_in_tests".to_string(),
             sub_suites,
-            use_large_distro: false,
+            use_large_distro: self.should_use_large_distro(&build_variant.tasks, &discovered_tasks),
         }))
     }
 }
