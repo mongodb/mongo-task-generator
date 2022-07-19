@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.7 - 2022-07-19
+
+* Support using large distros in burn_in_tests.
+
 ## 0.4.6 - 2022-07-01
 
 * Add support for burn_in_tests generation.
