@@ -389,6 +389,7 @@ fn update_resmoke_params_for_burn_in(params: &mut ResmokeGenParams, test_name: &
 #[cfg(test)]
 mod tests {
     use async_trait::async_trait;
+    use maplit::btreemap;
     use shrub_rs::models::variant::BuildVariant;
 
     use crate::task_types::{
@@ -623,5 +624,62 @@ mod tests {
             tasks.len(),
             discovered_task.test_list.len() * old_version.len() * version_combos.len()
         );
+    }
+
+    // generate_burn_in_tags_build_variant tests.
+    #[test]
+    fn test_generate_burn_in_tags_build_variant() {
+        let base_build_variant = BuildVariant {
+            name: "base-build-variant-name".to_string(),
+            display_name: Some("base build variant display name".to_string()),
+            run_on: Some(vec!["base_distro_name".to_string()]),
+            modules: Some(vec!["base_module_name".to_string()]),
+            expansions: Some(btreemap! {
+                "base_expansion_name".to_string() => "base expansion value".to_string(),
+            }),
+            ..Default::default()
+        };
+        let run_build_variant_name = "run-build-variant-name".to_string();
+        let generated_task: &dyn GeneratedSuite = &GeneratedResmokeSuite {
+            task_name: "display_task_name".to_string(),
+            sub_suites: vec![EvgTask {
+                name: "sub_suite_name".to_string(),
+                ..Default::default()
+            }],
+            use_large_distro: false,
+        };
+        let burn_in_service = build_mocked_service();
+
+        let burn_in_tags_build_variant = burn_in_service.generate_burn_in_tags_build_variant(
+            &base_build_variant,
+            run_build_variant_name,
+            generated_task,
+        );
+
+        assert_eq!(burn_in_tags_build_variant.name, "run-build-variant-name");
+        assert_eq!(
+            burn_in_tags_build_variant.display_name,
+            Some("! base build variant display name".to_string())
+        );
+        assert_eq!(
+            burn_in_tags_build_variant.run_on,
+            Some(vec!["base_distro_name".to_string()])
+        );
+        assert_eq!(
+            burn_in_tags_build_variant.modules,
+            Some(vec!["base_module_name".to_string()])
+        );
+        assert_eq!(
+            burn_in_tags_build_variant
+                .expansions
+                .unwrap_or_default()
+                .get(BURN_IN_BYPASS),
+            Some(&"base-build-variant-name".to_string())
+        );
+        assert_eq!(
+            burn_in_tags_build_variant.display_tasks.unwrap_or_default()[0].name,
+            "display_task_name"
+        );
+        assert_eq!(burn_in_tags_build_variant.tasks[1].name, "sub_suite_name");
     }
 }
