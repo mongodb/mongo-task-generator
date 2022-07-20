@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.7 - 2022-07-14
+
+* Add support for burn_in_tags generation.
+
 ## 0.4.6 - 2022-07-01
 
 * Add support for burn_in_tests generation.

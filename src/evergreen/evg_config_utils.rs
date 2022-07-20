@@ -124,6 +124,22 @@ pub trait EvgConfigUtils: Sync + Send {
         build_variant: &BuildVariant,
     ) -> Option<String>;
 
+    /// Lookup and split by whitespace the specified expansion in the given build variant.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Name of expansion to query.
+    /// * `build_variant` - Build Variant to query.
+    ///
+    /// # Returns
+    ///
+    /// List of values of expansion splitted by whitespace if it exists.
+    fn lookup_and_split_by_whitespace_build_variant_expansion(
+        &self,
+        name: &str,
+        build_variant: &BuildVariant,
+    ) -> Vec<String>;
+
     /// Lookup the given variable in the task definition.
     ///
     /// # Arguments
@@ -408,6 +424,28 @@ impl EvgConfigUtils for EvgConfigUtilsImpl {
             .unwrap_or_default()
             .get(name)
             .map(|v| v.to_string())
+    }
+
+    /// Lookup and split by whitespace the specified expansion in the given build variant.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Name of expansion to query.
+    /// * `build_variant` - Build Variant to query.
+    ///
+    /// # Returns
+    ///
+    /// List of values of expansion splitted by whitespace if it exists.
+    fn lookup_and_split_by_whitespace_build_variant_expansion(
+        &self,
+        name: &str,
+        build_variant: &BuildVariant,
+    ) -> Vec<String> {
+        self.lookup_build_variant_expansion(name, build_variant)
+            .unwrap_or_default()
+            .split_whitespace()
+            .map(|s| s.to_string())
+            .collect()
     }
 
     /// Lookup the given variable in the task definition.
@@ -1058,6 +1096,56 @@ mod tests {
             evg_config_utils.lookup_build_variant_expansion("my expansion", &build_variant);
 
         assert_eq!(lookup, Some("expansion value".to_string()));
+    }
+
+    // lookup_and_split_by_whitespace_build_variant_expansion tests
+    #[test]
+    fn test_lookup_and_split_by_whitespace_in_a_build_variant_with_no_expansions_should_return_none(
+    ) {
+        let build_variant = BuildVariant {
+            ..Default::default()
+        };
+        let evg_config_utils = EvgConfigUtilsImpl::new();
+
+        let lookup = evg_config_utils
+            .lookup_and_split_by_whitespace_build_variant_expansion("my expansion", &build_variant);
+
+        assert!(lookup.is_empty());
+    }
+
+    #[test]
+    fn test_lookup_and_split_by_whitespace_in_a_build_variant_with_missing_expansion_should_return_none(
+    ) {
+        let build_variant = BuildVariant {
+            expansions: Some(btreemap! {
+                "expansion".to_string() => "build variant value".to_string(),
+            }),
+            ..Default::default()
+        };
+        let evg_config_utils = EvgConfigUtilsImpl::new();
+
+        let lookup = evg_config_utils
+            .lookup_and_split_by_whitespace_build_variant_expansion("my expansion", &build_variant);
+
+        assert!(lookup.is_empty());
+    }
+
+    #[test]
+    fn test_lookup_and_split_by_whitespace_in_a_build_variant_with_expected_expansion_should_return_value(
+    ) {
+        let build_variant = BuildVariant {
+            expansions: Some(btreemap! {
+                "expansion".to_string() => "build variant value".to_string(),
+                "my expansion".to_string() => "expansion value".to_string(),
+            }),
+            ..Default::default()
+        };
+        let evg_config_utils = EvgConfigUtilsImpl::new();
+
+        let lookup = evg_config_utils
+            .lookup_and_split_by_whitespace_build_variant_expansion("my expansion", &build_variant);
+
+        assert_eq!(lookup, vec!["expansion".to_string(), "value".to_string()]);
     }
 
     // lookup_* tests.
