@@ -9,6 +9,7 @@ use std::{
     collections::{HashMap, HashSet},
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
+    vec,
 };
 
 use anyhow::{bail, Result};
@@ -18,7 +19,10 @@ use evergreen::{
     evg_config_utils::{EvgConfigUtils, EvgConfigUtilsImpl},
     evg_task_history::TaskHistoryServiceImpl,
 };
-use evergreen_names::{BURN_IN_TESTS, ENTERPRISE_MODULE, GENERATOR_TASKS, LARGE_DISTRO_EXPANSION};
+use evergreen_names::{
+    BURN_IN_TAGS, BURN_IN_TAG_BUILD_VARIANTS, BURN_IN_TESTS, ENTERPRISE_MODULE, GENERATOR_TASKS,
+    LARGE_DISTRO_EXPANSION,
+};
 use evg_api_rs::EvgClient;
 use generate_sub_tasks_config::GenerateSubTasksConfig;
 use resmoke::{burn_in_proxy::BurnInProxy, resmoke_proxy::ResmokeProxy};
@@ -47,7 +51,7 @@ mod services;
 mod task_types;
 mod utils;
 
-/// Directory to store the generated configuration in.
+const BURN_IN_PREFIX: &str = "burn_in_tests";
 const HISTORY_LOOKBACK_DAYS: u64 = 14;
 const MAX_SUB_TASKS_PER_TASK: usize = 5;
 
@@ -258,7 +262,7 @@ pub async fn generate_configuration(deps: &Dependencies, target_directory: &Path
     // Now that we have generated all the tasks we want to make another pass through all the
     // build variants and add references to the generated tasks that each build variant includes.
     let generated_build_variants =
-        generate_tasks_service.generate_build_variants(generated_tasks.clone())?;
+        generate_tasks_service.generate_build_variants(deps, generated_tasks.clone())?;
 
     let task_defs: Vec<EvgTask> = {
         let generated_tasks = generated_tasks.lock().unwrap();
@@ -309,6 +313,7 @@ trait GenerateTasksService: Sync + Send {
     ///
     /// # Arguments
     ///
+    /// * `deps` - Service dependencies.
     /// * `generated_tasks` - Map of task names and their generated configuration.
     ///
     /// # Returns
@@ -316,6 +321,7 @@ trait GenerateTasksService: Sync + Send {
     /// Vector of shrub build variants with generated task information.
     fn generate_build_variants(
         &self,
+        deps: &Dependencies,
         generated_tasks: Arc<Mutex<GenTaskCollection>>,
     ) -> Result<Vec<BuildVariant>>;
 
@@ -464,8 +470,33 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                             deps,
                             task_map.clone(),
                             build_variant,
+                            build_variant.name.clone(),
                             generated_tasks.clone(),
                         ));
+                    }
+                    continue;
+                }
+
+                if task.name == BURN_IN_TAGS {
+                    if self.gen_burn_in {
+                        for base_bv_name in self
+                            .evg_config_utils
+                            .lookup_and_split_by_whitespace_build_variant_expansion(
+                                BURN_IN_TAG_BUILD_VARIANTS,
+                                build_variant,
+                            )
+                        {
+                            let base_build_variant = build_variant_map.get(&base_bv_name).unwrap();
+                            let run_build_variant_name =
+                                format!("{}-required", base_build_variant.name);
+                            thread_handles.push(create_burn_in_worker(
+                                deps,
+                                task_map.clone(),
+                                base_build_variant,
+                                run_build_variant_name,
+                                generated_tasks.clone(),
+                            ));
+                        }
                     }
                     continue;
                 }
@@ -543,6 +574,7 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
     ///
     /// # Arguments
     ///
+    /// * `deps` - Service dependencies.
     /// * `generated_tasks` - Map of task names and their generated configuration.
     ///
     /// # Returns
@@ -550,12 +582,14 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
     /// Vector of shrub build variants with generated task information.
     fn generate_build_variants(
         &self,
+        deps: &Dependencies,
         generated_tasks: Arc<Mutex<GenTaskCollection>>,
     ) -> Result<Vec<BuildVariant>> {
         let mut generated_build_variants = vec![];
+        let mut burn_in_tag_build_variant_names: HashSet<String> = HashSet::new();
 
         let build_variant_map = self.evg_config_service.get_build_variant_map();
-        for (bv_name, build_variant) in build_variant_map {
+        for (bv_name, build_variant) in &build_variant_map {
             let is_enterprise = self
                 .evg_config_utils
                 .is_enterprise_build_variant(build_variant);
@@ -565,10 +599,23 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                 .evg_config_utils
                 .lookup_build_variant_expansion(LARGE_DISTRO_EXPANSION, build_variant);
             for task in &build_variant.tasks {
+                if task.name == BURN_IN_TAGS {
+                    if self.gen_burn_in {
+                        burn_in_tag_build_variant_names.extend(
+                            self.evg_config_utils
+                                .lookup_and_split_by_whitespace_build_variant_expansion(
+                                    BURN_IN_TAG_BUILD_VARIANTS,
+                                    build_variant,
+                                ),
+                        );
+                    }
+                    continue;
+                }
+
                 let generated_tasks = generated_tasks.lock().unwrap();
 
                 let task_name = if task.name == BURN_IN_TESTS {
-                    format!("burn_in_tests-{}", build_variant.name)
+                    format!("{}-{}", BURN_IN_PREFIX, build_variant.name)
                 } else {
                     lookup_task_name(is_enterprise, &task.name)
                 };
@@ -577,7 +624,7 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                     let distro = self.determine_distro(
                         &large_distro_name,
                         generated_task.as_ref(),
-                        &bv_name,
+                        bv_name,
                     )?;
 
                     generating_tasks.push(&task.name);
@@ -608,6 +655,23 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                     ..Default::default()
                 };
                 generated_build_variants.push(gen_build_variant);
+            }
+        }
+
+        for base_bv_name in burn_in_tag_build_variant_names {
+            let generated_tasks = generated_tasks.lock().unwrap();
+            let base_build_variant = build_variant_map.get(&base_bv_name).unwrap();
+            let run_build_variant_name = format!("{}-required", base_build_variant.name);
+            let task_name = format!("{}-{}", BURN_IN_PREFIX, run_build_variant_name);
+
+            if let Some(generated_task) = generated_tasks.get(&task_name) {
+                generated_build_variants.push(
+                    deps.burn_in_service.generate_burn_in_tags_build_variant(
+                        base_build_variant,
+                        run_build_variant_name,
+                        generated_task.as_ref(),
+                    ),
+                );
             }
         }
 
@@ -685,7 +749,9 @@ fn create_task_worker(
 /// # Arguments
 ///
 /// * `deps` - Service dependencies.
+/// * `task_map` - Map of task definitions in evergreen project configuration.
 /// * `build_variant` - Build variant to query timing information from.
+/// * `run_build_variant_name` - Build variant name to run burn_in_tests task on.
 /// * `generated_tasks` - Map to stored generated tasks in.
 ///
 /// # Returns
@@ -695,6 +761,7 @@ fn create_burn_in_worker(
     deps: &Dependencies,
     task_map: Arc<HashMap<String, EvgTask>>,
     build_variant: &BuildVariant,
+    run_build_variant_name: String,
     generated_tasks: Arc<Mutex<GenTaskCollection>>,
 ) -> tokio::task::JoinHandle<()> {
     let burn_in_service = deps.burn_in_service.clone();
@@ -703,13 +770,15 @@ fn create_burn_in_worker(
 
     tokio::spawn(async move {
         let generated_task = burn_in_service
-            .generate_burn_in_suite(&build_variant.name, task_map)
+            .generate_burn_in_suite(&build_variant.name, &run_build_variant_name, task_map)
             .unwrap();
 
-        let task_name = format!("burn_in_tests-{}", build_variant.name);
+        let task_name = format!("{}-{}", BURN_IN_PREFIX, run_build_variant_name);
 
-        let mut generated_tasks = generated_tasks.lock().unwrap();
-        generated_tasks.insert(task_name, generated_task);
+        if !generated_task.sub_tasks().is_empty() {
+            let mut generated_tasks = generated_tasks.lock().unwrap();
+            generated_tasks.insert(task_name, generated_task);
+        }
     })
 }
 
@@ -718,9 +787,15 @@ mod tests {
     use maplit::hashset;
     use rstest::rstest;
 
-    use crate::task_types::{
-        fuzzer_tasks::FuzzerGenTaskParams,
-        resmoke_tasks::{ResmokeGenParams, SubSuite},
+    use crate::{
+        resmoke::burn_in_proxy::{BurnInDiscovery, DiscoveredTask},
+        task_types::{
+            fuzzer_tasks::FuzzerGenTaskParams,
+            multiversion::{MultiversionIterator, MultiversionService},
+            resmoke_tasks::{
+                GeneratedResmokeSuite, ResmokeGenParams, ResmokeSuiteGenerationInfo, SubSuite,
+            },
+        },
     };
 
     use super::*;
@@ -868,6 +943,273 @@ mod tests {
         assert_eq!(
             lookup_task_name(is_enterprise, task_name),
             expected_task_name.to_string()
+        );
+    }
+
+    struct MockEvgConfigUtils {}
+    impl EvgConfigUtils for MockEvgConfigUtils {
+        fn is_task_generated(&self, _task: &EvgTask) -> bool {
+            todo!()
+        }
+
+        fn is_task_fuzzer(&self, _task: &EvgTask) -> bool {
+            todo!()
+        }
+
+        fn find_suite_name<'a>(&self, _task: &'a EvgTask) -> &'a str {
+            todo!()
+        }
+
+        fn get_task_tags(&self, _task: &EvgTask) -> HashSet<String> {
+            todo!()
+        }
+
+        fn get_task_dependencies(&self, _task: &EvgTask) -> Vec<String> {
+            todo!()
+        }
+
+        fn get_gen_task_var<'a>(&self, _task: &'a EvgTask, _var: &str) -> Option<&'a str> {
+            todo!()
+        }
+
+        fn get_gen_task_vars(
+            &self,
+            _task: &EvgTask,
+        ) -> Option<HashMap<String, shrub_rs::models::params::ParamValue>> {
+            todo!()
+        }
+
+        fn translate_run_var(
+            &self,
+            _run_var: &str,
+            _build_variantt: &BuildVariant,
+        ) -> Option<String> {
+            todo!()
+        }
+
+        fn lookup_build_variant_expansion(
+            &self,
+            _name: &str,
+            _build_variant: &BuildVariant,
+        ) -> Option<String> {
+            todo!()
+        }
+
+        fn lookup_and_split_by_whitespace_build_variant_expansion(
+            &self,
+            _name: &str,
+            _build_variant: &BuildVariant,
+        ) -> Vec<String> {
+            todo!()
+        }
+
+        fn lookup_required_param_str(
+            &self,
+            _task_def: &EvgTask,
+            _run_varr: &str,
+        ) -> Result<String> {
+            todo!()
+        }
+
+        fn lookup_required_param_u64(&self, _task_def: &EvgTask, _run_varr: &str) -> Result<u64> {
+            todo!()
+        }
+
+        fn lookup_required_param_bool(&self, _task_def: &EvgTask, _run_var: &str) -> Result<bool> {
+            todo!()
+        }
+
+        fn lookup_default_param_bool(
+            &self,
+            _task_def: &EvgTask,
+            _run_var: &str,
+            _default: bool,
+        ) -> Result<bool> {
+            todo!()
+        }
+
+        fn lookup_default_param_str(
+            &self,
+            _task_def: &EvgTask,
+            _run_var: &str,
+            _default: &str,
+        ) -> String {
+            todo!()
+        }
+
+        fn lookup_optional_param_u64(
+            &self,
+            _task_def: &EvgTask,
+            _run_var: &str,
+        ) -> Result<Option<u64>> {
+            todo!()
+        }
+
+        fn is_enterprise_build_variant(&self, _build_variant: &BuildVariant) -> bool {
+            todo!()
+        }
+    }
+
+    struct MockResmokeConfigActorService {}
+    #[async_trait]
+    impl ResmokeConfigActor for MockResmokeConfigActorService {
+        async fn write_sub_suite(&mut self, _gen_suite: &ResmokeSuiteGenerationInfo) {
+            todo!()
+        }
+
+        async fn flush(&mut self) -> Result<Vec<String>> {
+            todo!()
+        }
+    }
+
+    struct MockBurnInDiscovery {}
+    impl BurnInDiscovery for MockBurnInDiscovery {
+        fn discover_tasks(&self, _build_variant: &str) -> Result<Vec<DiscoveredTask>> {
+            todo!()
+        }
+    }
+
+    struct MockConfigExtractionService {}
+    impl ConfigExtractionService for MockConfigExtractionService {
+        fn task_def_to_fuzzer_params(
+            &self,
+            _task_def: &EvgTask,
+            _build_variant: &BuildVariant,
+        ) -> Result<FuzzerGenTaskParams> {
+            todo!()
+        }
+
+        fn task_def_to_resmoke_params(
+            &self,
+            _task_def: &EvgTask,
+            _is_enterprise: bool,
+        ) -> Result<ResmokeGenParams> {
+            todo!()
+        }
+    }
+
+    struct MockMultiversionService {}
+    impl MultiversionService for MockMultiversionService {
+        fn get_version_combinations(&self, _suite_name: &str) -> Result<Vec<String>> {
+            todo!()
+        }
+
+        fn multiversion_iter(&self, _suite_name: &str) -> Result<MultiversionIterator> {
+            todo!()
+        }
+
+        fn name_multiversion_suite(
+            &self,
+            _base_name: &str,
+            _old_version: &str,
+            _version_combination: &str,
+        ) -> String {
+            todo!()
+        }
+
+        fn exclude_tags_for_task(&self, _task_name: &str, _mv_mode: Option<String>) -> String {
+            todo!()
+        }
+    }
+
+    struct MockBurnInService {
+        sub_suites: Vec<EvgTask>,
+    }
+    impl BurnInService for MockBurnInService {
+        fn generate_burn_in_suite(
+            &self,
+            _build_variant: &str,
+            _run_build_variant_name: &str,
+            _task_map: Arc<HashMap<String, EvgTask>>,
+        ) -> Result<Box<dyn GeneratedSuite>> {
+            Ok(Box::new(GeneratedResmokeSuite {
+                task_name: "burn_in_tests".to_string(),
+                sub_suites: self.sub_suites.clone(),
+                use_large_distro: false,
+            }))
+        }
+
+        fn generate_burn_in_tags_build_variant(
+            &self,
+            _base_build_variant: &BuildVariant,
+            _run_build_variant_name: String,
+            _generated_task: &dyn GeneratedSuite,
+        ) -> BuildVariant {
+            todo!()
+        }
+    }
+
+    fn build_mocked_burn_in_service(sub_suites: Vec<EvgTask>) -> MockBurnInService {
+        MockBurnInService {
+            sub_suites: sub_suites.clone(),
+        }
+    }
+
+    fn build_mocked_dependencies(burn_in_service: MockBurnInService) -> Dependencies {
+        Dependencies {
+            evg_config_utils: Arc::new(MockEvgConfigUtils {}),
+            gen_task_service: Arc::new(build_mock_generate_tasks_service()),
+            resmoke_config_actor: Arc::new(tokio::sync::Mutex::new(
+                MockResmokeConfigActorService {},
+            )),
+            burn_in_service: Arc::new(burn_in_service),
+        }
+    }
+
+    // tests for create_burn_in_worker.
+    #[tokio::test]
+    async fn test_create_burn_in_worker_should_add_task_when_burn_in_suites_are_present() {
+        let mock_burn_in_service = build_mocked_burn_in_service(vec![EvgTask {
+            ..Default::default()
+        }]);
+        let mock_deps = build_mocked_dependencies(mock_burn_in_service);
+        let task_map = Arc::new(HashMap::new());
+        let generated_tasks = Arc::new(Mutex::new(HashMap::new()));
+
+        let thread_handle = create_burn_in_worker(
+            &mock_deps,
+            task_map.clone(),
+            &BuildVariant {
+                ..Default::default()
+            },
+            "run_bv_name".to_string(),
+            generated_tasks.clone(),
+        );
+        thread_handle.await.unwrap();
+
+        assert_eq!(
+            generated_tasks
+                .lock()
+                .unwrap()
+                .contains_key(&format!("{}-{}", BURN_IN_PREFIX, "run_bv_name")),
+            true
+        );
+    }
+
+    #[tokio::test]
+    async fn test_create_burn_in_worker_should_not_add_task_when_burn_in_suites_are_absent() {
+        let mock_burn_in_service = build_mocked_burn_in_service(vec![]);
+        let mock_deps = build_mocked_dependencies(mock_burn_in_service);
+        let task_map = Arc::new(HashMap::new());
+        let generated_tasks = Arc::new(Mutex::new(HashMap::new()));
+
+        let thread_handle = create_burn_in_worker(
+            &mock_deps,
+            task_map.clone(),
+            &BuildVariant {
+                ..Default::default()
+            },
+            "run_bv_name".to_string(),
+            generated_tasks.clone(),
+        );
+        thread_handle.await.unwrap();
+
+        assert_eq!(
+            generated_tasks
+                .lock()
+                .unwrap()
+                .contains_key(&format!("{}-{}", BURN_IN_PREFIX, "run_bv_name")),
+            false
         );
     }
 }

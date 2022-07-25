@@ -1,8 +1,15 @@
 use anyhow::Result;
-use shrub_rs::models::task::EvgTask;
-use std::{collections::HashMap, sync::Arc};
+use shrub_rs::models::{
+    task::{EvgTask, TaskRef},
+    variant::{BuildVariant, DisplayTask},
+};
+use std::{
+    collections::{BTreeMap, HashMap},
+    sync::Arc,
+};
 
 use crate::{
+    evergreen_names::{BURN_IN_BYPASS, COMPILE_TASK_DISTRO, COMPILE_TASK_GROUP_NAME},
     resmoke::burn_in_proxy::{BurnInDiscovery, DiscoveredTask},
     services::config_extraction::ConfigExtractionService,
     task_types::resmoke_tasks::{GeneratedResmokeSuite, SubSuite},
@@ -26,7 +33,8 @@ pub trait BurnInService: Sync + Send {
     ///
     /// # Arguments
     ///
-    /// * `build_variant` - Name of build variant to generate burn_in for.
+    /// * `build_variant` - Name of build variant to discover tasks for burn_in_tests.
+    /// * `run_build_variant_name` - Name of build variant to generate burn_in_tests for.
     /// * `task_map` - Map of task definitions found in the evergreen project configuration.
     ///
     /// # Returns
@@ -35,8 +43,27 @@ pub trait BurnInService: Sync + Send {
     fn generate_burn_in_suite(
         &self,
         build_variant: &str,
+        run_build_variant_name: &str,
         task_map: Arc<HashMap<String, EvgTask>>,
     ) -> Result<Box<dyn GeneratedSuite>>;
+
+    /// Generate a burn_in_tags build variant for the given base build variant.
+    ///
+    /// # Arguments
+    ///
+    /// * `base_build_variant` - Build variant to generate burn_in_tags build variant based on.
+    /// * `run_build_variant_name` - Build variant name to run burn_in_tests task on.
+    /// * `generated_task` - Generated burn_in_tests task.
+    ///
+    /// # Returns
+    ///
+    /// A generated burn_in_tags build variant based on another build variant.
+    fn generate_burn_in_tags_build_variant(
+        &self,
+        base_build_variant: &BuildVariant,
+        run_build_variant_name: String,
+        generated_task: &dyn GeneratedSuite,
+    ) -> BuildVariant;
 }
 
 pub struct BurnInServiceImpl {
@@ -222,12 +249,41 @@ impl BurnInServiceImpl {
     }
 }
 
+/// A container for configuration generated for a burn_in_tags build variant.
+#[derive(Debug, Clone)]
+struct BurnInTagsGeneratedConfig {
+    /// Name of burn_in_tags build variant.
+    pub build_variant_name: String,
+    /// References to generated tasks that should be included.
+    pub gen_task_specs: Vec<TaskRef>,
+    /// Display name of burn_in_tags build variant.
+    pub build_variant_display_name: Option<String>,
+    /// Display tasks that should be created.
+    pub display_tasks: Vec<DisplayTask>,
+    /// Expansions that should be added to build variant.
+    pub expansions: BTreeMap<String, String>,
+}
+
+impl BurnInTagsGeneratedConfig {
+    /// Create an empty instance of generated configuration.
+    pub fn new() -> Self {
+        Self {
+            build_variant_name: String::new(),
+            gen_task_specs: vec![],
+            build_variant_display_name: Some(String::new()),
+            display_tasks: vec![],
+            expansions: BTreeMap::new(),
+        }
+    }
+}
+
 impl BurnInService for BurnInServiceImpl {
     /// Generate the burn_in_tests task for the given build_variant.
     ///
     /// # Arguments
     ///
-    /// * `build_variant` - Name of build variant to generate burn_in_tests for.
+    /// * `build_variant` - Name of build variant to discover tasks for burn_in_tests.
+    /// * `run_build_variant_name` - Name of build variant to generate burn_in_tests for.
     /// * `task_map` - Map of task definitions in evergreen project configuration.
     ///
     /// # Returns
@@ -236,6 +292,7 @@ impl BurnInService for BurnInServiceImpl {
     fn generate_burn_in_suite(
         &self,
         build_variant: &str,
+        run_build_variant_name: &str,
         task_map: Arc<HashMap<String, EvgTask>>,
     ) -> Result<Box<dyn GeneratedSuite>> {
         let mut sub_suites = vec![];
@@ -246,7 +303,7 @@ impl BurnInService for BurnInServiceImpl {
                 sub_suites.extend(self.build_tests_for_task(
                     &discovered_task,
                     task_def,
-                    build_variant,
+                    run_build_variant_name,
                 )?);
             }
         }
@@ -256,6 +313,63 @@ impl BurnInService for BurnInServiceImpl {
             sub_suites,
             use_large_distro: false,
         }))
+    }
+
+    /// Generate a burn_in_tags build variant for the given base build variant.
+    ///
+    /// # Arguments
+    ///
+    /// * `base_build_variant` - Build variant to generate burn_in_tags build variant based on.
+    /// * `run_build_variant_name` - Build variant name to run burn_in_tests task on.
+    /// * `generated_task` - Generated burn_in_tests task.
+    ///
+    /// # Returns
+    ///
+    /// A generated burn_in_tags build variant based on another build variant.
+    fn generate_burn_in_tags_build_variant(
+        &self,
+        base_build_variant: &BuildVariant,
+        run_build_variant_name: String,
+        generated_task: &dyn GeneratedSuite,
+    ) -> BuildVariant {
+        let mut gen_config = BurnInTagsGeneratedConfig::new();
+
+        gen_config.build_variant_name = run_build_variant_name;
+        gen_config.build_variant_display_name = base_build_variant
+            .display_name
+            .as_ref()
+            .map(|s| format!("! {}", s));
+
+        gen_config.expansions = base_build_variant.expansions.clone().unwrap_or_default();
+        gen_config.expansions.insert(
+            BURN_IN_BYPASS.to_string(),
+            base_build_variant.name.to_string(),
+        );
+
+        gen_config.gen_task_specs.push(TaskRef {
+            name: COMPILE_TASK_GROUP_NAME.to_string(),
+            distros: Some(vec![COMPILE_TASK_DISTRO.to_string()]),
+            activate: Some(false),
+        });
+
+        gen_config
+            .gen_task_specs
+            .extend(generated_task.build_task_ref(None));
+        gen_config
+            .display_tasks
+            .push(generated_task.build_display_task());
+
+        BuildVariant {
+            name: gen_config.build_variant_name.clone(),
+            tasks: gen_config.gen_task_specs.clone(),
+            display_name: gen_config.build_variant_display_name.clone(),
+            run_on: base_build_variant.run_on.clone(),
+            display_tasks: Some(gen_config.display_tasks.clone()),
+            modules: base_build_variant.modules.clone(),
+            expansions: Some(gen_config.expansions.clone()),
+            activate: Some(false),
+            ..Default::default()
+        }
     }
 }
 
@@ -275,6 +389,7 @@ fn update_resmoke_params_for_burn_in(params: &mut ResmokeGenParams, test_name: &
 #[cfg(test)]
 mod tests {
     use async_trait::async_trait;
+    use maplit::btreemap;
     use shrub_rs::models::variant::BuildVariant;
 
     use crate::task_types::{
@@ -509,5 +624,62 @@ mod tests {
             tasks.len(),
             discovered_task.test_list.len() * old_version.len() * version_combos.len()
         );
+    }
+
+    // generate_burn_in_tags_build_variant tests.
+    #[test]
+    fn test_generate_burn_in_tags_build_variant() {
+        let base_build_variant = BuildVariant {
+            name: "base-build-variant-name".to_string(),
+            display_name: Some("base build variant display name".to_string()),
+            run_on: Some(vec!["base_distro_name".to_string()]),
+            modules: Some(vec!["base_module_name".to_string()]),
+            expansions: Some(btreemap! {
+                "base_expansion_name".to_string() => "base expansion value".to_string(),
+            }),
+            ..Default::default()
+        };
+        let run_build_variant_name = "run-build-variant-name".to_string();
+        let generated_task: &dyn GeneratedSuite = &GeneratedResmokeSuite {
+            task_name: "display_task_name".to_string(),
+            sub_suites: vec![EvgTask {
+                name: "sub_suite_name".to_string(),
+                ..Default::default()
+            }],
+            use_large_distro: false,
+        };
+        let burn_in_service = build_mocked_service();
+
+        let burn_in_tags_build_variant = burn_in_service.generate_burn_in_tags_build_variant(
+            &base_build_variant,
+            run_build_variant_name,
+            generated_task,
+        );
+
+        assert_eq!(burn_in_tags_build_variant.name, "run-build-variant-name");
+        assert_eq!(
+            burn_in_tags_build_variant.display_name,
+            Some("! base build variant display name".to_string())
+        );
+        assert_eq!(
+            burn_in_tags_build_variant.run_on,
+            Some(vec!["base_distro_name".to_string()])
+        );
+        assert_eq!(
+            burn_in_tags_build_variant.modules,
+            Some(vec!["base_module_name".to_string()])
+        );
+        assert_eq!(
+            burn_in_tags_build_variant
+                .expansions
+                .unwrap_or_default()
+                .get(BURN_IN_BYPASS),
+            Some(&"base-build-variant-name".to_string())
+        );
+        assert_eq!(
+            burn_in_tags_build_variant.display_tasks.unwrap_or_default()[0].name,
+            "display_task_name"
+        );
+        assert_eq!(burn_in_tags_build_variant.tasks[1].name, "sub_suite_name");
     }
 }
