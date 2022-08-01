@@ -37,6 +37,8 @@ pub trait ConfigExtractionService: Sync + Send {
     /// # Arguments
     ///
     /// * `task-def` - Task definition of task to generate.
+    /// * `is_enterprise` - Is this being generated for an enterprise build variant.
+    /// * `platform` - Platform that task will run on.
     ///
     /// # Returns
     ///
@@ -45,6 +47,7 @@ pub trait ConfigExtractionService: Sync + Send {
         &self,
         task_def: &EvgTask,
         is_enterprise: bool,
+        platform: Option<String>,
     ) -> Result<ResmokeGenParams>;
 }
 
@@ -160,6 +163,7 @@ impl ConfigExtractionService for ConfigExtractionServiceImpl {
             config_location: self.config_location.clone(),
             dependencies: self.determine_task_dependencies(task_def),
             is_enterprise,
+            platform: Some(evg_config_utils.infer_build_variant_platform(build_variant)),
         })
     }
 
@@ -169,6 +173,7 @@ impl ConfigExtractionService for ConfigExtractionServiceImpl {
     ///
     /// * `task_def` - Task definition of task to generate.
     /// * `is_enterprise` - Is this being generated for an enterprise build variant.
+    /// * `platform` - Platform that task will run on.
     ///
     /// # Returns
     ///
@@ -177,6 +182,7 @@ impl ConfigExtractionService for ConfigExtractionServiceImpl {
         &self,
         task_def: &EvgTask,
         is_enterprise: bool,
+        platform: Option<String>,
     ) -> Result<ResmokeGenParams> {
         let task_name = remove_gen_suffix(&task_def.name).to_string();
         let suite = self.evg_config_utils.find_suite_name(task_def).to_string();
@@ -209,6 +215,7 @@ impl ConfigExtractionService for ConfigExtractionServiceImpl {
             dependencies: self.determine_task_dependencies(task_def),
             is_enterprise,
             pass_through_vars: self.evg_config_utils.get_gen_task_vars(task_def),
+            platform,
         })
     }
 }

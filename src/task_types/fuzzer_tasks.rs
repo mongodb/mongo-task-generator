@@ -57,6 +57,8 @@ pub struct FuzzerGenTaskParams {
     pub dependencies: Vec<String>,
     /// Is this task for enterprise builds.
     pub is_enterprise: bool,
+    /// Name of platform the task will run on.
+    pub platform: Option<String>,
 }
 
 impl FuzzerGenTaskParams {
@@ -273,6 +275,7 @@ fn build_fuzzer_sub_task(
         Some(sub_task_index),
         params.num_tasks as usize,
         params.is_enterprise,
+        params.platform.as_deref(),
     );
 
     let mut commands = vec![];

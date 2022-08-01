@@ -461,6 +461,9 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
             let is_enterprise = self
                 .evg_config_utils
                 .is_enterprise_build_variant(build_variant);
+            let platform = self
+                .evg_config_utils
+                .infer_build_variant_platform(build_variant);
             for task in &build_variant.tasks {
                 // Burn in tasks could be different for each build variant, so we will always
                 // handle them.
@@ -502,7 +505,7 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                 }
 
                 // Skip tasks that have already been seen.
-                let task_name = lookup_task_name(is_enterprise, &task.name);
+                let task_name = lookup_task_name(is_enterprise, &task.name, &platform);
                 if seen_tasks.contains(&task_name) {
                     continue;
                 }
@@ -553,13 +556,24 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
 
             Some(self.gen_fuzzer_service.generate_fuzzer_task(&params)?)
         } else {
-            event!(Level::INFO, "Generating resmoke task: {}", task_def.name);
             let is_enterprise = self
                 .evg_config_utils
                 .is_enterprise_build_variant(build_variant);
-            let params = self
-                .config_extraction_service
-                .task_def_to_resmoke_params(task_def, is_enterprise)?;
+            let platform = self
+                .evg_config_utils
+                .infer_build_variant_platform(build_variant);
+            event!(
+                Level::INFO,
+                "Generating resmoke task: {}, is_enterprise: {}, platform: {}",
+                task_def.name,
+                is_enterprise,
+                platform
+            );
+            let params = self.config_extraction_service.task_def_to_resmoke_params(
+                task_def,
+                is_enterprise,
+                Some(platform),
+            )?;
             Some(
                 self.gen_resmoke_service
                     .generate_resmoke_task(&params, &build_variant.name)
@@ -593,6 +607,9 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
             let is_enterprise = self
                 .evg_config_utils
                 .is_enterprise_build_variant(build_variant);
+            let platform = self
+                .evg_config_utils
+                .infer_build_variant_platform(build_variant);
             let mut gen_config = GeneratedConfig::new();
             let mut generating_tasks = vec![];
             let large_distro_name = self
@@ -617,7 +634,7 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                 let task_name = if task.name == BURN_IN_TESTS {
                     format!("{}-{}", BURN_IN_PREFIX, build_variant.name)
                 } else {
-                    lookup_task_name(is_enterprise, &task.name)
+                    lookup_task_name(is_enterprise, &task.name, &platform)
                 };
 
                 if let Some(generated_task) = generated_tasks.get(&task_name) {
@@ -687,20 +704,17 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
 /// # Arguments
 ///
 /// * `is_enterprise` - Whether the task is for an enterprise build variant.
-/// * `task` - Evergreen definition of task.
+/// * `task` - Name of task.
+/// * `platform` - Platform that task will run on.
 ///
 /// # Returns
 ///
 /// Name to use for task.
-fn lookup_task_name(is_enterprise: bool, task_name: &str) -> String {
-    if task_name == BURN_IN_TESTS {
-        return task_name.to_string();
-    }
-
+fn lookup_task_name(is_enterprise: bool, task_name: &str, platform: &str) -> String {
     if is_enterprise {
-        format!("{}-{}", task_name, ENTERPRISE_MODULE)
+        format!("{}-{}-{}", task_name, platform, ENTERPRISE_MODULE)
     } else {
-        task_name.to_string()
+        format!("{}-{}", task_name, platform)
     }
 }
 
@@ -735,7 +749,8 @@ fn create_task_worker(
             .unwrap();
 
         let is_enterprise = evg_config_utils.is_enterprise_build_variant(&build_variant);
-        let task_name = lookup_task_name(is_enterprise, &task_def.name);
+        let platform = evg_config_utils.infer_build_variant_platform(&build_variant);
+        let task_name = lookup_task_name(is_enterprise, &task_def.name, &platform);
 
         if let Some(generated_task) = generated_task {
             let mut generated_tasks = generated_tasks.lock().unwrap();
@@ -933,15 +948,16 @@ mod tests {
 
     // tests for lookup_task_name.
     #[rstest]
-    #[case(false, "my_task", "my_task")]
-    #[case(true, "my_task", "my_task-enterprise")]
+    #[case(false, "my_task", "my_platform", "my_task-my_platform")]
+    #[case(true, "my_task", "my_platform", "my_task-my_platform-enterprise")]
     fn test_lookup_task_name_should_use_enterprise_when_specified(
         #[case] is_enterprise: bool,
         #[case] task_name: &str,
+        #[case] platform: &str,
         #[case] expected_task_name: &str,
     ) {
         assert_eq!(
-            lookup_task_name(is_enterprise, task_name),
+            lookup_task_name(is_enterprise, task_name, platform),
             expected_task_name.to_string()
         );
     }
@@ -1048,6 +1064,10 @@ mod tests {
         fn is_enterprise_build_variant(&self, _build_variant: &BuildVariant) -> bool {
             todo!()
         }
+
+        fn infer_build_variant_platform(&self, _build_variant: &BuildVariant) -> String {
+            todo!()
+        }
     }
 
     struct MockResmokeConfigActorService {}
@@ -1083,6 +1103,7 @@ mod tests {
             &self,
             _task_def: &EvgTask,
             _is_enterprise: bool,
+            _platform: Option<String>,
         ) -> Result<ResmokeGenParams> {
             todo!()
         }

@@ -111,3 +111,11 @@ pub const MULTIVERSION_LAST_CONTINUOUS: &str = "last_continuous";
 // Distros
 /// Name of compile task distro for burn_in_tags.
 pub const COMPILE_TASK_DISTRO: &str = "rhel80-xlarge";
+
+// Distro group names
+/// Windows distro group name.
+pub const WINDOWS: &str = "windows";
+/// MacOS distro group name.
+pub const MACOS: &str = "macos";
+/// Linux distro group name.
+pub const LINUX: &str = "linux";

@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::vec;
 
 use anyhow::{bail, Result};
 use lazy_static::lazy_static;
@@ -7,7 +8,9 @@ use shrub_rs::models::commands::EvgCommand::Function;
 use shrub_rs::models::params::ParamValue;
 use shrub_rs::models::{commands::FunctionCall, task::EvgTask, variant::BuildVariant};
 
-use crate::evergreen_names::{ENTERPRISE_MODULE, GENERATE_RESMOKE_TASKS, IS_FUZZER};
+use crate::evergreen_names::{
+    ENTERPRISE_MODULE, GENERATE_RESMOKE_TASKS, IS_FUZZER, LINUX, MACOS, WINDOWS,
+};
 use crate::utils::task_name::remove_gen_suffix;
 
 lazy_static! {
@@ -229,6 +232,17 @@ pub trait EvgConfigUtils: Sync + Send {
     ///
     /// true if given build variant includes the enterprise module.
     fn is_enterprise_build_variant(&self, build_variant: &BuildVariant) -> bool;
+
+    /// Infer platform that build variant will be running on.
+    ///
+    /// # Arguments
+    ///
+    /// * `build_variant` - Build variant to query.
+    ///
+    /// # Returns
+    ///
+    /// Linux, or Mac, or Windows platform that build variant will be running on.
+    fn infer_build_variant_platform(&self, build_variant: &BuildVariant) -> String;
 }
 
 /// Service for utilities to help interpret evergreen configuration.
@@ -579,6 +593,33 @@ impl EvgConfigUtils for EvgConfigUtilsImpl {
             modules.contains(&ENTERPRISE_MODULE.to_string())
         } else {
             false
+        }
+    }
+
+    /// Infer platform that build variant will run on.
+    ///
+    /// # Arguments
+    ///
+    /// * `build_variant` - Build variant to query.
+    ///
+    /// # Returns
+    ///
+    /// linux, or mac, or windows platform that build variant will run on.
+    fn infer_build_variant_platform(&self, build_variant: &BuildVariant) -> String {
+        let distro = build_variant
+            .run_on
+            .as_ref()
+            .unwrap_or(&vec!["".to_string()])
+            .first()
+            .unwrap_or(&"".to_string())
+            .to_lowercase();
+
+        if distro.contains(MACOS) {
+            MACOS.to_string()
+        } else if distro.contains(WINDOWS) {
+            WINDOWS.to_string()
+        } else {
+            LINUX.to_string()
         }
     }
 }
@@ -1270,5 +1311,28 @@ mod tests {
         let evg_config_utils = EvgConfigUtilsImpl::new();
 
         assert!(!evg_config_utils.is_enterprise_build_variant(&build_variant));
+    }
+
+    // tests for infer_build_variant_platform
+    #[rstest]
+    #[case(Some(vec!["rhel80-small".to_string()]), "linux".to_string())]
+    #[case(Some(vec!["windows-vsCurrent-small".to_string()]), "windows".to_string())]
+    #[case(Some(vec!["macos-1100".to_string()]), "macos".to_string())]
+    #[case(Some(vec!["rhel80-small".to_string(), "macos-1100".to_string()]), "linux".to_string())]
+    #[case(Some(vec![]), "linux".to_string())]
+    fn test_infer_build_variant_platform(
+        #[case] distros: Option<Vec<String>>,
+        #[case] platform: String,
+    ) {
+        let build_variant = BuildVariant {
+            run_on: distros,
+            ..Default::default()
+        };
+        let evg_config_utils = EvgConfigUtilsImpl::new();
+
+        assert_eq!(
+            evg_config_utils.infer_build_variant_platform(&build_variant),
+            platform
+        );
     }
 }

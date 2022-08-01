@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.0 - 2022-08-01
+
+* Generate tasks separately for Windows, MacOS, Linux distro groups.
+
 ## 0.4.7 - 2022-07-14
 
 * Add support for burn_in_tags generation.

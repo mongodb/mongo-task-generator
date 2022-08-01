@@ -7,21 +7,27 @@ const GEN_SUFFIX: &str = "_gen";
 ///
 /// # Arguments
 ///
-/// * `parent_name` - Name of task parent task being generated.
-/// * `task_index` - Index of sub-task being named.
+/// * `display_name` - Name of parent task being generated.
+/// * `sub_task_index` - Index of sub-task being named.
 /// * `total_tasks` - Total number of sub-tasks generated for this parent task.
-/// * `variant` - Build Variant being generated.
+/// * `is_enterprise` - Whether the task is for an enterprise build variant.
+/// * `platform` - Platform that task will run on.
 pub fn name_generated_task(
     display_name: &str,
     sub_task_index: Option<usize>,
     total_tasks: usize,
     is_enterprise: bool,
+    platform: Option<&str>,
 ) -> String {
-    let suffix = if is_enterprise {
+    let mut suffix = if is_enterprise {
         format!("-{}", ENTERPRISE_MODULE)
     } else {
         "".to_string()
     };
+
+    if let Some(platform) = platform {
+        suffix = format!("-{}{}", platform, suffix)
+    }
 
     if let Some(index) = sub_task_index {
         let alignment = (total_tasks as f64).log10().ceil() as usize;
@@ -61,22 +67,38 @@ mod tests {
     use rstest::*;
 
     #[rstest]
-    #[case("task", Some(0), 10, false, "task_0")]
-    #[case("task", Some(42), 1001, false, "task_0042")]
-    #[case("task", None, 1001, false, "task_misc")]
-    #[case("task", None, 0, false, "task_misc")]
-    #[case("task", Some(0), 10, true, "task_0-enterprise")]
-    #[case("task", Some(42), 1001, true, "task_0042-enterprise")]
-    #[case("task", None, 1001, true, "task_misc-enterprise")]
-    #[case("task", None, 0, true, "task_misc-enterprise")]
+    #[case("task", Some(0), 10, false, None, "task_0")]
+    #[case("task", Some(0), 10, false, Some("linux"), "task_0-linux")]
+    #[case("task", Some(42), 1001, false, None, "task_0042")]
+    #[case("task", Some(42), 1001, false, Some("linux"), "task_0042-linux")]
+    #[case("task", None, 1001, false, None, "task_misc")]
+    #[case("task", None, 1001, false, Some("linux"), "task_misc-linux")]
+    #[case("task", None, 0, false, None, "task_misc")]
+    #[case("task", None, 0, false, Some("linux"), "task_misc-linux")]
+    #[case("task", Some(0), 10, true, None, "task_0-enterprise")]
+    #[case("task", Some(0), 10, true, Some("linux"), "task_0-linux-enterprise")]
+    #[case("task", Some(42), 1001, true, None, "task_0042-enterprise")]
+    #[case(
+        "task",
+        Some(42),
+        1001,
+        true,
+        Some("linux"),
+        "task_0042-linux-enterprise"
+    )]
+    #[case("task", None, 1001, true, None, "task_misc-enterprise")]
+    #[case("task", None, 1001, true, Some("linux"), "task_misc-linux-enterprise")]
+    #[case("task", None, 0, true, None, "task_misc-enterprise")]
+    #[case("task", None, 0, true, Some("linux"), "task_misc-linux-enterprise")]
     fn test_name_generated_task_should_not_include_suffix(
         #[case] name: &str,
         #[case] index: Option<usize>,
         #[case] total: usize,
         #[case] is_enterprise: bool,
+        #[case] platform: Option<&str>,
         #[case] expected: &str,
     ) {
-        let task_name = name_generated_task(name, index, total, is_enterprise);
+        let task_name = name_generated_task(name, index, total, is_enterprise, platform);
 
         assert_eq!(task_name, expected);
     }
