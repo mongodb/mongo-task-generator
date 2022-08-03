@@ -169,7 +169,7 @@ impl BurnInServiceImpl {
         for (index, test) in discovered_task.test_list.iter().enumerate() {
             let mut params = self
                 .config_extraction_service
-                .task_def_to_resmoke_params(task_def, false)?;
+                .task_def_to_resmoke_params(task_def, false, None)?;
             update_resmoke_params_for_burn_in(&mut params, test);
 
             if params.generate_multiversion_combos {
@@ -238,6 +238,7 @@ impl BurnInServiceImpl {
             origin_suite: origin_suite.clone(),
             mv_exclude_tags: suite_info.multiversion_tags.clone(),
             is_enterprise: false,
+            platform: None,
         };
 
         self.gen_resmoke_task_service.build_resmoke_sub_task(
@@ -513,6 +514,7 @@ mod tests {
             &self,
             _task_def: &EvgTask,
             _is_enterprise: bool,
+            _platform: Option<String>,
         ) -> Result<ResmokeGenParams> {
             Ok(ResmokeGenParams {
                 generate_multiversion_combos: self.is_multiversion,

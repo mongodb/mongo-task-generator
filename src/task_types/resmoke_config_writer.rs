@@ -148,7 +148,13 @@ impl WriteConfigActorImpl {
 
                 let filename = format!(
                     "{}.yml",
-                    name_generated_task(&s.name, s.index, total_tasks, s.is_enterprise)
+                    name_generated_task(
+                        &s.name,
+                        s.index,
+                        total_tasks,
+                        s.is_enterprise,
+                        s.platform.as_deref()
+                    )
                 );
                 let mut path = PathBuf::from(&self.target_dir);
                 path.push(filename);
@@ -182,7 +188,13 @@ impl WriteConfigActorImpl {
                 let misc_config = origin_config.with_new_tests(None, Some(&test_list));
                 let filename = format!(
                     "{}.yml",
-                    name_generated_task(&s.name, s.index, total_tasks, s.is_enterprise)
+                    name_generated_task(
+                        &s.name,
+                        s.index,
+                        total_tasks,
+                        s.is_enterprise,
+                        s.platform.as_deref()
+                    )
                 );
                 let mut path = PathBuf::from(&self.target_dir);
                 path.push(filename);

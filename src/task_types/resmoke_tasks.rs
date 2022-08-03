@@ -68,6 +68,8 @@ pub struct ResmokeGenParams {
     pub is_enterprise: bool,
     /// Arguments to pass to 'run tests' function.
     pub pass_through_vars: Option<HashMap<String, ParamValue>>,
+    /// Name of platform the task will run on.
+    pub platform: Option<String>,
 }
 
 impl ResmokeGenParams {
@@ -200,6 +202,9 @@ pub struct SubSuite {
 
     /// Is sub-suite for a enterprise build_variant.
     pub is_enterprise: bool,
+
+    /// Platform of build_variant the sub-suite is for.
+    pub platform: Option<String>,
 }
 
 /// Information needed to generate resmoke configuration files for the generated task.
@@ -459,6 +464,7 @@ impl GenResmokeTaskServiceImpl {
                         exclude_test_list: None,
                         mv_exclude_tags: multiversion_tags.clone(),
                         is_enterprise: params.is_enterprise,
+                        platform: params.platform.clone(),
                     });
                     running_tests = vec![];
                     running_runtime = 0.0;
@@ -477,6 +483,7 @@ impl GenResmokeTaskServiceImpl {
                 exclude_test_list: None,
                 mv_exclude_tags: multiversion_tags,
                 is_enterprise: params.is_enterprise,
+                platform: params.platform.clone(),
             });
         }
 
@@ -558,6 +565,7 @@ impl GenResmokeTaskServiceImpl {
                     exclude_test_list: None,
                     mv_exclude_tags: multiversion_tags.clone(),
                     is_enterprise: params.is_enterprise,
+                    platform: params.platform.clone(),
                 });
                 current_tests = vec![];
                 i += 1;
@@ -573,6 +581,7 @@ impl GenResmokeTaskServiceImpl {
                 exclude_test_list: None,
                 mv_exclude_tags: multiversion_tags,
                 is_enterprise: params.is_enterprise,
+                platform: params.platform.clone(),
             });
         }
 
@@ -680,6 +689,7 @@ impl GenResmokeTaskServiceImpl {
             exclude_test_list: Some(full_test_list),
             mv_exclude_tags: multiversion_tags,
             is_enterprise: params.is_enterprise,
+            platform: params.platform.clone(),
         });
 
         Ok(sub_suites)
@@ -755,6 +765,7 @@ impl GenResmokeTaskService for GenResmokeTaskServiceImpl {
             sub_suite.index,
             total_sub_suites,
             params.is_enterprise,
+            params.platform.as_deref(),
         );
 
         let run_test_vars =
