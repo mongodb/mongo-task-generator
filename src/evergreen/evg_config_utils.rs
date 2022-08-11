@@ -9,7 +9,7 @@ use shrub_rs::models::params::ParamValue;
 use shrub_rs::models::{commands::FunctionCall, task::EvgTask, variant::BuildVariant};
 
 use crate::evergreen_names::{
-    ENTERPRISE_MODULE, GENERATE_RESMOKE_TASKS, IS_FUZZER, LINUX, MACOS, WINDOWS,
+    ENTERPRISE_MODULE, GENERATE_RESMOKE_TASKS, RUN_RESMOKE_TASK, IS_FUZZER, LINUX, MACOS, WINDOWS,
 };
 use crate::utils::task_name::remove_gen_suffix;
 
@@ -308,11 +308,18 @@ impl EvgConfigUtils for EvgConfigUtilsImpl {
     ///
     /// Name of task the given resmoke suite executes.
     fn find_suite_name<'a>(&self, task: &'a EvgTask) -> &'a str {
-        let suite = self.get_gen_task_var(task, "suite");
-        if let Some(suite) = suite {
-            suite
+        let optional_vars = get_resmoke_vars(task);
+
+        let generated_task_name = remove_gen_suffix(&task.name);
+        
+        if let Some(vars) = optional_vars {
+            if let Some(ParamValue::String(suite_var)) = vars.get("suite") {
+                &suite_var
+            } else {
+                generated_task_name
+            }
         } else {
-            remove_gen_suffix(&task.name)
+            generated_task_name
         }
     }
 
@@ -649,6 +656,42 @@ fn get_generate_resmoke_func(task: &EvgTask) -> Option<&FunctionCall> {
 
     if let Some(Function(func)) = command {
         Some(func)
+    } else {
+        None
+    }
+}
+
+/// Get the vars passed to "generate resmoke task" or "run tests".
+///
+/// # Arguments
+///
+/// * `task` - Shrub task to query.
+///
+/// # Returns
+///
+/// vars forwarded to resmoke.py.
+fn get_resmoke_vars(task: &EvgTask) -> Option<&HashMap<String, ParamValue>> {
+    let command = if let Some(commands) = &task.commands {
+        commands.iter().find(|c| {
+            if let Function(func) = c {
+                if func.func == GENERATE_RESMOKE_TASKS {
+                    return true;
+                } else if func.func == RUN_RESMOKE_TASK {
+                    return true;
+                }
+            }
+            false
+        })
+    } else {
+        None
+    };
+
+    if let Some(Function(func)) = command {
+        if let Some(vars) = &func.vars {
+            return Some(vars)
+        } else {
+            None
+        }
     } else {
         None
     }

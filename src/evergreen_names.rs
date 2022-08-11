@@ -29,6 +29,9 @@ pub const ADD_GIT_TAG: &str = "add git tag";
 // Functions for generating tasks.
 pub const GENERATE_RESMOKE_TASKS: &str = "generate resmoke tasks";
 
+// Functions for running tests.
+pub const RUN_RESMOKE_TASK: &str = "run tests";
+
 // Tasks
 /// Name of display task to hide all "_gen" tasks behind.
 pub const GENERATOR_TASKS: &str = "generator_tasks";
