@@ -22,7 +22,9 @@ use tokio::sync::Mutex;
 use tracing::{event, warn, Level};
 
 use crate::{
-    evergreen::evg_task_history::{get_test_name, TaskHistoryService, TaskRuntimeHistory},
+    evergreen::evg_task_history::{
+        get_test_name, TaskHistoryService, TaskRuntimeHistory, TestRuntimeHistory,
+    },
     evergreen_names::{
         ADD_GIT_TAG, CONFIGURE_EVG_API_CREDS, DO_MULTIVERSION_SETUP, DO_SETUP,
         GEN_TASK_CONFIG_LOCATION, GET_PROJECT_WITH_NO_MODULES, MULTIVERSION_EXCLUDE_TAG,
@@ -445,43 +447,35 @@ impl GenResmokeTaskServiceImpl {
             runtime_per_subtask,
             test_list.len()
         );
-        let mut sub_suites = vec![];
-        let mut running_tests = vec![];
-        let mut running_runtime = 0.0;
-        let mut i = 0;
-        for test in test_list {
+
+        let sorted_test_list = sort_tests_by_runtime(test_list, task_stats);
+        let mut running_tests = vec![vec![]; max_tasks];
+        let mut running_runtimes = vec![0.0; max_tasks];
+
+        for test in sorted_test_list {
+            let mut min_idx = 0;
+            for (i, value) in running_runtimes.iter().enumerate() {
+                if value < &running_runtimes[min_idx] {
+                    min_idx = i;
+                }
+            }
+
             let test_name = get_test_name(&test);
             if let Some(test_stats) = task_stats.test_map.get(&test_name) {
-                if (running_runtime + test_stats.average_runtime > runtime_per_subtask)
-                    && !running_tests.is_empty()
-                    && sub_suites.len() < max_tasks - 1
-                {
-                    sub_suites.push(SubSuite {
-                        index: Some(i),
-                        name: multiversion_name.unwrap_or(&params.task_name).to_string(),
-                        test_list: running_tests.clone(),
-                        origin_suite: origin_suite.to_string(),
-                        exclude_test_list: None,
-                        mv_exclude_tags: multiversion_tags.clone(),
-                        is_enterprise: params.is_enterprise,
-                        platform: params.platform.clone(),
-                    });
-                    running_tests = vec![];
-                    running_runtime = 0.0;
-                    i += 1;
-                }
-                running_runtime += test_stats.average_runtime;
+                running_runtimes[min_idx] += test_stats.average_runtime;
             }
-            running_tests.push(test.clone());
+            running_tests[min_idx].push(test.clone());
         }
-        if !running_tests.is_empty() {
+
+        let mut sub_suites = vec![];
+        for (i, slice) in running_tests.iter().enumerate() {
             sub_suites.push(SubSuite {
                 index: Some(i),
                 name: multiversion_name.unwrap_or(&params.task_name).to_string(),
-                test_list: running_tests.clone(),
+                test_list: slice.clone(),
                 origin_suite: origin_suite.to_string(),
                 exclude_test_list: None,
-                mv_exclude_tags: multiversion_tags,
+                mv_exclude_tags: multiversion_tags.clone(),
                 is_enterprise: params.is_enterprise,
                 platform: params.platform.clone(),
             });
@@ -694,6 +688,47 @@ impl GenResmokeTaskServiceImpl {
 
         Ok(sub_suites)
     }
+}
+
+/// Sort tests by historic runtime descending.
+///
+/// Tests without historic runtime data will be placed at the end of the list.
+///
+/// # Arguments
+///
+/// * `test_list` - List of tests.
+/// * `task_stats` - Historic task stats.
+///
+/// # Returns
+///
+/// List of sorted tests by historic runtime.
+fn sort_tests_by_runtime(
+    test_list: Vec<String>,
+    task_stats: &TaskRuntimeHistory,
+) -> Vec<std::string::String> {
+    let mut sorted_test_list = test_list;
+    sorted_test_list.sort_by(|test_file_a, test_file_b| {
+        let test_name_a = get_test_name(test_file_a);
+        let test_name_b = get_test_name(test_file_b);
+        let default_runtime = TestRuntimeHistory {
+            test_name: "default".to_string(),
+            average_runtime: 0.0,
+            hooks: vec![],
+        };
+        let runtime_history_a = task_stats
+            .test_map
+            .get(&test_name_a)
+            .unwrap_or(&default_runtime);
+        let runtime_history_b = task_stats
+            .test_map
+            .get(&test_name_b)
+            .unwrap_or(&default_runtime);
+        runtime_history_b
+            .average_runtime
+            .partial_cmp(&runtime_history_a.average_runtime)
+            .unwrap()
+    });
+    sorted_test_list
 }
 
 #[async_trait]
@@ -1128,8 +1163,7 @@ mod tests {
         // a single test. The second 2 tests and the third 3 tests. We will set the test runtimes
         // to make this happen.
         let n_suites = 3;
-        let n_tests = 6;
-        let test_list: Vec<String> = (0..n_tests)
+        let test_list: Vec<String> = (0..6)
             .into_iter()
             .map(|i| format!("test_{}.js", i))
             .collect();
@@ -1137,11 +1171,11 @@ mod tests {
             task_name: "my task".to_string(),
             test_map: hashmap! {
                 "test_0".to_string() => build_mock_test_runtime("test_0.js", 100.0),
-                "test_1".to_string() => build_mock_test_runtime("test_1.js", 50.0),
+                "test_1".to_string() => build_mock_test_runtime("test_1.js", 56.0),
                 "test_2".to_string() => build_mock_test_runtime("test_2.js", 50.0),
-                "test_3".to_string() => build_mock_test_runtime("test_3.js", 34.0),
+                "test_3".to_string() => build_mock_test_runtime("test_3.js", 35.0),
                 "test_4".to_string() => build_mock_test_runtime("test_4.js", 34.0),
-                "test_5".to_string() => build_mock_test_runtime("test_5.js", 34.0),
+                "test_5".to_string() => build_mock_test_runtime("test_5.js", 30.0),
             },
         };
         let gen_resmoke_service = build_mocked_service(
@@ -1161,14 +1195,15 @@ mod tests {
             .unwrap();
 
         assert_eq!(sub_suites.len(), n_suites);
-        let all_tests: Vec<String> = sub_suites
-            .iter()
-            .flat_map(|s| s.test_list.clone())
-            .collect();
-        assert_eq!(all_tests.len(), n_tests);
-        for test_name in test_list {
-            assert!(all_tests.contains(&test_name.to_string()));
-        }
+        let suite_0 = &sub_suites[0];
+        assert!(suite_0.test_list.contains(&"test_0.js".to_string()));
+        let suite_1 = &sub_suites[1];
+        assert!(suite_1.test_list.contains(&"test_1.js".to_string()));
+        assert!(suite_1.test_list.contains(&"test_4.js".to_string()));
+        let suite_2 = &sub_suites[2];
+        assert!(suite_2.test_list.contains(&"test_2.js".to_string()));
+        assert!(suite_2.test_list.contains(&"test_3.js".to_string()));
+        assert!(suite_2.test_list.contains(&"test_5.js".to_string()));
     }
 
     #[test]
@@ -1506,6 +1541,48 @@ mod tests {
         #[case] expected_result: usize,
     ) {
         let result = percent_of_tests(n_tests, percent);
+
+        assert_eq!(result, expected_result);
+    }
+
+    // sort_tests_by_runtime tests.
+    #[rstest]
+    #[case(vec![100.0, 50.0, 30.0, 25.0, 20.0, 15.0], vec![0, 1, 2, 3, 4, 5])]
+    #[case(vec![15.0, 20.0, 25.0, 30.0, 50.0, 100.0], vec![5, 4, 3, 2, 1, 0])]
+    #[case(vec![15.0, 50.0, 25.0, 30.0, 20.0, 100.0], vec![5, 1, 3, 2, 4, 0])]
+    #[case(vec![100.0, 50.0, 30.0], vec![0, 1, 2, 3, 4, 5])]
+    #[case(vec![30.0, 50.0, 100.0], vec![2, 1, 0, 3, 4, 5])]
+    #[case(vec![30.0, 100.0, 50.0], vec![1, 2, 0, 3, 4, 5])]
+    #[case(vec![], vec![0, 1, 2, 3, 4, 5])]
+    fn test_sort_tests_by_runtime(
+        #[case] historic_runtimes: Vec<f64>,
+        #[case] sorted_indexes: Vec<i32>,
+    ) {
+        let test_list: Vec<String> = (0..sorted_indexes.len())
+            .into_iter()
+            .map(|i| format!("test_{}.js", i))
+            .collect();
+        let task_stats = TaskRuntimeHistory {
+            task_name: "my_task".to_string(),
+            test_map: (0..historic_runtimes.len())
+                .into_iter()
+                .map(|i| {
+                    (
+                        format!("test_{}", i),
+                        build_mock_test_runtime(
+                            format!("test_{}.js", i).as_ref(),
+                            historic_runtimes[i],
+                        ),
+                    )
+                })
+                .collect::<HashMap<_, _>>(),
+        };
+        let expected_result: Vec<String> = (0..sorted_indexes.len())
+            .into_iter()
+            .map(|i| format!("test_{}.js", sorted_indexes[i]))
+            .collect();
+
+        let result = sort_tests_by_runtime(test_list, &task_stats);
 
         assert_eq!(result, expected_result);
     }
