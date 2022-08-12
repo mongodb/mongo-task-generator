@@ -9,7 +9,7 @@ use shrub_rs::models::params::ParamValue;
 use shrub_rs::models::{commands::FunctionCall, task::EvgTask, variant::BuildVariant};
 
 use crate::evergreen_names::{
-    ENTERPRISE_MODULE, GENERATE_RESMOKE_TASKS, IS_FUZZER, LINUX, MACOS, RUN_RESMOKE_TASK, WINDOWS,
+    ENTERPRISE_MODULE, GENERATE_RESMOKE_TASKS, IS_FUZZER, LINUX, MACOS, RUN_RESMOKE_TESTS, WINDOWS,
 };
 use crate::utils::task_name::remove_gen_suffix;
 
@@ -674,7 +674,7 @@ fn get_resmoke_vars(task: &EvgTask) -> Option<&HashMap<String, ParamValue>> {
     let command = if let Some(commands) = &task.commands {
         commands.iter().find(|c| {
             if let Function(func) = c {
-                return func.func == GENERATE_RESMOKE_TASKS || func.func == RUN_RESMOKE_TASK;
+                return func.func == GENERATE_RESMOKE_TASKS || func.func == RUN_RESMOKE_TESTS;
             }
             false
         })
