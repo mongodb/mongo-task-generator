@@ -170,7 +170,6 @@ impl BurnInServiceImpl {
             let mut params = self
                 .config_extraction_service
                 .task_def_to_resmoke_params(task_def, false, None)?;
-
             update_resmoke_params_for_burn_in(&mut params, test);
 
             if params.generate_multiversion_combos {
