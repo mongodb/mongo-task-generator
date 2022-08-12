@@ -674,7 +674,7 @@ fn get_resmoke_vars(task: &EvgTask) -> Option<&HashMap<String, ParamValue>> {
     let command = if let Some(commands) = &task.commands {
         commands.iter().find(|c| {
             if let Function(func) = c {
-                return func.func == GENERATE_RESMOKE_TASKS || func.func == RUN_RESMOKE_TASK
+                return func.func == GENERATE_RESMOKE_TASKS || func.func == RUN_RESMOKE_TASK;
             }
             false
         })
