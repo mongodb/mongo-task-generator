@@ -844,7 +844,7 @@ mod tests {
     #[test]
     fn test_find_suite_name_should_use_task_name_for_non_generated_task_if_no_var() {
         let evg_task = EvgTask {
-            name: "my_task_gen".to_string(),
+            name: "my_task".to_string(),
             commands: Some(vec![
                 fn_call("hello world"),
                 fn_call_with_params(
