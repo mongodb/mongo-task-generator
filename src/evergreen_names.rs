@@ -29,6 +29,9 @@ pub const ADD_GIT_TAG: &str = "add git tag";
 // Functions for generating tasks.
 pub const GENERATE_RESMOKE_TASKS: &str = "generate resmoke tasks";
 
+// Functions for invoking resmoke.py in a generated or non-generated task.
+pub const RUN_RESMOKE_TESTS: &str = "run tests";
+
 // Tasks
 /// Name of display task to hide all "_gen" tasks behind.
 pub const GENERATOR_TASKS: &str = "generator_tasks";

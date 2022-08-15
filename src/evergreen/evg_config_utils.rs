@@ -9,7 +9,7 @@ use shrub_rs::models::params::ParamValue;
 use shrub_rs::models::{commands::FunctionCall, task::EvgTask, variant::BuildVariant};
 
 use crate::evergreen_names::{
-    ENTERPRISE_MODULE, GENERATE_RESMOKE_TASKS, IS_FUZZER, LINUX, MACOS, WINDOWS,
+    ENTERPRISE_MODULE, GENERATE_RESMOKE_TASKS, IS_FUZZER, LINUX, MACOS, RUN_RESMOKE_TESTS, WINDOWS,
 };
 use crate::utils::task_name::remove_gen_suffix;
 
@@ -308,11 +308,18 @@ impl EvgConfigUtils for EvgConfigUtilsImpl {
     ///
     /// Name of task the given resmoke suite executes.
     fn find_suite_name<'a>(&self, task: &'a EvgTask) -> &'a str {
-        let suite = self.get_gen_task_var(task, "suite");
-        if let Some(suite) = suite {
-            suite
+        let optional_vars = get_resmoke_vars(task);
+
+        let generated_task_name = remove_gen_suffix(&task.name);
+
+        if let Some(vars) = optional_vars {
+            if let Some(ParamValue::String(suite_var)) = vars.get("suite") {
+                suite_var
+            } else {
+                generated_task_name
+            }
         } else {
-            remove_gen_suffix(&task.name)
+            generated_task_name
         }
     }
 
@@ -654,6 +661,38 @@ fn get_generate_resmoke_func(task: &EvgTask) -> Option<&FunctionCall> {
     }
 }
 
+/// Get the vars passed to "generate resmoke task" or "run tests".
+///
+/// # Arguments
+///
+/// * `task` - Shrub task to query.
+///
+/// # Returns
+///
+/// vars forwarded to resmoke.py.
+fn get_resmoke_vars(task: &EvgTask) -> Option<&HashMap<String, ParamValue>> {
+    let command = if let Some(commands) = &task.commands {
+        commands.iter().find(|c| {
+            if let Function(func) = c {
+                return func.func == GENERATE_RESMOKE_TASKS || func.func == RUN_RESMOKE_TESTS;
+            }
+            false
+        })
+    } else {
+        None
+    };
+
+    if let Some(Function(func)) = command {
+        if let Some(vars) = &func.vars {
+            Some(vars)
+        } else {
+            None
+        }
+    } else {
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use maplit::btreemap;
@@ -706,7 +745,6 @@ mod tests {
                         "var2".to_string() => ParamValue::from("value2"),
                     },
                 ),
-                fn_call("run tests"),
             ]),
             ..Default::default()
         };
@@ -728,7 +766,6 @@ mod tests {
                         "var2".to_string() => ParamValue::from("value2"),
                     },
                 ),
-                fn_call("run tests"),
             ]),
             ..Default::default()
         };
@@ -739,7 +776,7 @@ mod tests {
 
     // find_suite_name tests.
     #[test]
-    fn test_find_suite_name_should_use_suite_var_if_it_exists() {
+    fn test_find_suite_name_should_use_suite_var_for_generated_task_if_it_exists() {
         let evg_task = EvgTask {
             name: "my_task_gen".to_string(),
             commands: Some(vec![
@@ -752,7 +789,29 @@ mod tests {
                         "var2".to_string() => ParamValue::from("value2"),
                     },
                 ),
-                fn_call("run tests"),
+            ]),
+            ..Default::default()
+        };
+        let evg_config_utils = EvgConfigUtilsImpl::new();
+
+        assert_eq!(evg_config_utils.find_suite_name(&evg_task), "my suite name");
+    }
+
+    // find_suite_name tests.
+    #[test]
+    fn test_find_suite_name_should_use_suite_var_for_non_generated_task_if_it_exists() {
+        let evg_task = EvgTask {
+            name: "my_task".to_string(),
+            commands: Some(vec![
+                fn_call("hello world"),
+                fn_call_with_params(
+                    "run tests",
+                    hashmap! {
+                        "var1".to_string() => ParamValue::from("value1"),
+                        "suite".to_string() => ParamValue::from("my suite name"),
+                        "var2".to_string() => ParamValue::from("value2"),
+                    },
+                ),
             ]),
             ..Default::default()
         };
@@ -762,7 +821,7 @@ mod tests {
     }
 
     #[test]
-    fn test_find_suite_name_should_use_task_name_if_no_var() {
+    fn test_find_suite_name_should_use_task_name_for_generated_task_if_no_var() {
         let evg_task = EvgTask {
             name: "my_task_gen".to_string(),
             commands: Some(vec![
@@ -774,7 +833,27 @@ mod tests {
                         "var2".to_string() => ParamValue::from("value2"),
                     },
                 ),
-                fn_call("run tests"),
+            ]),
+            ..Default::default()
+        };
+        let evg_config_utils = EvgConfigUtilsImpl::new();
+
+        assert_eq!(evg_config_utils.find_suite_name(&evg_task), "my_task");
+    }
+
+    #[test]
+    fn test_find_suite_name_should_use_task_name_for_non_generated_task_if_no_var() {
+        let evg_task = EvgTask {
+            name: "my_task".to_string(),
+            commands: Some(vec![
+                fn_call("hello world"),
+                fn_call_with_params(
+                    "run_tests",
+                    hashmap! {
+                        "var1".to_string() => ParamValue::from("value1"),
+                        "var2".to_string() => ParamValue::from("value2"),
+                    },
+                ),
             ]),
             ..Default::default()
         };

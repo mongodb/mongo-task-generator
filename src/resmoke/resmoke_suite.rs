@@ -10,7 +10,7 @@ const SHARDED_CLUSTER_FIXTURE_NAME: &str = "ShardedClusterFixture";
 const REPLICA_SET_FIXTURE_NAME: &str = "ReplicaSetFixture";
 
 /// Types of fixtures used by resmoke suites.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum SuiteFixtureType {
     /// A suite with no fixtures defined.
     Shell,

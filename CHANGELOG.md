@@ -1,4 +1,6 @@
 # Changelog
+## 0.5.1 - 2022-08-12
+* Fix parsing the suite name from evergreen.yml for burn_in_* tasks.
 
 ## 0.5.0 - 2022-08-01
 
