@@ -425,13 +425,7 @@ impl GenResmokeTaskServiceImpl {
         let mut left_tests = vec![];
 
         for test in sorted_test_list {
-            let mut min_idx = 0;
-            for (i, value) in running_runtimes.iter().enumerate() {
-                if value < &running_runtimes[min_idx] {
-                    min_idx = i;
-                }
-            }
-
+            let min_idx = get_min_index(&running_runtimes);
             let test_name = get_test_name(&test);
             if let Some(test_stats) = task_stats.test_map.get(&test_name) {
                 running_runtimes[min_idx] += test_stats.average_runtime;
@@ -441,8 +435,9 @@ impl GenResmokeTaskServiceImpl {
             }
         }
 
+        let min_idx = get_min_index(&running_runtimes);
         for (i, test) in left_tests.iter().enumerate() {
-            running_tests[i % max_tasks].push(test.clone());
+            running_tests[(min_idx + i) % max_tasks].push(test.clone());
         }
 
         let mut sub_suites = vec![];
@@ -707,6 +702,25 @@ fn sort_tests_by_runtime(
             .unwrap()
     });
     sorted_test_list
+}
+
+/// Get the index of sub suite with the least total runtime of tests.
+///
+/// # Arguments
+///
+/// * `running_runtimes` - Total runtimes of tests of sub suites.
+///
+/// # Returns
+///
+/// Index of sub suite with the least total runtime.
+fn get_min_index(running_runtimes: &[f64]) -> usize {
+    let mut min_idx = 0;
+    for (i, value) in running_runtimes.iter().enumerate() {
+        if value < &running_runtimes[min_idx] {
+            min_idx = i;
+        }
+    }
+    min_idx
 }
 
 #[async_trait]
@@ -1547,5 +1561,16 @@ mod tests {
         let result = sort_tests_by_runtime(test_list, &task_stats);
 
         assert_eq!(result, expected_result);
+    }
+
+    // get_min_index tests.
+    #[rstest]
+    #[case(vec![100.0, 50.0, 30.0, 25.0, 20.0, 15.0], 5)]
+    #[case(vec![15.0, 20.0, 25.0, 30.0, 50.0, 100.0], 0)]
+    #[case(vec![25.0, 50.0, 15.0, 30.0, 100.0, 20.0], 2)]
+    fn test_get_min_index(#[case] running_runtimes: Vec<f64>, #[case] expected_min_idx: usize) {
+        let min_idx = get_min_index(&running_runtimes);
+
+        assert_eq!(min_idx, expected_min_idx);
     }
 }
