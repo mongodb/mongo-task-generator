@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.5.3 - 2022-08-19
+* Distribute tests without historic runtime data evenly between subsuites.
+
 ## 0.5.2 - 2022-08-17
 * Improve task splitting based on historic tests runtime.
 

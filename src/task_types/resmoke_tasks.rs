@@ -40,9 +40,6 @@ use super::{
     resmoke_config_writer::ResmokeConfigActor,
 };
 
-/// Required number of tests needing stats to use historic data for task splitting.
-const REQUIRED_STATS_THRESHOLD: f32 = 0.8;
-
 /// Parameters describing how a specific resmoke suite should be generated.
 #[derive(Clone, Debug, Default)]
 pub struct ResmokeGenParams {
@@ -385,20 +382,6 @@ impl GenResmokeTaskServiceImpl {
     }
 }
 
-/// Calculate the number of tests that fit in the given percent.
-///
-/// # Arguments
-///
-/// * `n_tests` - Total number of tests.
-/// * `percent` - Percentage to calculate.
-///
-/// # Returns
-///
-/// Number of tests that fit in the given percentage.
-fn percent_of_tests(n_tests: usize, percent: f32) -> usize {
-    (n_tests as f32 * percent) as usize
-}
-
 impl GenResmokeTaskServiceImpl {
     /// Split the given task into a number of sub-tasks for parallel execution.
     ///
@@ -421,18 +404,6 @@ impl GenResmokeTaskServiceImpl {
     ) -> Result<Vec<SubSuite>> {
         let origin_suite = multiversion_name.unwrap_or(&params.suite_name);
         let test_list = self.get_test_list(params, multiversion_name)?;
-        let required_stats_count = percent_of_tests(test_list.len(), REQUIRED_STATS_THRESHOLD);
-        if task_stats.test_map.len() < required_stats_count {
-            event!(
-                Level::WARN,
-                "Incomplete runtime stats for {}, using fallback, stat_count={}, test_count={}, limit={}",
-                &params.suite_name,
-                task_stats.test_map.len(),
-                test_list.len(),
-                required_stats_count
-            );
-            return self.split_task_fallback(params, multiversion_name, multiversion_tags);
-        }
         let total_runtime = task_stats
             .test_map
             .iter()
@@ -451,6 +422,7 @@ impl GenResmokeTaskServiceImpl {
         let sorted_test_list = sort_tests_by_runtime(test_list, task_stats);
         let mut running_tests = vec![vec![]; max_tasks];
         let mut running_runtimes = vec![0.0; max_tasks];
+        let mut left_tests = vec![];
 
         for test in sorted_test_list {
             let mut min_idx = 0;
@@ -463,8 +435,14 @@ impl GenResmokeTaskServiceImpl {
             let test_name = get_test_name(&test);
             if let Some(test_stats) = task_stats.test_map.get(&test_name) {
                 running_runtimes[min_idx] += test_stats.average_runtime;
+                running_tests[min_idx].push(test.clone());
+            } else {
+                left_tests.push(test.clone());
             }
-            running_tests[min_idx].push(test.clone());
+        }
+
+        for (i, test) in left_tests.iter().enumerate() {
+            running_tests[i % max_tasks].push(test.clone());
         }
 
         let mut sub_suites = vec![];
@@ -1527,22 +1505,6 @@ mod tests {
         assert_eq!(get_evg_fn_name(&commands[2]), Some("do setup"));
         assert_eq!(get_evg_fn_name(&commands[4]), Some("do multiversion setup"));
         assert_eq!(get_evg_fn_name(&commands[5]), Some("run test"));
-    }
-
-    // percent_of_tests tests.
-    #[rstest]
-    #[case(100, 0.8, 80)]
-    #[case(100, 1.0, 100)]
-    #[case(101, 0.8, 80)]
-    #[case(99, 0.8, 79)]
-    fn test_percent_of_tests(
-        #[case] n_tests: usize,
-        #[case] percent: f32,
-        #[case] expected_result: usize,
-    ) {
-        let result = percent_of_tests(n_tests, percent);
-
-        assert_eq!(result, expected_result);
     }
 
     // sort_tests_by_runtime tests.
