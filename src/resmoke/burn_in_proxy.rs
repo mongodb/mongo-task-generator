@@ -36,11 +36,27 @@ pub trait BurnInDiscovery: Send + Sync {
     fn discover_tasks(&self, build_variant: &str) -> Result<Vec<DiscoveredTask>>;
 }
 
-pub struct BurnInProxy {}
+pub struct BurnInProxy {
+    /// Primary command to invoke burn_in_tests (usually `python`).
+    burn_in_tests_cmd: String,
+    /// Script to invoke burn_in_tests.
+    burn_in_tests_script: Vec<String>,
+}
 
 impl BurnInProxy {
-    pub fn new() -> Self {
-        BurnInProxy {}
+    /// Create a new `BurnInProxy` instance.
+    ///
+    /// # Arguments
+    ///
+    /// * `burn_in_tests_cmd` - Command to invoke resmoke.
+    pub fn new(burn_in_tests_cmd: &str) -> Self {
+        let cmd_parts: Vec<_> = burn_in_tests_cmd.split(' ').collect();
+        let cmd = cmd_parts[0];
+        let script = cmd_parts[1..].iter().map(|s| s.to_string()).collect();
+        Self {
+            burn_in_tests_cmd: cmd.to_string(),
+            burn_in_tests_script: script,
+        }
     }
 }
 
@@ -55,13 +71,15 @@ impl BurnInDiscovery for BurnInProxy {
     ///
     /// A list of tasks/tests that were discovered by burn_in_tests.
     fn discover_tasks(&self, build_variant: &str) -> Result<Vec<DiscoveredTask>> {
-        let cmd = vec![
-            "python",
-            "buildscripts/burn_in_tests.py",
-            "--build-variant",
-            build_variant,
-            "--yaml",
-        ];
+        let mut cmd = vec![self.burn_in_tests_cmd.as_str()];
+        cmd.append(
+            &mut self
+                .burn_in_tests_script
+                .iter()
+                .map(|s| s.as_str())
+                .collect(),
+        );
+        cmd.append(&mut vec!["--build-variant", build_variant, "--yaml"]);
         let start = Instant::now();
 
         let cmd_output = run_command(&cmd)?;
