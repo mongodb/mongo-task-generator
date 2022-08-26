@@ -186,6 +186,9 @@ impl ConfigExtractionService for ConfigExtractionServiceImpl {
     ) -> Result<ResmokeGenParams> {
         let task_name = remove_gen_suffix(&task_def.name).to_string();
         let suite = self.evg_config_utils.find_suite_name(task_def).to_string();
+        println!("suite name: {}", suite);
+        println!("task name: {}", task_name);
+
         let task_tags = self.evg_config_utils.get_task_tags(task_def);
         let require_multiversion_setup = task_tags.contains(MULTIVERSION);
         let no_multiversion_iteration = task_tags.contains(NO_MULTIVERSION_ITERATION);

@@ -202,6 +202,7 @@ impl BurnInServiceImpl {
                     multiversion_name: None,
                     multiversion_tags: None,
                 };
+                println!("discovered_task task_name: {}", discovered_task.task_name);
                 sub_suites.push(self.create_task(&params, index, test, &burn_in_suite_info))
             }
         }
