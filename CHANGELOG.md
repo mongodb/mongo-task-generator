@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.5.4 - 2022-08-29
+* Add the ability to get `distro_name` and `task_group_name` for `burn_in` tasks.
+
 ## 0.5.3 - 2022-08-19
 * Distribute tests without historic runtime data evenly between subsuites.
 

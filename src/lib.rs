@@ -20,7 +20,9 @@ use evergreen::{
     evg_task_history::TaskHistoryServiceImpl,
 };
 use evergreen_names::{
-    BURN_IN_TAGS, BURN_IN_TAG_BUILD_VARIANTS, BURN_IN_TESTS, ENTERPRISE_MODULE, GENERATOR_TASKS,
+    BURN_IN_TAGS, BURN_IN_TAG_BUILD_VARIANTS, BURN_IN_TAG_COMPILE_DISTRO,
+    BURN_IN_TAG_COMPILE_TASK_GROUP_NAME, BURN_IN_TESTS, DEFAULT_BURN_IN_COMPILE_TASK_DISTRO,
+    DEFAULT_BURN_IN_COMPILE_TASK_GROUP_NAME, ENTERPRISE_MODULE, GENERATOR_TASKS,
     LARGE_DISTRO_EXPANSION,
 };
 use evg_api_rs::EvgClient;
@@ -680,6 +682,17 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
             let base_build_variant = build_variant_map.get(&base_bv_name).unwrap();
             let run_build_variant_name = format!("{}-required", base_build_variant.name);
             let task_name = format!("{}-{}", BURN_IN_PREFIX, run_build_variant_name);
+            let compile_distro = self
+                .evg_config_utils
+                .lookup_build_variant_expansion(BURN_IN_TAG_COMPILE_DISTRO, base_build_variant)
+                .unwrap_or(DEFAULT_BURN_IN_COMPILE_TASK_DISTRO.to_string());
+            let compile_task_group_name = self
+                .evg_config_utils
+                .lookup_build_variant_expansion(
+                    BURN_IN_TAG_COMPILE_TASK_GROUP_NAME,
+                    base_build_variant,
+                )
+                .unwrap_or(DEFAULT_BURN_IN_COMPILE_TASK_GROUP_NAME.to_string());
 
             if let Some(generated_task) = generated_tasks.get(&task_name) {
                 generated_build_variants.push(
@@ -687,6 +700,8 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                         base_build_variant,
                         run_build_variant_name,
                         generated_task.as_ref(),
+                        compile_distro,
+                        compile_task_group_name,
                     ),
                 );
             }
@@ -1155,6 +1170,8 @@ mod tests {
             _base_build_variant: &BuildVariant,
             _run_build_variant_name: String,
             _generated_task: &dyn GeneratedSuite,
+            _compile_distro: String,
+            _compile_task_group_name: String
         ) -> BuildVariant {
             todo!()
         }
