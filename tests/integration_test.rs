@@ -61,5 +61,7 @@ fn test_end2end_burn_in_execution() {
     assert!(tmp_dir_path.exists());
 
     let files = std::fs::read_dir(tmp_dir_path).unwrap();
+    // Only one file `evergreen_config.json` should be generated.
+    // That means non-burn-in tasks are NOT generated.
     assert_eq!(1, files.into_iter().collect::<Vec<_>>().len());
 }
