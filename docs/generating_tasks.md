@@ -177,7 +177,7 @@ of task configuration:
 
 `burn_in_tags_gen` task is used to generate separate burn-in buildvariants. This way we can burn-in
 on the requested buildvariant as well as the other, additional buildvariants to ensure there is no
-difference between buildvariants.
+difference between them.
 
 The [example](https://github.com/mongodb/mongo/blob/81c41bdfdc56f05973fae70e80e80919f18f50c9/etc/evergreen_yml_components/definitions.yml#L4317-L4321)
 of task configuration:
