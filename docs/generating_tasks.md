@@ -160,11 +160,11 @@ the `"no_version_combinations"` tag should also be included.
 ### Burn in tests and burn in tags
 
 Newly added or modified tests might become flaky. In order to avoid that, those tests can be run
-continuously multiple times in a row to see, if the results are consistent. This process is called
+continuously multiple times in a row to see if the results are consistent. This process is called
 burn-in.
 
 `burn_in_tests_gen` task is used to generate burn-in tasks on the same buildvariant the task is
-added to. [Example](https://github.com/mongodb/mongo/blob/81c41bdfdc56f05973fae70e80e80919f18f50c9/etc/evergreen_yml_components/definitions.yml#L3252-L3256)
+added to. The [example](https://github.com/mongodb/mongo/blob/81c41bdfdc56f05973fae70e80e80919f18f50c9/etc/evergreen_yml_components/definitions.yml#L3252-L3256)
 of task configuration:
 
 ```yaml
@@ -175,11 +175,11 @@ of task configuration:
   - func: "generate resmoke tasks"
 ```
 
-`burn_in_tags_gen` task is used to generate separate burn-in buildvariants. This way we can add the
-task to the required buildvariant, that will generate another required buildvariants on the fly
-based on another non-required buildvariants with only necessary burn-in tasks.
+`burn_in_tags_gen` task is used to generate separate burn-in buildvariants. This way we can burn-in
+on the requested buildvariant as well as the other, additional buildvariants to ensure there is no
+difference between buildvariants.
 
-[Example](https://github.com/mongodb/mongo/blob/81c41bdfdc56f05973fae70e80e80919f18f50c9/etc/evergreen_yml_components/definitions.yml#L4317-L4321)
+The [example](https://github.com/mongodb/mongo/blob/81c41bdfdc56f05973fae70e80e80919f18f50c9/etc/evergreen_yml_components/definitions.yml#L4317-L4321)
 of task configuration:
 
 ```yaml
@@ -191,7 +191,7 @@ of task configuration:
 ```
 
 `burn_in_tag_buildvariants` buildvariant expansion is used to configure base buildvariant names.
-Base buildvariant names should be delimited by spaced. [Example](https://github.com/mongodb/mongo/blob/81c41bdfdc56f05973fae70e80e80919f18f50c9/etc/evergreen.yml#L1257)
+Base buildvariant names should be delimited by spaces. The [example](https://github.com/mongodb/mongo/blob/81c41bdfdc56f05973fae70e80e80919f18f50c9/etc/evergreen.yml#L1257)
 of `burn_in_tag_buildvariants` buildvariant expansion:
 
 ```yaml
