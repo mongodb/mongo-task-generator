@@ -157,6 +157,49 @@ of the task definition. When this tag is present, both the extra setup steps and
 of multiversion sub-tasks will be preformed. In order to only perform the extra setup steps
 the `"no_version_combinations"` tag should also be included.
 
+### Burn in tests and burn in tags
+
+Newly added or modified tests might become flaky. In order to avoid that, those tests can be run
+continuously multiple times in a row to see if the results are consistent. This process is called
+burn-in.
+
+`burn_in_tests_gen` task is used to generate burn-in tasks on the same buildvariant the task is
+added to. The [example](https://github.com/mongodb/mongo/blob/81c41bdfdc56f05973fae70e80e80919f18f50c9/etc/evergreen_yml_components/definitions.yml#L3252-L3256)
+of task configuration:
+
+```yaml
+- <<: *gen_task_template
+  name: burn_in_tests_gen
+  tags: []
+  commands:
+  - func: "generate resmoke tasks"
+```
+
+`burn_in_tags_gen` task is used to generate separate burn-in buildvariants. This way we can burn-in
+on the requested buildvariant as well as the other, additional buildvariants to ensure there is no
+difference between them.
+
+The [example](https://github.com/mongodb/mongo/blob/81c41bdfdc56f05973fae70e80e80919f18f50c9/etc/evergreen_yml_components/definitions.yml#L4317-L4321)
+of task configuration:
+
+```yaml
+- <<: *gen_task_template
+  name: burn_in_tags_gen
+  tags: []
+  commands:
+  - func: "generate resmoke tasks"
+```
+
+`burn_in_tag_buildvariants` buildvariant expansion is used to configure base buildvariant names.
+Base buildvariant names should be delimited by spaces. The [example](https://github.com/mongodb/mongo/blob/81c41bdfdc56f05973fae70e80e80919f18f50c9/etc/evergreen.yml#L1257)
+of `burn_in_tag_buildvariants` buildvariant expansion:
+
+```yaml
+burn_in_tag_buildvariants: enterprise-rhel-80-64-bit-inmem enterprise-rhel-80-64-bit-multiversion
+```
+
+Burn-in related tasks are generated when `--burn-in` is passed.
+
 ## Working with generated tasks
 
 A generated tasks is typically composed of a number of related sub-tasks. Because evergreen does
@@ -221,6 +264,11 @@ if the default value does not apply.
   store your resmokeconfig is a different directory, you can adjust this value:
   `python buildscripts/resmoke.py --configDir=path/to/resmokeconfig`.
 * **target-directory**: Directory to write generated configuration to. This defaults to `generated_resmoke_config`.
+* **burn-in**: Whether to generate burn_in related tasks. If specified only burn_in tasks will be
+  generated.
+* **burn-in-tests-command**: How to invoke the burn_in_tests command. The burn_in_tests command is
+  used to discover modified or added tests and the tasks they being run on. It defaults to
+  `python buildscripts/burn_in_tests.py`.
 
 ## Usage help
 
@@ -232,6 +280,10 @@ USAGE:
     mongo-task-generator [OPTIONS] --expansion-file <EXPANSION_FILE>
 
 OPTIONS:
+        --burn-in
+            Generate burn_in related tasks
+        --burn-in-tests-command <BURN_IN_TESTS_COMMAND>
+            Command to invoke burn_in_tests [default: "python buildscripts/burn_in_tests.py"]
         --evg-auth-file <EVG_AUTH_FILE>
             File with information on how to authenticate against the evergreen API [default:
             ~/.evergreen.yml]
@@ -240,7 +292,7 @@ OPTIONS:
         --expansion-file <EXPANSION_FILE>
             File containing expansions that impact task generation
         --generate-sub-tasks-config <GENERATE_SUB_TASKS_CONFIG>
-            File containing configuration for generating sub-tasks            
+            File containing configuration for generating sub-tasks
     -h, --help
             Print help information
         --resmoke-command <RESMOKE_COMMAND>

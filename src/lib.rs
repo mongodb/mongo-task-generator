@@ -128,6 +128,8 @@ pub struct ExecutionConfiguration<'a> {
     pub config_location: &'a str,
     /// Should burn_in tasks be generated.
     pub gen_burn_in: bool,
+    /// Command to execute burn_in_tests.
+    pub burn_in_tests_command: &'a str,
 }
 
 /// Collection of services needed to execution.
@@ -208,7 +210,7 @@ impl Dependencies {
             execution_config.gen_burn_in,
         ));
 
-        let burn_in_discovery = Arc::new(BurnInProxy::new());
+        let burn_in_discovery = Arc::new(BurnInProxy::new(execution_config.burn_in_tests_command));
         let burn_in_service = Arc::new(BurnInServiceImpl::new(
             burn_in_discovery,
             gen_resmoke_task_service,
@@ -467,8 +469,8 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
             for task in &build_variant.tasks {
                 // Burn in tasks could be different for each build variant, so we will always
                 // handle them.
-                if task.name == BURN_IN_TESTS {
-                    if self.gen_burn_in {
+                if self.gen_burn_in {
+                    if task.name == BURN_IN_TESTS {
                         thread_handles.push(create_burn_in_worker(
                             deps,
                             task_map.clone(),
@@ -477,11 +479,8 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                             generated_tasks.clone(),
                         ));
                     }
-                    continue;
-                }
 
-                if task.name == BURN_IN_TAGS {
-                    if self.gen_burn_in {
+                    if task.name == BURN_IN_TAGS {
                         for base_bv_name in self
                             .evg_config_utils
                             .lookup_and_split_by_whitespace_build_variant_expansion(
@@ -501,6 +500,11 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                             ));
                         }
                     }
+
+                    continue;
+                }
+
+                if task.name == BURN_IN_TESTS || task.name == BURN_IN_TAGS {
                     continue;
                 }
 

@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.6.0 - 2022-08-26
+* Generate only burn_in tasks when --burn-in is passed.
+
 ## 0.5.3 - 2022-08-19
 * Distribute tests without historic runtime data evenly between subsuites.
 

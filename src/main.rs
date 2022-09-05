@@ -16,6 +16,7 @@ use tracing_subscriber::fmt::format;
 const DEFAULT_EVG_AUTH_FILE: &str = "~/.evergreen.yml";
 const DEFAULT_EVG_PROJECT_FILE: &str = "etc/evergreen.yml";
 const DEFAULT_RESMOKE_COMMAND: &str = "python buildscripts/resmoke.py";
+const DEFAULT_BURN_IN_TESTS_COMMAND: &str = "python buildscripts/burn_in_tests.py";
 const DEFAULT_TARGET_DIRECTORY: &str = "generated_resmoke_config";
 
 /// Expansions from evergreen to determine settings for how task should be generated.
@@ -84,6 +85,10 @@ struct Args {
     /// Generate burn_in related tasks.
     #[clap(long)]
     burn_in: bool,
+
+    /// Command to invoke burn_in_tests.
+    #[clap(long, default_value = DEFAULT_BURN_IN_TESTS_COMMAND)]
+    burn_in_tests_command: String,
 }
 
 /// Configure logging for the command execution.
@@ -116,6 +121,7 @@ async fn main() {
         generating_task: &evg_expansions.task_name,
         config_location: &evg_expansions.config_location(),
         gen_burn_in: args.burn_in,
+        burn_in_tests_command: &args.burn_in_tests_command,
     };
     let deps = Dependencies::new(execution_config).unwrap();
 
