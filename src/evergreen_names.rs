@@ -39,8 +39,6 @@ pub const GENERATOR_TASKS: &str = "generator_tasks";
 pub const BURN_IN_TESTS: &str = "burn_in_tests_gen";
 /// Name of burn_in_tags task.
 pub const BURN_IN_TAGS: &str = "burn_in_tags_gen";
-/// Name of compile task group.
-pub const COMPILE_TASK_GROUP_NAME: &str = "compile_and_archive_dist_test_TG";
 
 // Vars
 /// Variable that indicates a task is a fuzzer.
@@ -90,6 +88,10 @@ pub const MULTIVERSION_EXCLUDE_TAGS: &str = "multiversion_exclude_tags_version";
 pub const LARGE_DISTRO_EXPANSION: &str = "large_distro_name";
 /// List of build variant names delimited by spaces to generate burn_in_tags for.
 pub const BURN_IN_TAG_BUILD_VARIANTS: &str = "burn_in_tag_buildvariants";
+/// The distro to use when compiling burn_in_tags.
+pub const BURN_IN_TAG_COMPILE_DISTRO: &str = "burn_in_tag_compile_distro";
+/// The name to give the task group for compiling.
+pub const BURN_IN_TAG_COMPILE_TASK_GROUP_NAME: &str = "burn_in_tag_compile_task_group_name";
 /// Name of build variant to determine the timeouts for.
 pub const BURN_IN_BYPASS: &str = "burn_in_bypass";
 
@@ -110,10 +112,6 @@ pub const MULTIVERSION_EXCLUDE_TAGS_FILE: &str = "multiversion_exclude_tags.yml"
 pub const MULTIVERSION_LAST_LTS: &str = "last_lts";
 /// Name of last continuous configuration.
 pub const MULTIVERSION_LAST_CONTINUOUS: &str = "last_continuous";
-
-// Distros
-/// Name of compile task distro for burn_in_tags.
-pub const COMPILE_TASK_DISTRO: &str = "rhel80-xlarge";
 
 // Distro group names
 /// Windows distro group name.

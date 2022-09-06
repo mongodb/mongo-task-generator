@@ -1,5 +1,8 @@
 # Changelog
 
+
+## 0.6.1 - 2022-09-06
+* Add the ability to get `distro_name` and `task_group_name` for `burn_in` tasks.
 ## 0.6.0 - 2022-08-26
 * Generate only burn_in tasks when --burn-in is passed.
 

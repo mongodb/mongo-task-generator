@@ -9,7 +9,7 @@ use std::{
 };
 
 use crate::{
-    evergreen_names::{BURN_IN_BYPASS, COMPILE_TASK_DISTRO, COMPILE_TASK_GROUP_NAME},
+    evergreen_names::BURN_IN_BYPASS,
     resmoke::burn_in_proxy::{BurnInDiscovery, DiscoveredTask},
     services::config_extraction::ConfigExtractionService,
     task_types::resmoke_tasks::{GeneratedResmokeSuite, SubSuite},
@@ -54,6 +54,8 @@ pub trait BurnInService: Sync + Send {
     /// * `base_build_variant` - Build variant to generate burn_in_tags build variant based on.
     /// * `run_build_variant_name` - Build variant name to run burn_in_tests task on.
     /// * `generated_task` - Generated burn_in_tests task.
+    /// * `compile_distro` - What distro to run compile on.
+    /// * `compile_task_group_name` - What to name the compile task.
     ///
     /// # Returns
     ///
@@ -63,6 +65,8 @@ pub trait BurnInService: Sync + Send {
         base_build_variant: &BuildVariant,
         run_build_variant_name: String,
         generated_task: &dyn GeneratedSuite,
+        compile_distro: String,
+        compile_task_group_name: String,
     ) -> BuildVariant;
 }
 
@@ -323,6 +327,8 @@ impl BurnInService for BurnInServiceImpl {
     /// * `base_build_variant` - Build variant to generate burn_in_tags build variant based on.
     /// * `run_build_variant_name` - Build variant name to run burn_in_tests task on.
     /// * `generated_task` - Generated burn_in_tests task.
+    /// * `compile_distro` - What distro to run compile on.
+    /// * `compile_task_group_name` - What to name the compile task.
     ///
     /// # Returns
     ///
@@ -332,6 +338,8 @@ impl BurnInService for BurnInServiceImpl {
         base_build_variant: &BuildVariant,
         run_build_variant_name: String,
         generated_task: &dyn GeneratedSuite,
+        compile_distro: String,
+        compile_task_group_name: String,
     ) -> BuildVariant {
         let mut gen_config = BurnInTagsGeneratedConfig::new();
 
@@ -348,8 +356,8 @@ impl BurnInService for BurnInServiceImpl {
         );
 
         gen_config.gen_task_specs.push(TaskRef {
-            name: COMPILE_TASK_GROUP_NAME.to_string(),
-            distros: Some(vec![COMPILE_TASK_DISTRO.to_string()]),
+            name: compile_task_group_name,
+            distros: Some(vec![compile_distro]),
             activate: Some(false),
         });
 
@@ -651,11 +659,15 @@ mod tests {
             use_large_distro: false,
         };
         let burn_in_service = build_mocked_service();
+        let compile_distro = "mock_distro_name";
+        let compile_task_group_name = "mock_task_group_name";
 
         let burn_in_tags_build_variant = burn_in_service.generate_burn_in_tags_build_variant(
             &base_build_variant,
             run_build_variant_name,
             generated_task,
+            compile_distro.to_string(),
+            compile_task_group_name.to_string(),
         );
 
         assert_eq!(burn_in_tags_build_variant.name, "run-build-variant-name");
@@ -683,5 +695,16 @@ mod tests {
             "display_task_name"
         );
         assert_eq!(burn_in_tags_build_variant.tasks[1].name, "sub_suite_name");
+        assert_eq!(
+            burn_in_tags_build_variant.tasks[0].name,
+            compile_task_group_name.to_string()
+        );
+        assert_eq!(
+            burn_in_tags_build_variant.tasks[0]
+                .distros
+                .as_ref()
+                .unwrap()[0],
+            compile_distro.to_string()
+        );
     }
 }
