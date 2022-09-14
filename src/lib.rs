@@ -5,6 +5,7 @@
 //! tasks to any build variants to expect to run them.
 #![cfg_attr(feature = "strict", deny(missing_docs))]
 
+use core::panic;
 use std::{
     collections::{HashMap, HashSet},
     path::{Path, PathBuf},
@@ -20,7 +21,8 @@ use evergreen::{
     evg_task_history::TaskHistoryServiceImpl,
 };
 use evergreen_names::{
-    BURN_IN_TAGS, BURN_IN_TAG_BUILD_VARIANTS, BURN_IN_TESTS, ENTERPRISE_MODULE, GENERATOR_TASKS,
+    BURN_IN_TAGS, BURN_IN_TAG_BUILD_VARIANTS, BURN_IN_TAG_COMPILE_DISTRO,
+    BURN_IN_TAG_COMPILE_TASK_GROUP_NAME, BURN_IN_TESTS, ENTERPRISE_MODULE, GENERATOR_TASKS,
     LARGE_DISTRO_EXPANSION,
 };
 use evg_api_rs::EvgClient;
@@ -56,6 +58,11 @@ const HISTORY_LOOKBACK_DAYS: u64 = 14;
 const MAX_SUB_TASKS_PER_TASK: usize = 5;
 
 type GenTaskCollection = HashMap<String, Box<dyn GeneratedSuite>>;
+
+pub struct BurnInTagBuildVariantInfo {
+    pub compile_task_group_name: String,
+    pub compile_distro: String,
+}
 
 /// Information about the Evergreen project being run against.
 pub struct ProjectInfo {
@@ -327,6 +334,24 @@ trait GenerateTasksService: Sync + Send {
         generated_tasks: Arc<Mutex<GenTaskCollection>>,
     ) -> Result<Vec<BuildVariant>>;
 
+    /// Generate the burn_in build variant information for a build variant.
+    ///
+    /// # Arguments
+    ///
+    /// * `burn_in_tag_build_variant_info` - A map of burn_in build variants to config information about them.
+    /// * `build_variant` - The original build variant to generate burn_in information from.
+    /// * `build_variant_map` - A map of build variant names to their definitions.
+    ///
+    /// # Returns
+    ///
+    /// Nothing, modifies the burn_in_tag_build_variant_info with new values.
+    fn generate_burn_in_build_variant_info(
+        &self,
+        burn_in_tag_build_variant_info: &mut HashMap<String, BurnInTagBuildVariantInfo>,
+        build_variant: &BuildVariant,
+        build_variant_map: &HashMap<String, &BuildVariant>,
+    );
+
     /// Generate a task for the given task definition.
     ///
     /// # Arguments
@@ -588,6 +613,83 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
         Ok(generated_task)
     }
 
+    /// Generate the burn_in build variant information for a build variant.
+    ///
+    /// # Arguments
+    ///
+    /// * `burn_in_tag_build_variant_info` - A map of burn_in build variants to config information about them.
+    /// * `build_variant` - The original build variant to generate burn_in information from.
+    /// * `build_variant_map` - A map of build variant names to their definitions.
+    ///
+    /// # Returns
+    ///
+    /// Nothing, modifies the burn_in_tag_build_variant_info with new values.
+    fn generate_burn_in_build_variant_info(
+        &self,
+        burn_in_tag_build_variant_info: &mut HashMap<String, BurnInTagBuildVariantInfo>,
+        build_variant: &BuildVariant,
+        build_variant_map: &HashMap<String, &BuildVariant>,
+    ) {
+        let burn_in_tag_build_variants = self
+            .evg_config_utils
+            .lookup_and_split_by_whitespace_build_variant_expansion(
+                BURN_IN_TAG_BUILD_VARIANTS,
+                build_variant,
+            );
+        if burn_in_tag_build_variants.is_empty() {
+            panic!(
+            "`{}` build variant is either missing or has an empty list for the `{}` expansion. Set the expansion in your project's config to run {}.",
+            build_variant.name, BURN_IN_TAG_BUILD_VARIANTS, BURN_IN_TAGS
+        )
+        }
+        let compile_distro = self
+        .evg_config_utils
+        .lookup_build_variant_expansion(
+            BURN_IN_TAG_COMPILE_DISTRO,
+            build_variant,
+        ).unwrap_or_else(|| {
+            panic!(
+                "`{}` build variant is missing the `{}` expansion to run `{}`. Set the expansion in your project's config to continue.",
+                build_variant.name, BURN_IN_TAG_COMPILE_DISTRO, BURN_IN_TAGS
+            )
+        });
+        let compile_task_group_name = self
+        .evg_config_utils
+        .lookup_build_variant_expansion(
+            BURN_IN_TAG_COMPILE_TASK_GROUP_NAME,
+            build_variant,
+        ).unwrap_or_else(|| {
+            panic!(
+                "`{}` build variant is missing the `{}` expansion to run `{}`. Set the expansion in your project's config to continue.",
+                build_variant.name, BURN_IN_TAG_COMPILE_TASK_GROUP_NAME, BURN_IN_TAGS
+            )
+        });
+        for variant in burn_in_tag_build_variants {
+            if !build_variant_map.contains_key(&variant) {
+                panic!("`{}` is trying to create a build variant that does not exist: {}. Check the {} expansion in this variant.",
+                build_variant.name, variant, BURN_IN_TAG_BUILD_VARIANTS)
+            }
+            let bv_info = burn_in_tag_build_variant_info
+                .entry(variant.clone())
+                .or_insert(BurnInTagBuildVariantInfo {
+                    compile_distro: compile_distro.clone(),
+                    compile_task_group_name: compile_task_group_name.clone(),
+                });
+            if bv_info.compile_distro != compile_distro.clone() {
+                panic!(
+                    "`{}` is trying to set a different compile distro than already exists for `{}`. Check the `{}` expansions in your config.",
+                build_variant.name, variant, BURN_IN_TAG_COMPILE_DISTRO
+            )
+            }
+            if bv_info.compile_task_group_name != compile_task_group_name {
+                panic!(
+                    "`{}` is trying to set a different compile task group name than already exists for `{}`. Check the `{}` expansions in your config.",
+                build_variant.name, variant, BURN_IN_TAG_COMPILE_TASK_GROUP_NAME
+            )
+            }
+        }
+    }
+
     /// Create build variants definitions containing all the generated tasks for each build variant.
     ///
     /// # Arguments
@@ -604,7 +706,8 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
         generated_tasks: Arc<Mutex<GenTaskCollection>>,
     ) -> Result<Vec<BuildVariant>> {
         let mut generated_build_variants = vec![];
-        let mut burn_in_tag_build_variant_names: HashSet<String> = HashSet::new();
+        let mut burn_in_tag_build_variant_info: HashMap<String, BurnInTagBuildVariantInfo> =
+            HashMap::new();
 
         let build_variant_map = self.evg_config_service.get_build_variant_map();
         for (bv_name, build_variant) in &build_variant_map {
@@ -622,13 +725,11 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
             for task in &build_variant.tasks {
                 if task.name == BURN_IN_TAGS {
                     if self.gen_burn_in {
-                        burn_in_tag_build_variant_names.extend(
-                            self.evg_config_utils
-                                .lookup_and_split_by_whitespace_build_variant_expansion(
-                                    BURN_IN_TAG_BUILD_VARIANTS,
-                                    build_variant,
-                                ),
-                        );
+                        self.generate_burn_in_build_variant_info(
+                            &mut burn_in_tag_build_variant_info,
+                            build_variant,
+                            &build_variant_map,
+                        )
                     }
                     continue;
                 }
@@ -679,7 +780,7 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
             }
         }
 
-        for base_bv_name in burn_in_tag_build_variant_names {
+        for (base_bv_name, bv_info) in burn_in_tag_build_variant_info {
             let generated_tasks = generated_tasks.lock().unwrap();
             let base_build_variant = build_variant_map.get(&base_bv_name).unwrap();
             let run_build_variant_name = format!("{}-required", base_build_variant.name);
@@ -691,6 +792,8 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                         base_build_variant,
                         run_build_variant_name,
                         generated_task.as_ref(),
+                        bv_info.compile_distro,
+                        bv_info.compile_task_group_name,
                     ),
                 );
             }
@@ -1159,6 +1262,8 @@ mod tests {
             _base_build_variant: &BuildVariant,
             _run_build_variant_name: String,
             _generated_task: &dyn GeneratedSuite,
+            _compile_distro: String,
+            _compile_task_group_name: String,
         ) -> BuildVariant {
             todo!()
         }

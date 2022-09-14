@@ -1,0 +1,166 @@
+functions:
+  "f_expansions_write": &f_expansions_write
+    command: expansions.write
+    params:
+      file: expansions.yml
+      redacted: true
+
+variables:
+- &compile_task_group_template
+  name: compile_task_group_template
+  max_hosts: 1
+  tasks: []
+  setup_task:
+  - func: "f_expansions_write"
+  - func: "apply compile expansions"
+  - func: "set task expansion macros"
+  - func: "f_expansions_write"
+  teardown_task:
+  - func: "f_expansions_write"
+  - func: "attach scons logs"
+  - func: "attach report"
+  - func: "attach artifacts"
+  - func: "kill processes"
+  - func: "save code coverage data"
+  - func: "save mongo coredumps"
+  - func: "save failed unittests"
+  - func: "save UndoDB recordings"
+  - func: "save unstripped dbtest"
+  - func: "save hang analyzer debugger files"
+  - func: "save disk statistics"
+  - func: "save system resource information"
+  - func: "save libfuzzertest corpora"
+  - func: "remove files"
+    vars:
+      files: >-
+        src/resmoke_error_code
+        src/build/scons/config.log
+        src/*.gcda.gcov
+        src/gcov-intermediate-files.tgz
+        src/*.core src/*.mdmp
+        mongo-coredumps.tgz
+        src/dist-unittests/bin/*
+        src/dist-unittests/lib/*
+        mongo-unittests.tgz
+        src/debugger*.*
+        src/mongo-hanganalyzer.tgz
+        diskstats.tgz
+        system-resource-info.tgz
+        ${report_file|src/report.json}
+        ${archive_file|src/archive.json}
+  setup_group_can_fail_task: true
+  setup_group:
+  - command: manifest.load
+  - func: "git get project and add git tag"
+  - func: "set task expansion macros"
+  - func: "f_expansions_write"
+  - func: "kill processes"
+  - func: "cleanup environment"
+  # The python virtual environment is installed in ${workdir}, which is created in
+  # "set up venv".
+  - func: "set up venv"
+  - func: "upload pip requirements"
+  - func: "get all modified patch files"
+  - func: "f_expansions_write"
+  - func: "configure evergreen api credentials"
+  - func: "get buildnumber"
+  - func: "f_expansions_write"
+  - func: "set up credentials"
+  - func: "use WiredTiger develop" # noop if ${use_wt_develop} is not "true"
+  - func: "set up win mount script"
+  - func: "generate compile expansions"
+  - func: "f_expansions_write"
+  teardown_group:
+  - func: "f_expansions_write"
+  - func: "umount shared scons directory"
+  - func: "cleanup environment"
+  timeout:
+  - func: "f_expansions_write"
+  - func: "run hang analyzer"
+  - func: "wait for resmoke to shutdown"
+
+task_groups:
+  - <<: *compile_task_group_template
+    name: compile_test_and_package_parallel_core_stream_TG
+    tasks:
+    - compile_dist_test
+
+tasks:
+
+- name: archive_dist_test
+  tags: []
+  depends_on:
+    - name: compile_dist_test
+  commands:
+    - *f_expansions_write
+    - func: "scons compile"
+      vars:
+        targets: >-
+          archive-dist-test
+        task_compile_flags: >-
+          PREFIX=dist-test
+
+## compile - build all scons targets except unittests ##
+- name: compile_dist_test
+  tags: []
+  depends_on: []
+  commands:
+    - func: "scons compile"
+      vars:
+        targets: >-
+          install-dist-test
+          ${additional_compile_targets|}
+        task_compile_flags: >-
+          PREFIX=dist-test
+
+- name: burn_in_tags_gen
+  tags: []
+  depends_on:
+    - name: archive_dist_test
+  commands:
+  - command: manifest.load
+  - func: "git get project and add git tag"
+  - func: "set up venv"
+  - func: "upload pip requirements"
+  - func: "configure evergreen api credentials"
+  - func: "generate burn in tags"
+    vars:
+      max_revisions: 25
+      repeat_tests_secs: 600
+      repeat_tests_min: 2
+      repeat_tests_max: 1000
+
+buildvariants:
+  - &enterprise-rhel-80-64-bit-dynamic-required-template
+    name: enterprise-rhel-80-64-bit-dynamic-required
+    display_name: "! Shared Library Enterprise RHEL 8.0"
+    cron: "0 */4 * * *" # Every 4 hours starting at midnight
+    modules:
+    - enterprise
+    run_on:
+    - rhel80-small
+    expansions: &enterprise-rhel-80-64-bit-dynamic-required-expansions
+      additional_package_targets: archive-mongocryptd archive-mongocryptd-debug archive-mh archive-mh-debug
+      compile_flags: --ssl MONGO_DISTMOD=rhel80 -j$(grep -c ^processor /proc/cpuinfo) --variables-files=etc/scons/mongodbtoolchain_v3_gcc.vars --link-model=dynamic
+      csfle_task_compile_flags: SHLINKFLAGS_EXTRA="-Wl,-Bsymbolic -Wl,--no-gnu-unique" CCFLAGS="-fno-gnu-unique"
+      multiversion_platform: rhel80
+      multiversion_edition: enterprise
+      has_packages: false
+      scons_cache_scope: shared
+      scons_cache_mode: all
+      jstestfuzz_num_generated_files: 40
+      jstestfuzz_concurrent_num_files: 10
+      target_resmoke_time: 10
+      max_sub_suites: 5
+      idle_timeout_factor: 1.5
+      exec_timeout_factor: 1.5
+      large_distro_name: rhel80-medium
+      burn_in_tag_buildvariants: enterprise-rhel-80-64-bit-dynamic-required
+      burn_in_tag_compile_distro: rhelx-80
+      # burn_in_tag_compile_task_group_name: compile-name
+      num_scons_link_jobs_available: 0.99
+    tasks:
+    - name: burn_in_tags_gen
+    - name: compile_test_and_package_parallel_core_stream_TG
+      distros:
+        - rhel80-xlarge
