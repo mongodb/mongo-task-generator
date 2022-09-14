@@ -1,4 +1,5 @@
 use assert_cmd::Command;
+use rstest::rstest;
 use tempdir::TempDir;
 
 #[test]
@@ -64,4 +65,45 @@ fn test_end2end_burn_in_execution() {
     // Only one file `evergreen_config.json` should be generated.
     // That means non-burn-in tasks are NOT generated.
     assert_eq!(1, files.into_iter().collect::<Vec<_>>().len());
+}
+
+#[rstest]
+#[should_panic(
+    expected = "`enterprise-rhel-80-64-bit-dynamic-required` build variant is missing the `burn_in_tag_compile_distro` expansion to run `burn_in_tags_gen`. Set the expansion in your project\\'s config to continue.\\"
+)]
+#[case::panic_with_message("tests/data/burn_in/evergreen_with_no_burn_in_distro.yml")]
+#[should_panic(
+    expected = "`enterprise-rhel-80-64-bit-dynamic-required` build variant is missing the `burn_in_tag_compile_task_group_name` expansion to run `burn_in_tags_gen`. Set the expansion in your project\\'s config to continue.\\"
+)]
+#[case::panic_with_message("tests/data/burn_in/evergreen_with_no_burn_in_task_group.yml")]
+#[should_panic(
+    expected = "`enterprise-rhel-80-64-bit-dynamic-required` build variant is either missing or has an empty list for the `burn_in_tag_buildvariants` expansion. Set the expansion in your project\\'s config to run burn_in_tags_gen.\\"
+)]
+#[case::panic_with_message("tests/data/burn_in/evergreen_with_no_burn_in_variants.yml")]
+#[should_panic(
+    expected = "`enterprise-rhel-80-64-bit-dynamic-required` build variant is either missing or has an empty list for the `burn_in_tag_buildvariants` expansion. Set the expansion in your project\\'s config to run burn_in_tags_gen.\\"
+)]
+#[case::panic_with_message("tests/data/burn_in/evergreen_with_empty_burn_in_variants.yml")]
+fn test_end2end_burn_in_with_no_distro(#[case] config_location: String) {
+    let mut cmd = Command::cargo_bin("mongo-task-generator").unwrap();
+    let tmp_dir = TempDir::new("generated_resmoke_config").unwrap();
+    cmd.args(&[
+        "--target-directory",
+        tmp_dir.path().to_str().unwrap(),
+        "--expansion-file",
+        "tests/data/sample_expansions.yml",
+        "--evg-project-file",
+        &config_location,
+        "--evg-auth-file",
+        "tests/data/sample_evergreen_auth.yml",
+        "--resmoke-command",
+        "python3 tests/mocks/resmoke.py",
+        "--use-task-split-fallback",
+        "--generate-sub-tasks-config",
+        "tests/data/sample_generate_subtasks_config.yml",
+        "--burn-in",
+        "--burn-in-tests-command",
+        "python3 tests/mocks/burn_in_tests.py",
+    ])
+    .unwrap();
 }
