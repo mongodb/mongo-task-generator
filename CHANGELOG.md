@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.6.2 - 2022-09-14
+* Propogate up errors when calling resmoke.
+
 ## 0.6.1 - 2022-09-06
 * Add the ability to get `distro_name` and `task_group_name` for `burn_in` tasks.
 

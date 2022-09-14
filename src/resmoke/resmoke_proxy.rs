@@ -1,11 +1,10 @@
 use std::{path::Path, str::FromStr, time::Instant};
 
 use anyhow::Result;
-use cmd_lib::run_fun;
 use serde::Deserialize;
 use tracing::{event, Level};
 
-use super::resmoke_suite::ResmokeSuiteConfig;
+use super::{external_cmd::run_command, resmoke_suite::ResmokeSuiteConfig};
 
 /// Interface for discovering details about test suites.
 pub trait TestDiscovery: Send + Sync {
@@ -83,12 +82,12 @@ impl TestDiscovery for ResmokeProxy {
     ///
     /// A list of tests belonging to given suite.
     fn discover_tests(&self, suite_name: &str) -> Result<Vec<String>> {
-        let cmd = &self.resmoke_cmd;
-        let script = &self.resmoke_script;
+        let mut cmd = vec![&*self.resmoke_cmd];
+        cmd.append(&mut self.resmoke_script.iter().map(|s| s.as_str()).collect());
+        cmd.append(&mut vec!["test-discovery", "--suite", suite_name]);
         let start = Instant::now();
-        let cmd_output = run_fun!(
-            $cmd $[script] test-discovery --suite $suite_name
-        )?;
+        let cmd_output = run_command(&cmd).unwrap();
+
         event!(
             Level::INFO,
             suite_name,
@@ -114,11 +113,11 @@ impl TestDiscovery for ResmokeProxy {
     ///
     /// Resmoke configuration for the given suite.
     fn get_suite_config(&self, suite_name: &str) -> Result<ResmokeSuiteConfig> {
-        let cmd = &self.resmoke_cmd;
-        let script = &self.resmoke_script;
-        let cmd_output = run_fun!(
-            $cmd $[script] suiteconfig --suite $suite_name
-        )?;
+        let mut cmd = vec![&*self.resmoke_cmd];
+        cmd.append(&mut self.resmoke_script.iter().map(|s| s.as_str()).collect());
+        cmd.append(&mut vec!["suiteconfig", "--suite", suite_name]);
+        let cmd_output = run_command(&cmd).unwrap();
+
         Ok(ResmokeSuiteConfig::from_str(&cmd_output)?)
     }
 
@@ -147,9 +146,10 @@ pub struct MultiversionConfig {
 impl MultiversionConfig {
     /// Query the multiversion configuration from resmoke.
     pub fn from_resmoke(cmd: &str, script: &[String]) -> Result<MultiversionConfig> {
-        let cmd_output = run_fun!(
-            $cmd $[script] multiversion-config
-        )?;
+        let mut cmd = vec![cmd];
+        cmd.append(&mut script.iter().map(|s| s.as_str()).collect());
+        cmd.append(&mut vec!["multiversion-config"]);
+        let cmd_output = run_command(&cmd).unwrap();
         Ok(serde_yaml::from_str(&cmd_output)?)
     }
 
