@@ -24,12 +24,14 @@ pub fn run_command(command: &[&str]) -> Result<String> {
 
     if !cmd.status.success() {
         let error_message = String::from_utf8_lossy(&cmd.stderr).to_string();
+        let regular_info = String::from_utf8_lossy(&cmd.stdout).to_string();
 
         event!(
             Level::ERROR,
             binary = binary,
             args = args.join(" "),
             error_message = error_message,
+            stdout = regular_info,
             "Command encountered an error",
         );
         bail!("Command encountered an error")
