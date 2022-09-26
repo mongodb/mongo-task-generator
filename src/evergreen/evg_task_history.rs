@@ -3,14 +3,23 @@
 use anyhow::{bail, Result};
 use async_trait::async_trait;
 use chrono::{DateTime, Duration, Utc};
-use evg_api_rs::models::stats::{EvgTestStats, EvgTestStatsRequest};
+use evg_api_rs::models::stats::EvgTestStatsRequest;
 use evg_api_rs::EvgApiClient;
 use reqwest;
+use serde::Deserialize;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 
 const HOOK_DELIMITER: char = ':';
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct EvgTestStats {
+    pub test_name: String,
+    pub num_pass: u64,
+    pub num_fail: u64,
+    pub avg_duration_pass: f64,
+}
 
 /// Runtime information of hooks that ran in evergreen.
 #[derive(Debug, Clone)]
@@ -182,7 +191,7 @@ fn gather_test_stats(
 ) -> HashMap<String, TestRuntimeHistory> {
     let mut test_map: HashMap<String, TestRuntimeHistory> = HashMap::new();
     for stat in stat_list {
-        let normalized_test_file = normalize_test_file(&stat.test_file);
+        let normalized_test_file = normalize_test_file(&stat.test_name);
         if !is_hook(&normalized_test_file) {
             let test_name = get_test_name(&normalized_test_file);
             if let Some(v) = test_map.get_mut(&test_name) {
@@ -219,7 +228,7 @@ fn gather_test_stats(
 fn gather_hook_stats(stat_list: &[EvgTestStats]) -> HashMap<String, Vec<HookRuntimeHistory>> {
     let mut hook_map: HashMap<String, Vec<HookRuntimeHistory>> = HashMap::new();
     for stat in stat_list {
-        let normalized_test_file = normalize_test_file(&stat.test_file);
+        let normalized_test_file = normalize_test_file(&stat.test_name);
         if is_hook(&normalized_test_file) {
             let test_name = hook_test_name(&normalized_test_file);
             let hook_name = hook_hook_name(&normalized_test_file);
@@ -422,7 +431,7 @@ mod tests {
             &self,
             _project_id: &str,
             _query: &EvgTestStatsRequest,
-        ) -> Result<Vec<EvgTestStats>, EvgError> {
+        ) -> Result<Vec<evg_api_rs::models::stats::EvgTestStats>, EvgError> {
             if self.return_error {
                 Err(Box::new(SimpleError::new("Error from evergreen")))
             } else {
