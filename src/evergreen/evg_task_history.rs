@@ -5,6 +5,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Duration, Utc};
 use evg_api_rs::models::stats::{EvgTestStats, EvgTestStatsRequest};
 use evg_api_rs::EvgApiClient;
+use reqwest;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::sync::Arc;
@@ -120,6 +121,14 @@ impl TaskHistoryService for TaskHistoryServiceImpl {
     ///
     /// The runtime history of tests belonging to the given suite on the given build variant.
     async fn get_task_history(&self, task: &str, variant: &str) -> Result<TaskRuntimeHistory> {
+        let url = format!(
+            "https://julian-dag-test-stats-poc.s3.amazonaws.com/{}/{}/{}",
+            self.evg_project, variant, task
+        );
+        let stats: Result<Vec<EvgTestStats>, reqwest::Error> =
+            Ok(reqwest::get(url).await?.json::<Vec<EvgTestStats>>().await?);
+
+        /*
         let today = Utc::now();
         let lookback = Duration::days(self.lookback_days as i64);
         let start_date = today - lookback;
@@ -137,6 +146,7 @@ impl TaskHistoryService for TaskHistoryServiceImpl {
             .evg_client
             .get_test_stats(&self.evg_project, &request)
             .await;
+        */
 
         if let Ok(stats) = stats {
             // Split the returned stats into stats for hooks and tests. Also attach the hook stats
@@ -149,7 +159,7 @@ impl TaskHistoryService for TaskHistoryServiceImpl {
                 test_map,
             })
         } else {
-            bail!("Error from evergreen: {:?}", stats)
+            bail!("Error from S3: {:?}", stats)
         }
     }
 }

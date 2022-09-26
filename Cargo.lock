@@ -1234,6 +1234,7 @@ dependencies = [
  "maplit",
  "rand 0.8.5",
  "regex",
+ "reqwest",
  "rstest",
  "serde",
  "serde_json",
