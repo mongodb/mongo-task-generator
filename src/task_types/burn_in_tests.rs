@@ -235,7 +235,7 @@ impl BurnInServiceImpl {
         let origin_suite = suite_info.build_origin_suite(&params.suite_name);
 
         let sub_suite = SubSuite {
-            index: Some(index),
+            index,
             name: suite_info.build_display_name(),
             test_list: vec![test.to_string()],
             exclude_test_list: None,

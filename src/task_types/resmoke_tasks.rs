@@ -3,10 +3,7 @@
 //! This service will query the historic runtime of tests in the given task and then
 //! use that information to divide the tests into sub-suites that can be run in parallel.
 //!
-//! Each task will contain the generated sub-suites and a '_misc' suite. The '_misc' suite
-//! tries to run all the tests for the original suite minus tests that were added to generated
-//! suites. This catches tests that were not included in the historic runtime data. For example,
-//! newly added tests that have not yet be run.
+//! Each task will contain the generated sub-suites.
 use std::{cmp::min, collections::HashMap, sync::Arc};
 
 use anyhow::Result;
@@ -181,8 +178,8 @@ impl ResmokeGenParams {
 /// Representation of generated sub-suite.
 #[derive(Clone, Debug, Default)]
 pub struct SubSuite {
-    /// Index value of generated suite (None for the '_misc' sub-task).
-    pub index: Option<usize>,
+    /// Index value of generated suite.
+    pub index: usize,
 
     /// Name of generated sub-suite.
     pub name: String,
@@ -443,7 +440,7 @@ impl GenResmokeTaskServiceImpl {
         let mut sub_suites = vec![];
         for (i, slice) in running_tests.iter().enumerate() {
             sub_suites.push(SubSuite {
-                index: Some(i),
+                index: i,
                 name: multiversion_name.unwrap_or(&params.task_name).to_string(),
                 test_list: slice.clone(),
                 origin_suite: origin_suite.to_string(),
@@ -481,10 +478,7 @@ impl GenResmokeTaskServiceImpl {
 
         if !params.is_enterprise {
             if let Some(enterprise_dir) = &self.config.enterprise_dir {
-                test_list = test_list
-                    .into_iter()
-                    .filter(|s| !s.starts_with(enterprise_dir))
-                    .collect();
+                test_list.retain(|s| !s.starts_with(enterprise_dir));
             }
         }
 
@@ -525,7 +519,7 @@ impl GenResmokeTaskServiceImpl {
             current_tests.push(test);
             if current_tests.len() >= tasks_per_suite {
                 sub_suites.push(SubSuite {
-                    index: Some(i),
+                    index: i,
                     name: multiversion_name.unwrap_or(&params.task_name).to_string(),
                     test_list: current_tests,
                     origin_suite: origin_suite.to_string(),
@@ -541,7 +535,7 @@ impl GenResmokeTaskServiceImpl {
 
         if !current_tests.is_empty() {
             sub_suites.push(SubSuite {
-                index: Some(i),
+                index: i,
                 name: multiversion_name.unwrap_or(&params.task_name).to_string(),
                 test_list: current_tests,
                 origin_suite: origin_suite.to_string(),
@@ -614,8 +608,7 @@ impl GenResmokeTaskServiceImpl {
         multiversion_name: Option<&str>,
         multiversion_tags: Option<String>,
     ) -> Result<Vec<SubSuite>> {
-        let origin_suite = multiversion_name.unwrap_or(&params.suite_name);
-        let mut sub_suites = if self.config.use_task_split_fallback {
+        let sub_suites = if self.config.use_task_split_fallback {
             self.split_task_fallback(params, multiversion_name, multiversion_tags.clone())?
         } else {
             let task_history = self
@@ -642,22 +635,6 @@ impl GenResmokeTaskServiceImpl {
                 }
             }
         };
-
-        // Add a `_misc` sub-task to the list of tasks.
-        let full_test_list: Vec<String> = sub_suites
-            .iter()
-            .flat_map(|s| s.test_list.clone())
-            .collect();
-        sub_suites.push(SubSuite {
-            index: None,
-            name: multiversion_name.unwrap_or(&params.task_name).to_string(),
-            test_list: vec![],
-            origin_suite: origin_suite.to_string(),
-            exclude_test_list: Some(full_test_list),
-            mv_exclude_tags: multiversion_tags,
-            is_enterprise: params.is_enterprise,
-            platform: params.platform.clone(),
-        });
 
         Ok(sub_suites)
     }
@@ -1408,14 +1385,14 @@ mod tests {
         let version_combos = vec!["new_new_new".to_string(), "old_new_old".to_string()];
         let sub_suites = vec![
             SubSuite {
-                index: Some(0),
+                index: 0,
                 name: "suite".to_string(),
                 origin_suite: "suite".to_string(),
                 test_list: vec!["test_0.js".to_string(), "test_1.js".to_string()],
                 ..Default::default()
             },
             SubSuite {
-                index: Some(1),
+                index: 1,
                 name: "suite".to_string(),
                 origin_suite: "suite".to_string(),
                 test_list: vec!["test_2.js".to_string(), "test_3.js".to_string()],
@@ -1431,7 +1408,12 @@ mod tests {
             test_map: hashmap! {},
         };
         let gen_resmoke_service = build_mocked_service(
-            vec![],
+            vec![
+                "test_0.js".to_string(),
+                "test_1.js".to_string(),
+                "test_2.js".to_string(),
+                "test_3.js".to_string(),
+            ],
             task_history,
             1,
             old_version.clone(),
@@ -1490,7 +1472,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(suite.display_name(), "my_task".to_string());
-        assert_eq!(suite.sub_tasks().len(), n_suites + 1); // +1 for _misc suite.
+        assert_eq!(suite.sub_tasks().len(), n_suites);
     }
 
     // resmoke_commands tests.

@@ -121,9 +121,6 @@ impl WriteConfigActorImpl {
         // Create suite files for all the sub-suites.
         self.write_sub_suites(&suite_info.sub_suites, &mut resmoke_config_cache)?;
 
-        // Create a suite file for the '_misc' sub-task.
-        self.write_misc_suites(&suite_info.sub_suites, &mut resmoke_config_cache)?;
-
         Ok(())
     }
 
@@ -160,46 +157,6 @@ impl WriteConfigActorImpl {
                 path.push(filename);
 
                 self.fs_service.write_file(&path, &config.to_string())?;
-                Ok(())
-            })
-            .collect();
-        results?;
-        Ok(())
-    }
-
-    /// Write resmoke configurations for a "_misc" suite.
-    ///
-    /// # Arguments
-    ///
-    /// * `sub_suites` - List of sub-suites comprising the generated suite.
-    /// * `resmoke_config_cache` - Cache to get resmoke suite configurations.
-    fn write_misc_suites(
-        &self,
-        sub_suites: &[SubSuite],
-        resmoke_config_cache: &mut ResmokeConfigCache,
-    ) -> Result<()> {
-        let total_tasks = sub_suites.len();
-        let results: Result<Vec<()>> = sub_suites
-            .iter()
-            .filter(|s| s.exclude_test_list.is_some())
-            .map(|s| {
-                let origin_config = resmoke_config_cache.get_config(&s.origin_suite)?;
-                let test_list = s.exclude_test_list.clone().unwrap();
-                let misc_config = origin_config.with_new_tests(None, Some(&test_list));
-                let filename = format!(
-                    "{}.yml",
-                    name_generated_task(
-                        &s.name,
-                        s.index,
-                        total_tasks,
-                        s.is_enterprise,
-                        s.platform.as_deref()
-                    )
-                );
-                let mut path = PathBuf::from(&self.target_dir);
-                path.push(filename);
-                self.fs_service
-                    .write_file(&path, &misc_config.to_string())?;
                 Ok(())
             })
             .collect();
@@ -446,25 +403,17 @@ mod tests {
             generate_multiversion_combos: false,
             sub_suites: vec![
                 SubSuite {
-                    index: Some(0),
+                    index: 0,
                     name: "suite_name".to_string(),
                     origin_suite: "suite".to_string(),
                     test_list: vec!["test_0.js".to_string(), "test_1.js".to_string()],
                     ..Default::default()
                 },
                 SubSuite {
-                    index: Some(1),
+                    index: 1,
                     name: "suite_name".to_string(),
                     origin_suite: "suite".to_string(),
                     test_list: vec!["test_2.js".to_string(), "test_3.js".to_string()],
-                    ..Default::default()
-                },
-                SubSuite {
-                    index: None,
-                    name: "suite_name".to_string(),
-                    origin_suite: "suite".to_string(),
-                    test_list: vec![],
-                    exclude_test_list: Some((0..4).map(|i| format!("test_{}.js", i)).collect()),
                     ..Default::default()
                 },
             ],
@@ -474,7 +423,6 @@ mod tests {
 
         assert_eq!(fs_service.get_call_counts("target/suite_name_0.yml"), 1);
         assert_eq!(fs_service.get_call_counts("target/suite_name_1.yml"), 1);
-        assert_eq!(fs_service.get_call_counts("target/suite_name_misc.yml"), 1);
     }
 
     #[tokio::test]
@@ -489,14 +437,14 @@ mod tests {
             generate_multiversion_combos: false,
             sub_suites: vec![
                 SubSuite {
-                    index: Some(0),
+                    index: 0,
                     name: "suite".to_string(),
                     origin_suite: "suite".to_string(),
                     test_list: vec!["test_0.js".to_string(), "test_1.js".to_string()],
                     ..Default::default()
                 },
                 SubSuite {
-                    index: Some(1),
+                    index: 1,
                     name: "suite".to_string(),
                     origin_suite: "suite".to_string(),
                     test_list: vec!["test_2.js".to_string(), "test_3.js".to_string()],

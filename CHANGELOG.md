@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.6.3 - 2022-10-07
+* Remove _misc task generation.
+
 ## 0.6.2 - 2022-09-14
 * Propogate up errors when calling resmoke.
 
