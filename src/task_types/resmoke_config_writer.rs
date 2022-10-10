@@ -415,7 +415,7 @@ mod tests {
                     origin_suite: "suite".to_string(),
                     test_list: vec!["test_2.js".to_string(), "test_3.js".to_string()],
                     ..Default::default()
-                }
+                },
             ],
         };
 

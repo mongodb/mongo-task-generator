@@ -70,14 +70,7 @@ mod tests {
     #[case("task", 0, 10, true, None, "task_0-enterprise")]
     #[case("task", 0, 10, true, Some("linux"), "task_0-linux-enterprise")]
     #[case("task", 42, 1001, true, None, "task_0042-enterprise")]
-    #[case(
-        "task",
-        42,
-        1001,
-        true,
-        Some("linux"),
-        "task_0042-linux-enterprise"
-    )]
+    #[case("task", 42, 1001, true, Some("linux"), "task_0042-linux-enterprise")]
     fn test_name_generated_task_should_not_include_suffix(
         #[case] name: &str,
         #[case] index: usize,

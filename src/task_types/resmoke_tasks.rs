@@ -478,10 +478,7 @@ impl GenResmokeTaskServiceImpl {
 
         if !params.is_enterprise {
             if let Some(enterprise_dir) = &self.config.enterprise_dir {
-                test_list = test_list
-                    .into_iter()
-                    .filter(|s| !s.starts_with(enterprise_dir))
-                    .collect();
+                test_list.retain(|s| !s.starts_with(enterprise_dir));
             }
         }
 
@@ -1411,7 +1408,12 @@ mod tests {
             test_map: hashmap! {},
         };
         let gen_resmoke_service = build_mocked_service(
-            vec!["test_0.js".to_string(), "test_1.js".to_string(), "test_2.js".to_string(), "test_3.js".to_string()],
+            vec![
+                "test_0.js".to_string(),
+                "test_1.js".to_string(),
+                "test_2.js".to_string(),
+                "test_3.js".to_string(),
+            ],
             task_history,
             1,
             old_version.clone(),
