@@ -1,4 +1,5 @@
 use anyhow::Result;
+use shrub_rs::models::task::TaskDependency;
 use shrub_rs::models::{
     task::{EvgTask, TaskRef},
     variant::{BuildVariant, DisplayTask},
@@ -65,8 +66,7 @@ pub trait BurnInService: Sync + Send {
         base_build_variant: &BuildVariant,
         run_build_variant_name: String,
         generated_task: &dyn GeneratedSuite,
-        compile_distro: String,
-        compile_task_group_name: String,
+        variant_task_dependencies: &Vec<TaskDependency>,
     ) -> BuildVariant;
 }
 
@@ -338,8 +338,7 @@ impl BurnInService for BurnInServiceImpl {
         base_build_variant: &BuildVariant,
         run_build_variant_name: String,
         generated_task: &dyn GeneratedSuite,
-        compile_distro: String,
-        compile_task_group_name: String,
+        variant_task_dependencies: &Vec<TaskDependency>,
     ) -> BuildVariant {
         let mut gen_config = BurnInTagsGeneratedConfig::new();
 
@@ -376,6 +375,7 @@ impl BurnInService for BurnInServiceImpl {
             display_tasks: Some(gen_config.display_tasks.clone()),
             modules: base_build_variant.modules.clone(),
             expansions: Some(gen_config.expansions.clone()),
+            // depends_on: Some(variant_task_dependencies),
             activate: Some(false),
             ..Default::default()
         }
@@ -659,15 +659,16 @@ mod tests {
             use_large_distro: false,
         };
         let burn_in_service = build_mocked_service();
-        let compile_distro = "mock_distro_name";
-        let compile_task_group_name = "mock_task_group_name";
+        let variant_task_dep = vec![TaskDependency {
+            name: "mock_dependency".to_string(),
+            variant: Some("mock_variant".to_string()),
+        }];
 
         let burn_in_tags_build_variant = burn_in_service.generate_burn_in_tags_build_variant(
             &base_build_variant,
             run_build_variant_name,
             generated_task,
-            compile_distro.to_string(),
-            compile_task_group_name.to_string(),
+            &variant_task_dep,
         );
 
         assert_eq!(burn_in_tags_build_variant.name, "run-build-variant-name");

@@ -13,6 +13,7 @@ use std::{
     vec,
 };
 
+use crate::evergreen_names::{COMPILE_VARIANT, VERSION_GEN_TASK, VERSION_GEN_VARIANT};
 use anyhow::{bail, Result};
 use async_trait::async_trait;
 use evergreen::{
@@ -29,6 +30,7 @@ use evg_api_rs::EvgClient;
 use generate_sub_tasks_config::GenerateSubTasksConfig;
 use resmoke::{burn_in_proxy::BurnInProxy, resmoke_proxy::ResmokeProxy};
 use services::config_extraction::{ConfigExtractionService, ConfigExtractionServiceImpl};
+use shrub_rs::models::task::TaskDependency;
 use shrub_rs::models::{
     project::EvgProject,
     task::{EvgTask, TaskRef},
@@ -61,7 +63,7 @@ type GenTaskCollection = HashMap<String, Box<dyn GeneratedSuite>>;
 
 pub struct BurnInTagBuildVariantInfo {
     pub compile_task_group_name: String,
-    pub compile_distro: String,
+    pub compile_variant: String,
 }
 
 /// Information about the Evergreen project being run against.
@@ -642,6 +644,12 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
             build_variant.name, BURN_IN_TAG_BUILD_VARIANTS, BURN_IN_TAGS
         )
         }
+
+        let compile_variant = self
+            .evg_config_utils
+            .lookup_build_variant_expansion(COMPILE_VARIANT, build_variant)
+            .unwrap_or(build_variant.name.clone());
+
         let compile_distro = self
         .evg_config_utils
         .lookup_build_variant_expansion(
@@ -672,8 +680,8 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
             let bv_info = burn_in_tag_build_variant_info
                 .entry(variant.clone())
                 .or_insert(BurnInTagBuildVariantInfo {
-                    compile_distro: compile_distro.clone(),
                     compile_task_group_name: compile_task_group_name.clone(),
+                    compile_variant: compile_variant.clone(),
                 });
             if bv_info.compile_distro != compile_distro.clone() {
                 panic!(
@@ -686,6 +694,12 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                     "`{}` is trying to set a different compile task group name than already exists for `{}`. Check the `{}` expansions in your config.",
                 build_variant.name, variant, BURN_IN_TAG_COMPILE_TASK_GROUP_NAME
             )
+            }
+            if bv_info.compile_variant != compile_variant {
+                panic!(
+                    "`{}` is trying to set a different compile variant than already exists for `{}`. Check the `{}` expansions in your config.",
+                    build_variant.name, variant, COMPILE_VARIANT
+                )
             }
         }
     }
@@ -785,6 +799,16 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
             let base_build_variant = build_variant_map.get(&base_bv_name).unwrap();
             let run_build_variant_name = format!("{}-required", base_build_variant.name);
             let task_name = format!("{}-{}", BURN_IN_PREFIX, run_build_variant_name);
+            let variant_task_dependencies = vec![
+                TaskDependency {
+                    name: bv_info.compile_task_group_name,
+                    variant: Some(bv_info.compile_variant.clone()),
+                },
+                TaskDependency {
+                    name: VERSION_GEN_TASK.to_string(),
+                    variant: Some(VERSION_GEN_VARIANT.to_string()),
+                },
+            ];
 
             if let Some(generated_task) = generated_tasks.get(&task_name) {
                 generated_build_variants.push(
@@ -792,8 +816,7 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                         base_build_variant,
                         run_build_variant_name,
                         generated_task.as_ref(),
-                        bv_info.compile_distro,
-                        bv_info.compile_task_group_name,
+                        &variant_task_dependencies,
                     ),
                 );
             }
@@ -1262,8 +1285,7 @@ mod tests {
             _base_build_variant: &BuildVariant,
             _run_build_variant_name: String,
             _generated_task: &dyn GeneratedSuite,
-            _compile_distro: String,
-            _compile_task_group_name: String,
+            _variant_task_dependencies: &Vec<TaskDependency>,
         ) -> BuildVariant {
             todo!()
         }

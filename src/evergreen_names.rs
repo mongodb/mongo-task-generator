@@ -66,6 +66,8 @@ pub const GEN_TASK_CONFIG_LOCATION: &str = "gen_task_config_location";
 pub const RESMOKE_JOBS_MAX: &str = "resmoke_jobs_max";
 /// Number of times to repeat a given resmoke suite.
 pub const REPEAT_SUITES: &str = "resmoke_repeat_suites";
+/// Variant used for compile.
+pub const COMPILE_VARIANT: &str = "compile_variant";
 
 // Fuzzer parameters.
 /// Name of npm command to run.
@@ -120,3 +122,9 @@ pub const WINDOWS: &str = "windows";
 pub const MACOS: &str = "macos";
 /// Linux distro group name.
 pub const LINUX: &str = "linux";
+
+// Constants in evergreen.yml.
+/// Name of the variant that calls generate.task on the version.
+pub const VERSION_GEN_VARIANT: &str = "generate-tasks-for-version";
+/// Name of the task that calls generate.task on the version.
+pub const VERSION_GEN_TASK: &str = "version_gen";
