@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.6.3 - 2022-10-10
+* Update burn_in_tags to depend on existing compile tasks.
+
 ## 0.6.2 - 2022-09-14
 * Propogate up errors when calling resmoke.
 
