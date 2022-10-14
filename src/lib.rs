@@ -22,9 +22,8 @@ use evergreen::{
     evg_task_history::TaskHistoryServiceImpl,
 };
 use evergreen_names::{
-    BURN_IN_TAGS, BURN_IN_TAG_BUILD_VARIANTS, BURN_IN_TAG_COMPILE_DISTRO,
-    BURN_IN_TAG_COMPILE_TASK_GROUP_NAME, BURN_IN_TESTS, ENTERPRISE_MODULE, GENERATOR_TASKS,
-    LARGE_DISTRO_EXPANSION,
+    BURN_IN_TAGS, BURN_IN_TAG_BUILD_VARIANTS, BURN_IN_TAG_COMPILE_TASK_GROUP_NAME, BURN_IN_TESTS,
+    ENTERPRISE_MODULE, GENERATOR_TASKS, LARGE_DISTRO_EXPANSION,
 };
 use evg_api_rs::EvgClient;
 use generate_sub_tasks_config::GenerateSubTasksConfig;
@@ -648,19 +647,8 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
         let compile_variant = self
             .evg_config_utils
             .lookup_build_variant_expansion(COMPILE_VARIANT, build_variant)
-            .unwrap_or(build_variant.name.clone());
+            .unwrap_or_else(|| build_variant.name.clone());
 
-        let compile_distro = self
-        .evg_config_utils
-        .lookup_build_variant_expansion(
-            BURN_IN_TAG_COMPILE_DISTRO,
-            build_variant,
-        ).unwrap_or_else(|| {
-            panic!(
-                "`{}` build variant is missing the `{}` expansion to run `{}`. Set the expansion in your project's config to continue.",
-                build_variant.name, BURN_IN_TAG_COMPILE_DISTRO, BURN_IN_TAGS
-            )
-        });
         let compile_task_group_name = self
         .evg_config_utils
         .lookup_build_variant_expansion(
@@ -683,12 +671,6 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                     compile_task_group_name: compile_task_group_name.clone(),
                     compile_variant: compile_variant.clone(),
                 });
-            if bv_info.compile_distro != compile_distro.clone() {
-                panic!(
-                    "`{}` is trying to set a different compile distro than already exists for `{}`. Check the `{}` expansions in your config.",
-                build_variant.name, variant, BURN_IN_TAG_COMPILE_DISTRO
-            )
-            }
             if bv_info.compile_task_group_name != compile_task_group_name {
                 panic!(
                     "`{}` is trying to set a different compile task group name than already exists for `{}`. Check the `{}` expansions in your config.",
@@ -816,7 +798,7 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                         base_build_variant,
                         run_build_variant_name,
                         generated_task.as_ref(),
-                        &variant_task_dependencies,
+                        variant_task_dependencies,
                     ),
                 );
             }

@@ -66,7 +66,7 @@ pub trait BurnInService: Sync + Send {
         base_build_variant: &BuildVariant,
         run_build_variant_name: String,
         generated_task: &dyn GeneratedSuite,
-        variant_task_dependencies: &Vec<TaskDependency>,
+        variant_task_dependencies: Vec<TaskDependency>,
     ) -> BuildVariant;
 }
 
@@ -338,7 +338,7 @@ impl BurnInService for BurnInServiceImpl {
         base_build_variant: &BuildVariant,
         run_build_variant_name: String,
         generated_task: &dyn GeneratedSuite,
-        variant_task_dependencies: &Vec<TaskDependency>,
+        variant_task_dependencies: Vec<TaskDependency>,
     ) -> BuildVariant {
         let mut gen_config = BurnInTagsGeneratedConfig::new();
 
@@ -353,12 +353,6 @@ impl BurnInService for BurnInServiceImpl {
             BURN_IN_BYPASS.to_string(),
             base_build_variant.name.to_string(),
         );
-
-        gen_config.gen_task_specs.push(TaskRef {
-            name: compile_task_group_name,
-            distros: Some(vec![compile_distro]),
-            activate: Some(false),
-        });
 
         gen_config
             .gen_task_specs
@@ -375,7 +369,7 @@ impl BurnInService for BurnInServiceImpl {
             display_tasks: Some(gen_config.display_tasks.clone()),
             modules: base_build_variant.modules.clone(),
             expansions: Some(gen_config.expansions.clone()),
-            // depends_on: Some(variant_task_dependencies),
+            depends_on: Some(variant_task_dependencies),
             activate: Some(false),
             ..Default::default()
         }
@@ -668,7 +662,7 @@ mod tests {
             &base_build_variant,
             run_build_variant_name,
             generated_task,
-            &variant_task_dep,
+            variant_task_dep,
         );
 
         assert_eq!(burn_in_tags_build_variant.name, "run-build-variant-name");
