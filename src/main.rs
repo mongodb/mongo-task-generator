@@ -129,7 +129,7 @@ async fn main() {
     let result = generate_configuration(&deps, &args.target_directory).await;
     event!(
         Level::INFO,
-        "generation completed: {} seconds",
+        "generation completed: {duration_secs} seconds",
         duration_secs = start.elapsed().as_secs()
     );
     if let Err(err) = result {

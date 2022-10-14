@@ -272,7 +272,7 @@ fn build_fuzzer_sub_task(
 ) -> EvgTask {
     let sub_task_name = name_generated_task(
         display_name,
-        Some(sub_task_index),
+        sub_task_index,
         params.num_tasks as usize,
         params.is_enterprise,
         params.platform.as_deref(),
