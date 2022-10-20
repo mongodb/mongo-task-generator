@@ -65,7 +65,7 @@ pub trait BurnInService: Sync + Send {
         base_build_variant: &BuildVariant,
         run_build_variant_name: String,
         generated_task: &dyn GeneratedSuite,
-        variant_task_dependencies: &Vec<TaskDependency>,
+        variant_task_dependencies: &[TaskDependency],
     ) -> BuildVariant;
 }
 
@@ -337,7 +337,7 @@ impl BurnInService for BurnInServiceImpl {
         base_build_variant: &BuildVariant,
         run_build_variant_name: String,
         generated_task: &dyn GeneratedSuite,
-        variant_task_dependencies: &Vec<TaskDependency>,
+        variant_task_dependencies: &[TaskDependency],
     ) -> BuildVariant {
         let mut gen_config = BurnInTagsGeneratedConfig::new();
 
@@ -368,7 +368,7 @@ impl BurnInService for BurnInServiceImpl {
             display_tasks: Some(gen_config.display_tasks.clone()),
             modules: base_build_variant.modules.clone(),
             expansions: Some(gen_config.expansions.clone()),
-            depends_on: Some(variant_task_dependencies.clone()),
+            depends_on: Some(variant_task_dependencies.to_vec()),
             activate: Some(false),
             ..Default::default()
         }
