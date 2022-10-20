@@ -55,8 +55,7 @@ pub trait BurnInService: Sync + Send {
     /// * `base_build_variant` - Build variant to generate burn_in_tags build variant based on.
     /// * `run_build_variant_name` - Build variant name to run burn_in_tests task on.
     /// * `generated_task` - Generated burn_in_tests task.
-    /// * `compile_distro` - What distro to run compile on.
-    /// * `compile_task_group_name` - What to name the compile task.
+    /// * `variant_task_dependencies` - List of dependencies for all tasks on this variant.
     ///
     /// # Returns
     ///
@@ -692,14 +691,7 @@ mod tests {
         assert_eq!(burn_in_tags_build_variant.tasks[1].name, "sub_suite_name");
         assert_eq!(
             burn_in_tags_build_variant.tasks[0].name,
-            compile_task_group_name.to_string()
-        );
-        assert_eq!(
-            burn_in_tags_build_variant.tasks[0]
-                .distros
-                .as_ref()
-                .unwrap()[0],
-            compile_distro.to_string()
+            &variant_task_dep[0].name,
         );
     }
 }

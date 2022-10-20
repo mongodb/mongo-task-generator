@@ -1267,7 +1267,7 @@ mod tests {
             _base_build_variant: &BuildVariant,
             _run_build_variant_name: String,
             _generated_task: &dyn GeneratedSuite,
-            _variant_task_dependencies: &Vec<TaskDependency>,
+            _variant_task_dependencies: Vec<TaskDependency>,
         ) -> BuildVariant {
             todo!()
         }
