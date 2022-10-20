@@ -29,6 +29,7 @@ fn test_end2end_execution() {
     assert!(tmp_dir_path.exists());
 
     let files = std::fs::read_dir(tmp_dir_path).unwrap();
+    assert_eq!(846, files.into_iter().collect::<Vec<_>>().len());
 }
 
 #[test]
