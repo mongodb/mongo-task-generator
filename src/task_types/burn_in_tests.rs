@@ -360,6 +360,8 @@ impl BurnInService for BurnInServiceImpl {
             .display_tasks
             .push(generated_task.build_display_task());
 
+        // Commented out in favor of static variant definitions in evergreen.yml
+        // due to https://jira.mongodb.org/browse/EVG-18112
         BuildVariant {
             name: gen_config.build_variant_name.clone(),
             tasks: gen_config.gen_task_specs.clone(),
@@ -665,33 +667,33 @@ mod tests {
         );
 
         assert_eq!(burn_in_tags_build_variant.name, "run-build-variant-name");
-        assert_eq!(
-            burn_in_tags_build_variant.display_name,
-            Some("! base build variant display name".to_string())
-        );
-        assert_eq!(
-            burn_in_tags_build_variant.run_on,
-            Some(vec!["base_distro_name".to_string()])
-        );
-        assert_eq!(
-            burn_in_tags_build_variant.modules,
-            Some(vec!["base_module_name".to_string()])
-        );
-        assert_eq!(
-            burn_in_tags_build_variant
-                .expansions
-                .unwrap_or_default()
-                .get(BURN_IN_BYPASS),
-            Some(&"base-build-variant-name".to_string())
-        );
+
+        // Commented out in favor of static variant definitions in evergreen.yml
+        // due to https://jira.mongodb.org/browse/EVG-18112
+        // assert_eq!(
+        //     burn_in_tags_build_variant.display_name,
+        //     Some("! base build variant display name".to_string())
+        // );
+        // assert_eq!(
+        //     burn_in_tags_build_variant.run_on,
+        //     Some(vec!["base_distro_name".to_string()])
+        // );
+        // assert_eq!(
+        //     burn_in_tags_build_variant.modules,
+        //     Some(vec!["base_module_name".to_string()])
+        // );
+        // assert_eq!(
+        //     burn_in_tags_build_variant
+        //         .expansions
+        //         .unwrap_or_default()
+        //         .get(BURN_IN_BYPASS),
+        //     Some(&"base-build-variant-name".to_string())
+        // );
+
         assert_eq!(
             burn_in_tags_build_variant.display_tasks.unwrap_or_default()[0].name,
             "display_task_name"
         );
         assert_eq!(burn_in_tags_build_variant.tasks[0].name, "sub_suite_name");
-        assert_eq!(
-            burn_in_tags_build_variant.depends_on.unwrap()[0].name,
-            variant_task_dep[0].name,
-        );
     }
 }
