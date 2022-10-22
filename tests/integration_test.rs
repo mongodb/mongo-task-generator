@@ -29,7 +29,7 @@ fn test_end2end_execution() {
     assert!(tmp_dir_path.exists());
 
     let files = std::fs::read_dir(tmp_dir_path).unwrap();
-    assert_eq!(2206, files.into_iter().collect::<Vec<_>>().len());
+    assert_eq!(846, files.into_iter().collect::<Vec<_>>().len());
 }
 
 #[test]
@@ -68,10 +68,6 @@ fn test_end2end_burn_in_execution() {
 }
 
 #[rstest]
-#[should_panic(
-    expected = "`enterprise-rhel-80-64-bit-dynamic-required` build variant is missing the `burn_in_tag_compile_distro` expansion to run `burn_in_tags_gen`. Set the expansion in your project\\'s config to continue.\\"
-)]
-#[case::panic_with_message("tests/data/burn_in/evergreen_with_no_burn_in_distro.yml")]
 #[should_panic(
     expected = "`enterprise-rhel-80-64-bit-dynamic-required` build variant is missing the `burn_in_tag_compile_task_group_name` expansion to run `burn_in_tags_gen`. Set the expansion in your project\\'s config to continue.\\"
 )]

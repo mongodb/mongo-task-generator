@@ -66,6 +66,8 @@ pub const GEN_TASK_CONFIG_LOCATION: &str = "gen_task_config_location";
 pub const RESMOKE_JOBS_MAX: &str = "resmoke_jobs_max";
 /// Number of times to repeat a given resmoke suite.
 pub const REPEAT_SUITES: &str = "resmoke_repeat_suites";
+/// Variant used for compile.
+pub const COMPILE_VARIANT: &str = "compile_variant";
 
 // Fuzzer parameters.
 /// Name of npm command to run.
@@ -89,8 +91,6 @@ pub const LARGE_DISTRO_EXPANSION: &str = "large_distro_name";
 /// List of build variant names delimited by spaces to generate burn_in_tags for.
 pub const BURN_IN_TAG_BUILD_VARIANTS: &str = "burn_in_tag_buildvariants";
 /// The distro to use when compiling burn_in_tags.
-pub const BURN_IN_TAG_COMPILE_DISTRO: &str = "burn_in_tag_compile_distro";
-/// The name to give the task group for compiling.
 pub const BURN_IN_TAG_COMPILE_TASK_GROUP_NAME: &str = "burn_in_tag_compile_task_group_name";
 /// Name of build variant to determine the timeouts for.
 pub const BURN_IN_BYPASS: &str = "burn_in_bypass";
@@ -120,3 +120,9 @@ pub const WINDOWS: &str = "windows";
 pub const MACOS: &str = "macos";
 /// Linux distro group name.
 pub const LINUX: &str = "linux";
+
+// Constants in evergreen.yml.
+/// Name of the variant that calls generate.task on the version.
+pub const VERSION_GEN_VARIANT: &str = "generate-tasks-for-version";
+/// Name of the task that calls generate.task on the version.
+pub const VERSION_GEN_TASK: &str = "version_gen";

@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.6.4 - 2022-10-14
+* Update burn_in_tags to depend on existing compile tasks.
+
 ## 0.6.3 - 2022-10-07
 * Remove _misc task generation.
 

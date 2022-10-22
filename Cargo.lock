@@ -1219,7 +1219,7 @@ dependencies = [
 
 [[package]]
 name = "mongo-task-generator"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -2175,9 +2175,9 @@ dependencies = [
 
 [[package]]
 name = "shrub-rs"
-version = "0.5.0"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e89c643fcde98c94a2ec34cd23db06a1bc66a29c1a4291359c0ea0a64d301919"
+checksum = "62a61088d7d237db7f895c555d534b9da019b3b8e2d677eeffb04150692d3635"
 dependencies = [
  "serde",
  "serde_yaml",

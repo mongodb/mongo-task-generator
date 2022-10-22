@@ -1,4 +1,5 @@
 use anyhow::Result;
+use shrub_rs::models::task::TaskDependency;
 use shrub_rs::models::{
     task::{EvgTask, TaskRef},
     variant::{BuildVariant, DisplayTask},
@@ -54,8 +55,7 @@ pub trait BurnInService: Sync + Send {
     /// * `base_build_variant` - Build variant to generate burn_in_tags build variant based on.
     /// * `run_build_variant_name` - Build variant name to run burn_in_tests task on.
     /// * `generated_task` - Generated burn_in_tests task.
-    /// * `compile_distro` - What distro to run compile on.
-    /// * `compile_task_group_name` - What to name the compile task.
+    /// * `variant_task_dependencies` - List of dependencies for all tasks on this variant.
     ///
     /// # Returns
     ///
@@ -65,8 +65,7 @@ pub trait BurnInService: Sync + Send {
         base_build_variant: &BuildVariant,
         run_build_variant_name: String,
         generated_task: &dyn GeneratedSuite,
-        compile_distro: String,
-        compile_task_group_name: String,
+        variant_task_dependencies: &[TaskDependency],
     ) -> BuildVariant;
 }
 
@@ -338,8 +337,7 @@ impl BurnInService for BurnInServiceImpl {
         base_build_variant: &BuildVariant,
         run_build_variant_name: String,
         generated_task: &dyn GeneratedSuite,
-        compile_distro: String,
-        compile_task_group_name: String,
+        _variant_task_dependencies: &[TaskDependency],
     ) -> BuildVariant {
         let mut gen_config = BurnInTagsGeneratedConfig::new();
 
@@ -355,12 +353,6 @@ impl BurnInService for BurnInServiceImpl {
             base_build_variant.name.to_string(),
         );
 
-        gen_config.gen_task_specs.push(TaskRef {
-            name: compile_task_group_name,
-            distros: Some(vec![compile_distro]),
-            activate: Some(false),
-        });
-
         gen_config
             .gen_task_specs
             .extend(generated_task.build_task_ref(None));
@@ -368,14 +360,17 @@ impl BurnInService for BurnInServiceImpl {
             .display_tasks
             .push(generated_task.build_display_task());
 
+        // Commented out in favor of static variant definitions in evergreen.yml
+        // due to https://jira.mongodb.org/browse/EVG-18112
         BuildVariant {
             name: gen_config.build_variant_name.clone(),
             tasks: gen_config.gen_task_specs.clone(),
-            display_name: gen_config.build_variant_display_name.clone(),
-            run_on: base_build_variant.run_on.clone(),
+            // display_name: gen_config.build_variant_display_name.clone(),
+            // run_on: base_build_variant.run_on.clone(),
             display_tasks: Some(gen_config.display_tasks.clone()),
-            modules: base_build_variant.modules.clone(),
-            expansions: Some(gen_config.expansions.clone()),
+            // modules: base_build_variant.modules.clone(),
+            // expansions: Some(gen_config.expansions.clone()),
+            // depends_on: Some(variant_task_dependencies.to_vec()),
             activate: Some(false),
             ..Default::default()
         }
@@ -659,52 +654,46 @@ mod tests {
             use_large_distro: false,
         };
         let burn_in_service = build_mocked_service();
-        let compile_distro = "mock_distro_name";
-        let compile_task_group_name = "mock_task_group_name";
+        let variant_task_dep = vec![TaskDependency {
+            name: "mock_dependency".to_string(),
+            variant: Some("mock_variant".to_string()),
+        }];
 
         let burn_in_tags_build_variant = burn_in_service.generate_burn_in_tags_build_variant(
             &base_build_variant,
             run_build_variant_name,
             generated_task,
-            compile_distro.to_string(),
-            compile_task_group_name.to_string(),
+            &variant_task_dep,
         );
 
         assert_eq!(burn_in_tags_build_variant.name, "run-build-variant-name");
-        assert_eq!(
-            burn_in_tags_build_variant.display_name,
-            Some("! base build variant display name".to_string())
-        );
-        assert_eq!(
-            burn_in_tags_build_variant.run_on,
-            Some(vec!["base_distro_name".to_string()])
-        );
-        assert_eq!(
-            burn_in_tags_build_variant.modules,
-            Some(vec!["base_module_name".to_string()])
-        );
-        assert_eq!(
-            burn_in_tags_build_variant
-                .expansions
-                .unwrap_or_default()
-                .get(BURN_IN_BYPASS),
-            Some(&"base-build-variant-name".to_string())
-        );
+
+        // Commented out in favor of static variant definitions in evergreen.yml
+        // due to https://jira.mongodb.org/browse/EVG-18112
+        // assert_eq!(
+        //     burn_in_tags_build_variant.display_name,
+        //     Some("! base build variant display name".to_string())
+        // );
+        // assert_eq!(
+        //     burn_in_tags_build_variant.run_on,
+        //     Some(vec!["base_distro_name".to_string()])
+        // );
+        // assert_eq!(
+        //     burn_in_tags_build_variant.modules,
+        //     Some(vec!["base_module_name".to_string()])
+        // );
+        // assert_eq!(
+        //     burn_in_tags_build_variant
+        //         .expansions
+        //         .unwrap_or_default()
+        //         .get(BURN_IN_BYPASS),
+        //     Some(&"base-build-variant-name".to_string())
+        // );
+
         assert_eq!(
             burn_in_tags_build_variant.display_tasks.unwrap_or_default()[0].name,
             "display_task_name"
         );
-        assert_eq!(burn_in_tags_build_variant.tasks[1].name, "sub_suite_name");
-        assert_eq!(
-            burn_in_tags_build_variant.tasks[0].name,
-            compile_task_group_name.to_string()
-        );
-        assert_eq!(
-            burn_in_tags_build_variant.tasks[0]
-                .distros
-                .as_ref()
-                .unwrap()[0],
-            compile_distro.to_string()
-        );
+        assert_eq!(burn_in_tags_build_variant.tasks[0].name, "sub_suite_name");
     }
 }
