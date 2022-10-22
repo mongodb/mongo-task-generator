@@ -364,11 +364,11 @@ impl BurnInService for BurnInServiceImpl {
             name: gen_config.build_variant_name.clone(),
             tasks: gen_config.gen_task_specs.clone(),
             display_name: gen_config.build_variant_display_name.clone(),
-            run_on: base_build_variant.run_on.clone(),
+            // run_on: base_build_variant.run_on.clone(),
             display_tasks: Some(gen_config.display_tasks.clone()),
-            modules: base_build_variant.modules.clone(),
-            expansions: Some(gen_config.expansions.clone()),
-            depends_on: Some(variant_task_dependencies.to_vec()),
+            // modules: base_build_variant.modules.clone(),
+            // expansions: Some(gen_config.expansions.clone()),
+            // depends_on: Some(variant_task_dependencies.to_vec()),
             activate: Some(false),
             ..Default::default()
         }
