@@ -337,7 +337,7 @@ impl BurnInService for BurnInServiceImpl {
         base_build_variant: &BuildVariant,
         run_build_variant_name: String,
         generated_task: &dyn GeneratedSuite,
-        variant_task_dependencies: &[TaskDependency],
+        _variant_task_dependencies: &[TaskDependency],
     ) -> BuildVariant {
         let mut gen_config = BurnInTagsGeneratedConfig::new();
 
