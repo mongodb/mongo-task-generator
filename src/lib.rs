@@ -796,6 +796,7 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                 generated_build_variants.push(
                     deps.burn_in_service.generate_burn_in_tags_build_variant(
                         base_build_variant,
+                        bv_info.compile_variant,
                         run_build_variant_name,
                         generated_task.as_ref(),
                         &variant_task_dependencies,
@@ -1265,6 +1266,7 @@ mod tests {
         fn generate_burn_in_tags_build_variant(
             &self,
             _base_build_variant: &BuildVariant,
+            _compile_build_variant_name: String,
             _run_build_variant_name: String,
             _generated_task: &dyn GeneratedSuite,
             _variant_task_dependencies: &[TaskDependency],
