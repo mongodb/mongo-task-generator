@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.6.6 - 2022-10-23
+* Add license and description to Cargo.toml.
+
 ## 0.6.5 - 2022-10-23
 * Remove workaround for EVG-18112 introduced in 0.6.4.
 

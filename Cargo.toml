@@ -1,6 +1,8 @@
 [package]
 name = "mongo-task-generator"
-version = "0.6.5"
+description = "Dynamically split evergreen tasks into subtasks for testing the mongodb/mongo project."
+license = "Apache-2.0"
+version = "0.6.6"
 repository = "https://github.com/mongodb/mongo-task-generator"
 authors = ["Decision Automation Group <dev-prod-dag@mongodb.com>"]
 edition = "2018"
