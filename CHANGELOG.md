@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.6.5 - 2022-10-23
+* Remove workaround for EVG-18112 introduced in 0.6.4.
+
 ## 0.6.4 - 2022-10-14
 * Update burn_in_tags to depend on existing compile tasks.
 
