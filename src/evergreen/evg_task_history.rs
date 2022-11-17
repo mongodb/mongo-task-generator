@@ -131,7 +131,7 @@ impl TaskHistoryService for TaskHistoryServiceImpl {
     /// The runtime history of tests belonging to the given suite on the given build variant.
     async fn get_task_history(&self, task: &str, variant: &str) -> Result<TaskRuntimeHistory> {
         let url = format!(
-            "https://julian-dag-test-stats-poc.s3.amazonaws.com/{}/{}/{}",
+            "https://mongo-test-stats.s3.amazonaws.com/{}/{}/{}",
             self.evg_project, variant, task
         );
         let stats: Result<Vec<EvgTestStats>, reqwest::Error> =
