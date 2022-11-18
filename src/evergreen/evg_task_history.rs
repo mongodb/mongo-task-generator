@@ -2,14 +2,29 @@
 
 use anyhow::{bail, Result};
 use async_trait::async_trait;
-use chrono::{DateTime, Duration, Utc};
-use evg_api_rs::models::stats::{EvgTestStats, EvgTestStatsRequest};
-use evg_api_rs::EvgApiClient;
+use reqwest::{Client, Error};
+use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
+use reqwest_retry::policies::ExponentialBackoff;
+use reqwest_retry::RetryTransientMiddleware;
+use serde::Deserialize;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
-use std::sync::Arc;
 
+const REQWEST_CLIENT_MAX_RETRY_COUNT: u32 = 3;
 const HOOK_DELIMITER: char = ':';
+
+/// Test stats stored on S3 bucket.
+#[derive(Debug, Deserialize, Clone)]
+pub struct S3TestStats {
+    /// Name of test.
+    pub test_name: String,
+    /// Number of passed tests.
+    pub num_pass: u64,
+    /// Number of failed tests.
+    pub num_fail: u64,
+    /// Average duration of passed tests.
+    pub avg_duration_pass: f64,
+}
 
 /// Runtime information of hooks that ran in evergreen.
 #[derive(Debug, Clone)]
@@ -65,6 +80,18 @@ pub struct TaskRuntimeHistory {
 /// A service for querying task history from evergreen.
 #[async_trait]
 pub trait TaskHistoryService: Send + Sync {
+    /// Build URL to send request to.
+    ///
+    /// # Arguments
+    ///
+    /// * `task` - Name of task to query.
+    /// * `variant` - Name of build variant to query.
+    ///
+    /// # Returns
+    ///
+    /// URL to send request to.
+    fn build_url(&self, task: &str, variant: &str) -> String;
+
     /// Get the test runtime history of the given task.
     ///
     /// # Arguments
@@ -80,10 +107,10 @@ pub trait TaskHistoryService: Send + Sync {
 
 /// An implementation of the task history service.
 pub struct TaskHistoryServiceImpl {
-    /// Evergreen API client.
-    evg_client: Arc<dyn EvgApiClient>,
-    /// Number of days of history to query.
-    lookback_days: u64,
+    /// Reqwest client.
+    client: ClientWithMiddleware,
+    /// S3 endpoint to get test stats from.
+    s3_test_stats_endpoint: String,
     /// Evergreen project to query.
     evg_project: String,
 }
@@ -93,15 +120,21 @@ impl TaskHistoryServiceImpl {
     ///
     /// # Arguments
     ///
-    /// * `evg_client` - Evergreen API client.
+    /// * `client` - Reqwest client.
+    /// * `s3_test_stats_endpoint` - S3 endpoint to get test stats from.
+    /// * `evg_project` - Evergreen project to query.
     ///
     /// # Returns
     ///
     /// New instance of the task history service implementation.
-    pub fn new(evg_client: Arc<dyn EvgApiClient>, lookback_days: u64, evg_project: String) -> Self {
+    pub fn new(
+        client: ClientWithMiddleware,
+        s3_test_stats_endpoint: String,
+        evg_project: String,
+    ) -> Self {
         Self {
-            evg_client,
-            lookback_days,
+            client,
+            s3_test_stats_endpoint,
             evg_project,
         }
     }
@@ -109,6 +142,23 @@ impl TaskHistoryServiceImpl {
 
 #[async_trait]
 impl TaskHistoryService for TaskHistoryServiceImpl {
+    /// Build URL to send request to.
+    ///
+    /// # Arguments
+    ///
+    /// * `task` - Name of task to query.
+    /// * `variant` - Name of build variant to query.
+    ///
+    /// # Returns
+    ///
+    /// URL to send request to.
+    fn build_url(&self, task: &str, variant: &str) -> String {
+        format!(
+            "{}/{}/{}/{}",
+            self.s3_test_stats_endpoint, self.evg_project, variant, task
+        )
+    }
+
     /// Get the test runtime history of the given task.
     ///
     /// # Arguments
@@ -120,23 +170,10 @@ impl TaskHistoryService for TaskHistoryServiceImpl {
     ///
     /// The runtime history of tests belonging to the given suite on the given build variant.
     async fn get_task_history(&self, task: &str, variant: &str) -> Result<TaskRuntimeHistory> {
-        let today = Utc::now();
-        let lookback = Duration::days(self.lookback_days as i64);
-        let start_date = today - lookback;
-
-        let request = EvgTestStatsRequest {
-            after_date: date_to_string(&start_date),
-            before_date: date_to_string(&today),
-            group_num_days: self.lookback_days,
-            variants: variant.to_string(),
-            tasks: task.to_string(),
-            tests: None,
-        };
-
-        let stats = self
-            .evg_client
-            .get_test_stats(&self.evg_project, &request)
-            .await;
+        let url = self.build_url(task, variant);
+        let response = self.client.get(url).send().await?;
+        let stats: Result<Vec<S3TestStats>, Error> =
+            Ok(response.json::<Vec<S3TestStats>>().await?);
 
         if let Ok(stats) = stats {
             // Split the returned stats into stats for hooks and tests. Also attach the hook stats
@@ -149,9 +186,22 @@ impl TaskHistoryService for TaskHistoryServiceImpl {
                 test_map,
             })
         } else {
-            bail!("Error from evergreen: {:?}", stats)
+            bail!("Error from S3: {:?}", stats)
         }
     }
+}
+
+/// Build retryable reqwest client.
+///
+/// # Returns
+///
+/// Retryable reqwest client.
+pub fn build_retryable_client() -> ClientWithMiddleware {
+    let retry_policy =
+        ExponentialBackoff::builder().build_with_max_retries(REQWEST_CLIENT_MAX_RETRY_COUNT);
+    ClientBuilder::new(Client::new())
+        .with(RetryTransientMiddleware::new_with_policy(retry_policy))
+        .build()
 }
 
 /// Convert the list of stats into a map of test names to test stats.
@@ -167,12 +217,12 @@ impl TaskHistoryService for TaskHistoryServiceImpl {
 ///
 /// Map of test names to stats belong to that test.
 fn gather_test_stats(
-    stat_list: &[EvgTestStats],
+    stat_list: &[S3TestStats],
     hook_map: &HashMap<String, Vec<HookRuntimeHistory>>,
 ) -> HashMap<String, TestRuntimeHistory> {
     let mut test_map: HashMap<String, TestRuntimeHistory> = HashMap::new();
     for stat in stat_list {
-        let normalized_test_file = normalize_test_file(&stat.test_file);
+        let normalized_test_file = normalize_test_file(&stat.test_name);
         if !is_hook(&normalized_test_file) {
             let test_name = get_test_name(&normalized_test_file);
             if let Some(v) = test_map.get_mut(&test_name) {
@@ -206,10 +256,10 @@ fn gather_test_stats(
 /// # Returns
 ///
 /// Map of test name and hook stats for hooks that ran with the test.
-fn gather_hook_stats(stat_list: &[EvgTestStats]) -> HashMap<String, Vec<HookRuntimeHistory>> {
+fn gather_hook_stats(stat_list: &[S3TestStats]) -> HashMap<String, Vec<HookRuntimeHistory>> {
     let mut hook_map: HashMap<String, Vec<HookRuntimeHistory>> = HashMap::new();
     for stat in stat_list {
-        let normalized_test_file = normalize_test_file(&stat.test_file);
+        let normalized_test_file = normalize_test_file(&stat.test_name);
         if is_hook(&normalized_test_file) {
             let test_name = hook_test_name(&normalized_test_file);
             let hook_name = hook_hook_name(&normalized_test_file);
@@ -232,19 +282,6 @@ fn gather_hook_stats(stat_list: &[EvgTestStats]) -> HashMap<String, Vec<HookRunt
         }
     }
     hook_map
-}
-
-/// Convert the given date into a string for evergreen.
-///
-/// # Arguments
-///
-/// * `date` - Date object to convert to a string.
-///
-/// # Returns
-///
-/// String format of the given date for evergreen consumption.
-fn date_to_string(date: &DateTime<Utc>) -> String {
-    date.format("%Y-%m-%d").to_string()
 }
 
 /// Determine if the given identifier is a hook.
@@ -319,9 +356,7 @@ pub fn get_test_name(test_file: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use evg_api_rs::{models::task::EvgTask, BoxedStream, EvgError};
     use rstest::rstest;
-    use simple_error::SimpleError;
 
     use super::*;
 
@@ -361,117 +396,5 @@ mod tests {
     #[case("add1.js", "add1")]
     fn test_get_test_name(#[case] test_file: &str, #[case] expected_name: &str) {
         assert_eq!(get_test_name(test_file), expected_name.to_string());
-    }
-
-    // get_task_history tests.
-    #[tokio::test]
-    async fn test_get_task_history_should_fail_if_evg_call_fails() {
-        let mock_evg_client = MockEvgClient { return_error: true };
-        let task_history_service =
-            TaskHistoryServiceImpl::new(Arc::new(mock_evg_client), 14, "my-project".to_string());
-
-        let result = task_history_service
-            .get_task_history("my_task", "my_variant")
-            .await;
-
-        assert!(result.is_err());
-    }
-
-    struct MockEvgClient {
-        return_error: bool,
-    }
-
-    #[async_trait]
-    impl EvgApiClient for MockEvgClient {
-        async fn get_task(&self, _task_id: &str) -> Result<EvgTask, EvgError> {
-            todo!()
-        }
-
-        async fn get_version(
-            &self,
-            _version_id: &str,
-        ) -> Result<evg_api_rs::models::version::EvgVersion, EvgError> {
-            todo!()
-        }
-
-        async fn get_build(
-            &self,
-            _build_id: &str,
-        ) -> Result<Option<evg_api_rs::models::build::EvgBuild>, EvgError> {
-            todo!()
-        }
-
-        async fn get_tests(
-            &self,
-            _task_id: &str,
-        ) -> Result<Vec<evg_api_rs::models::test::EvgTest>, EvgError> {
-            todo!()
-        }
-
-        async fn get_test_stats(
-            &self,
-            _project_id: &str,
-            _query: &EvgTestStatsRequest,
-        ) -> Result<Vec<EvgTestStats>, EvgError> {
-            if self.return_error {
-                Err(Box::new(SimpleError::new("Error from evergreen")))
-            } else {
-                todo!()
-            }
-        }
-
-        async fn get_task_stats(
-            &self,
-            _project_id: &str,
-            _query: &evg_api_rs::models::stats::EvgTaskStatsRequest,
-        ) -> Result<Vec<evg_api_rs::models::stats::EvgTaskStats>, EvgError> {
-            todo!()
-        }
-
-        fn stream_versions(
-            &self,
-            _project_id: &str,
-        ) -> BoxedStream<evg_api_rs::models::version::EvgVersion> {
-            todo!()
-        }
-
-        fn stream_user_patches(
-            &self,
-            _user_id: &str,
-            _limit: Option<usize>,
-        ) -> BoxedStream<evg_api_rs::models::patch::EvgPatch> {
-            todo!()
-        }
-
-        fn stream_project_patches(
-            &self,
-            _project_id: &str,
-            _limit: Option<usize>,
-        ) -> BoxedStream<evg_api_rs::models::patch::EvgPatch> {
-            todo!()
-        }
-
-        fn stream_build_tasks(
-            &self,
-            _build_id: &str,
-            _status: Option<&str>,
-        ) -> BoxedStream<evg_api_rs::models::task::EvgTask> {
-            todo!()
-        }
-
-        fn stream_log(
-            &self,
-            _task: &evg_api_rs::models::task::EvgTask,
-            _log_name: &str,
-        ) -> BoxedStream<String> {
-            todo!()
-        }
-
-        fn stream_test_log(
-            &self,
-            _test: &evg_api_rs::models::test::EvgTest,
-        ) -> BoxedStream<String> {
-            todo!()
-        }
     }
 }

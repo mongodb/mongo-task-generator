@@ -18,6 +18,7 @@ const DEFAULT_EVG_PROJECT_FILE: &str = "etc/evergreen.yml";
 const DEFAULT_RESMOKE_COMMAND: &str = "python buildscripts/resmoke.py";
 const DEFAULT_BURN_IN_TESTS_COMMAND: &str = "python buildscripts/burn_in_tests.py";
 const DEFAULT_TARGET_DIRECTORY: &str = "generated_resmoke_config";
+const DEFAULT_S3_TEST_STATS_ENDPOINT: &str = "https://mongo-test-stats.s3.amazonaws.com";
 
 /// Expansions from evergreen to determine settings for how task should be generated.
 #[derive(Debug, Deserialize)]
@@ -89,6 +90,10 @@ struct Args {
     /// Command to invoke burn_in_tests.
     #[clap(long, default_value = DEFAULT_BURN_IN_TESTS_COMMAND)]
     burn_in_tests_command: String,
+
+    /// S3 endpoint to get test stats from.
+    #[clap(long, default_value = DEFAULT_S3_TEST_STATS_ENDPOINT)]
+    s3_test_stats_endpoint: String,
 }
 
 /// Configure logging for the command execution.
@@ -122,6 +127,7 @@ async fn main() {
         config_location: &evg_expansions.config_location(),
         gen_burn_in: args.burn_in,
         burn_in_tests_command: &args.burn_in_tests_command,
+        s3_test_stats_endpoint: &args.s3_test_stats_endpoint,
     };
     let deps = Dependencies::new(execution_config).unwrap();
 
