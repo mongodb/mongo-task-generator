@@ -109,7 +109,7 @@ impl EvgConfigService for EvgProjectConfig {
 /// Shrub representation of evergreen configuration.
 fn get_project_config(location: &Path) -> Result<EvgProject> {
     let evg_config_yaml = Command::new("evergreen")
-        .args(&["evaluate", location.to_str().unwrap()])
+        .args(["evaluate", location.to_str().unwrap()])
         .output()?;
     Ok(EvgProject::from_yaml_str(std::str::from_utf8(&evg_config_yaml.stdout)?).unwrap())
 }

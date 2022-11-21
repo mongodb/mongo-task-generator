@@ -19,13 +19,12 @@ use async_trait::async_trait;
 use evergreen::{
     evg_config::{EvgConfigService, EvgProjectConfig},
     evg_config_utils::{EvgConfigUtils, EvgConfigUtilsImpl},
-    evg_task_history::TaskHistoryServiceImpl,
+    evg_task_history::{build_retryable_client, TaskHistoryServiceImpl},
 };
 use evergreen_names::{
     BURN_IN_TAGS, BURN_IN_TAG_BUILD_VARIANTS, BURN_IN_TAG_COMPILE_TASK_GROUP_NAME, BURN_IN_TESTS,
     ENTERPRISE_MODULE, GENERATOR_TASKS, LARGE_DISTRO_EXPANSION,
 };
-use evg_api_rs::EvgClient;
 use generate_sub_tasks_config::GenerateSubTasksConfig;
 use resmoke::{burn_in_proxy::BurnInProxy, resmoke_proxy::ResmokeProxy};
 use services::config_extraction::{ConfigExtractionService, ConfigExtractionServiceImpl};
@@ -55,7 +54,6 @@ mod task_types;
 mod utils;
 
 const BURN_IN_PREFIX: &str = "burn_in_tests";
-const HISTORY_LOOKBACK_DAYS: u64 = 14;
 const MAX_SUB_TASKS_PER_TASK: usize = 5;
 
 type GenTaskCollection = HashMap<String, Box<dyn GeneratedSuite>>;
@@ -138,6 +136,8 @@ pub struct ExecutionConfiguration<'a> {
     pub gen_burn_in: bool,
     /// Command to execute burn_in_tests.
     pub burn_in_tests_command: &'a str,
+    /// S3 endpoint to get test stats from.
+    pub s3_test_stats_endpoint: &'a str,
 }
 
 /// Collection of services needed to execution.
@@ -172,13 +172,10 @@ impl Dependencies {
             execution_config.generating_task.to_string(),
             execution_config.config_location.to_string(),
         ));
-        let evg_client = Arc::new(
-            EvgClient::from_file(execution_config.evg_auth_file)
-                .expect("Cannot find evergreen auth file"),
-        );
+        let client = build_retryable_client();
         let task_history_service = Arc::new(TaskHistoryServiceImpl::new(
-            evg_client,
-            HISTORY_LOOKBACK_DAYS,
+            client,
+            execution_config.s3_test_stats_endpoint.to_string(),
             execution_config.project_info.evg_project.clone(),
         ));
         let resmoke_config_actor =

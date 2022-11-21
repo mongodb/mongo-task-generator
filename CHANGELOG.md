@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.6.7 - 2022-11-18
+* Switch to using evergreen test stats from S3.
+
 ## 0.6.6 - 2022-10-23
 * Add license and description to Cargo.toml.
 

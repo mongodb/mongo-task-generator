@@ -625,9 +625,10 @@ impl GenResmokeTaskServiceImpl {
                 )?,
                 Err(err) => {
                     warn!(
+                        build_variant = build_variant,
                         task_name = params.task_name.as_str(),
                         error = err.to_string().as_str(),
-                        "Could not get task history from evergreen",
+                        "Could not get task history from S3",
                     );
                     // If we couldn't get the task history, then fallback to splitting the tests evenly
                     // among the desired number of sub-suites.
@@ -1007,6 +1008,10 @@ mod tests {
 
     #[async_trait]
     impl TaskHistoryService for MockTaskHistoryService {
+        fn build_url(&self, _task: &str, _variant: &str) -> String {
+            todo!()
+        }
+
         async fn get_task_history(
             &self,
             _task: &str,
