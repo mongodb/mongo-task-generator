@@ -39,6 +39,8 @@ pub const GENERATOR_TASKS: &str = "generator_tasks";
 pub const BURN_IN_TESTS: &str = "burn_in_tests_gen";
 /// Name of burn_in_tags task.
 pub const BURN_IN_TAGS: &str = "burn_in_tags_gen";
+/// Name of burn_in_tasks task.
+pub const BURN_IN_TASKS: &str = "burn_in_tasks_gen";
 
 // Vars
 /// Variable that indicates a task is a fuzzer.
@@ -94,6 +96,8 @@ pub const BURN_IN_TAG_BUILD_VARIANTS: &str = "burn_in_tag_buildvariants";
 pub const BURN_IN_TAG_COMPILE_TASK_GROUP_NAME: &str = "burn_in_tag_compile_task_group_name";
 /// Name of build variant to determine the timeouts for.
 pub const BURN_IN_BYPASS: &str = "burn_in_bypass";
+/// List of tasks to burn in.
+pub const BURN_IN_TASK_NAMES: &str = "burn_in_task_names";
 
 // Task Tags
 /// Tag to include multiversion setup is required.

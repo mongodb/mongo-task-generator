@@ -22,8 +22,8 @@ use evergreen::{
     evg_task_history::{build_retryable_client, TaskHistoryServiceImpl},
 };
 use evergreen_names::{
-    BURN_IN_TAGS, BURN_IN_TAG_BUILD_VARIANTS, BURN_IN_TAG_COMPILE_TASK_GROUP_NAME, BURN_IN_TESTS,
-    ENTERPRISE_MODULE, GENERATOR_TASKS, LARGE_DISTRO_EXPANSION,
+    BURN_IN_TAGS, BURN_IN_TAG_BUILD_VARIANTS, BURN_IN_TAG_COMPILE_TASK_GROUP_NAME, BURN_IN_TASKS,
+    BURN_IN_TESTS, ENTERPRISE_MODULE, GENERATOR_TASKS, LARGE_DISTRO_EXPANSION,
 };
 use generate_sub_tasks_config::GenerateSubTasksConfig;
 use resmoke::{burn_in_proxy::BurnInProxy, resmoke_proxy::ResmokeProxy};
@@ -53,7 +53,8 @@ mod services;
 mod task_types;
 mod utils;
 
-const BURN_IN_PREFIX: &str = "burn_in_tests";
+const BURN_IN_TESTS_PREFIX: &str = "burn_in_tests";
+const BURN_IN_TASKS_PREFIX: &str = "burn_in_tasks";
 const MAX_SUB_TASKS_PER_TASK: usize = 5;
 
 type GenTaskCollection = HashMap<String, Box<dyn GeneratedSuite>>;
@@ -221,6 +222,7 @@ impl Dependencies {
             gen_resmoke_task_service,
             config_extraction_service,
             multiversion_service,
+            evg_config_utils.clone(),
         ));
 
         Ok(Self {
@@ -524,10 +526,22 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                         }
                     }
 
+                    if task.name == BURN_IN_TASKS {
+                        thread_handles.push(create_burn_in_tasks_worker(
+                            deps,
+                            task_map.clone(),
+                            build_variant,
+                            generated_tasks.clone(),
+                        ));
+                    }
+
                     continue;
                 }
 
-                if task.name == BURN_IN_TESTS || task.name == BURN_IN_TAGS {
+                if task.name == BURN_IN_TESTS
+                    || task.name == BURN_IN_TAGS
+                    || task.name == BURN_IN_TASKS
+                {
                     continue;
                 }
 
@@ -722,15 +736,18 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                             &mut burn_in_tag_build_variant_info,
                             build_variant,
                             &build_variant_map,
-                        )
+                        );
                     }
+                    generating_tasks.push(BURN_IN_TAGS);
                     continue;
                 }
 
                 let generated_tasks = generated_tasks.lock().unwrap();
 
                 let task_name = if task.name == BURN_IN_TESTS {
-                    format!("{}-{}", BURN_IN_PREFIX, build_variant.name)
+                    format!("{}-{}", BURN_IN_TESTS_PREFIX, build_variant.name)
+                } else if task.name == BURN_IN_TASKS {
+                    format!("{}-{}", BURN_IN_TASKS_PREFIX, build_variant.name)
                 } else {
                     lookup_task_name(is_enterprise, &task.name, &platform)
                 };
@@ -777,7 +794,7 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
             let generated_tasks = generated_tasks.lock().unwrap();
             let base_build_variant = build_variant_map.get(&base_bv_name).unwrap();
             let run_build_variant_name = format!("{}-required", base_build_variant.name);
-            let task_name = format!("{}-{}", BURN_IN_PREFIX, run_build_variant_name);
+            let task_name = format!("{}-{}", BURN_IN_TESTS_PREFIX, run_build_variant_name);
             let variant_task_dependencies = vec![
                 TaskDependency {
                     name: bv_info.compile_task_group_name,
@@ -898,7 +915,43 @@ fn create_burn_in_worker(
             .generate_burn_in_suite(&build_variant.name, &run_build_variant_name, task_map)
             .unwrap();
 
-        let task_name = format!("{}-{}", BURN_IN_PREFIX, run_build_variant_name);
+        let task_name = format!("{}-{}", BURN_IN_TESTS_PREFIX, run_build_variant_name);
+
+        if !generated_task.sub_tasks().is_empty() {
+            let mut generated_tasks = generated_tasks.lock().unwrap();
+            generated_tasks.insert(task_name, generated_task);
+        }
+    })
+}
+
+/// Spawn a tokio task to perform the burn_in_tasks generation work.
+///
+/// # Arguments
+///
+/// * `deps` - Service dependencies.
+/// * `task_map` - Map of task definitions in evergreen project configuration.
+/// * `build_variant` - Build variant to query timing information from.
+/// * `generated_tasks` - Map to stored generated tasks in.
+///
+/// # Returns
+///
+/// Handle to created tokio worker.
+fn create_burn_in_tasks_worker(
+    deps: &Dependencies,
+    task_map: Arc<HashMap<String, EvgTask>>,
+    build_variant: &BuildVariant,
+    generated_tasks: Arc<Mutex<GenTaskCollection>>,
+) -> tokio::task::JoinHandle<()> {
+    let burn_in_service = deps.burn_in_service.clone();
+    let build_variant = build_variant.clone();
+    let generated_tasks = generated_tasks.clone();
+
+    tokio::spawn(async move {
+        let generated_task = burn_in_service
+            .generate_burn_in_tasks_suite(&build_variant, task_map)
+            .unwrap();
+
+        let task_name = format!("{}-{}", BURN_IN_TASKS_PREFIX, build_variant.name);
 
         if !generated_task.sub_tasks().is_empty() {
             let mut generated_tasks = generated_tasks.lock().unwrap();
@@ -1270,6 +1323,14 @@ mod tests {
         ) -> BuildVariant {
             todo!()
         }
+
+        fn generate_burn_in_tasks_suite(
+            &self,
+            _build_variant: &BuildVariant,
+            _task_map: Arc<HashMap<String, EvgTask>>,
+        ) -> Result<Box<dyn GeneratedSuite>> {
+            todo!()
+        }
     }
 
     fn build_mocked_burn_in_service(sub_suites: Vec<EvgTask>) -> MockBurnInService {
@@ -1314,7 +1375,7 @@ mod tests {
             generated_tasks
                 .lock()
                 .unwrap()
-                .contains_key(&format!("{}-{}", BURN_IN_PREFIX, "run_bv_name")),
+                .contains_key(&format!("{}-{}", BURN_IN_TESTS_PREFIX, "run_bv_name")),
             true
         );
     }
@@ -1341,7 +1402,7 @@ mod tests {
             generated_tasks
                 .lock()
                 .unwrap()
-                .contains_key(&format!("{}-{}", BURN_IN_PREFIX, "run_bv_name")),
+                .contains_key(&format!("{}-{}", BURN_IN_TESTS_PREFIX, "run_bv_name")),
             false
         );
     }
