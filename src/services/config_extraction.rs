@@ -1,15 +1,16 @@
 use std::sync::Arc;
 
-use anyhow::Result;
+use anyhow::{bail, Result};
 use shrub_rs::models::{task::EvgTask, variant::BuildVariant};
 
 use crate::{
     evergreen::evg_config_utils::EvgConfigUtils,
     evergreen_names::{
-        CONTINUE_ON_FAILURE, FUZZER_PARAMETERS, IDLE_TIMEOUT, MULTIVERSION,
+        CONTINUE_ON_FAILURE, FUZZER_PARAMETERS, IDLE_TIMEOUT, LARGE_DISTRO_EXPANSION, MULTIVERSION,
         NO_MULTIVERSION_ITERATION, NPM_COMMAND, NUM_FUZZER_FILES, NUM_FUZZER_TASKS, REPEAT_SUITES,
         RESMOKE_ARGS, RESMOKE_JOBS_MAX, SHOULD_SHUFFLE_TESTS, USE_LARGE_DISTRO,
     },
+    generate_sub_tasks_config::GenerateSubTasksConfig,
     task_types::{fuzzer_tasks::FuzzerGenTaskParams, resmoke_tasks::ResmokeGenParams},
     utils::task_name::remove_gen_suffix,
 };
@@ -20,7 +21,7 @@ pub trait ConfigExtractionService: Sync + Send {
     ///
     /// # Arguments
     ///
-    /// * `task-def` - Task definition of fuzzer to generate.
+    /// * `task_def` - Task definition of fuzzer to generate.
     /// * `build_variant` - Name of build variant being generated.
     ///
     /// # Returns
@@ -36,9 +37,10 @@ pub trait ConfigExtractionService: Sync + Send {
     ///
     /// # Arguments
     ///
-    /// * `task-def` - Task definition of task to generate.
+    /// * `task_def` - Task definition of task to generate.
     /// * `is_enterprise` - Is this being generated for an enterprise build variant.
     /// * `platform` - Platform that task will run on.
+    /// * `build_variant` - Build Variant that task will run on.
     ///
     /// # Returns
     ///
@@ -48,6 +50,7 @@ pub trait ConfigExtractionService: Sync + Send {
         task_def: &EvgTask,
         is_enterprise: bool,
         platform: Option<String>,
+        build_variant: &BuildVariant,
     ) -> Result<ResmokeGenParams>;
 }
 
@@ -56,6 +59,7 @@ pub struct ConfigExtractionServiceImpl {
     evg_config_utils: Arc<dyn EvgConfigUtils>,
     generating_task: String,
     config_location: String,
+    gen_sub_tasks_config: Option<GenerateSubTasksConfig>,
 }
 
 impl ConfigExtractionServiceImpl {
@@ -66,16 +70,19 @@ impl ConfigExtractionServiceImpl {
     /// * `evg_config_utils` - Utilities for looking up evergreen project configuration.
     /// * `generating_task` - Name of task running task generation.
     /// * `config_location` - Location where generated configuration will be stored.
+    /// * `gen_sub_tasks_config` - Configuration for generating sub-tasks.
     ///
     pub fn new(
         evg_config_utils: Arc<dyn EvgConfigUtils>,
         generating_task: String,
         config_location: String,
+        gen_sub_tasks_config: Option<GenerateSubTasksConfig>,
     ) -> Self {
         Self {
             evg_config_utils,
             generating_task,
             config_location,
+            gen_sub_tasks_config,
         }
     }
 
@@ -98,6 +105,66 @@ impl ConfigExtractionServiceImpl {
             .into_iter()
             .filter(|t| t != &self.generating_task)
             .collect()
+    }
+
+    /// Determine which distro the given sub-tasks should run on.
+    ///
+    /// By default, we won't specify a distro and they will just use the default for the build
+    /// variant. If they specify `use_large_distro` then we should instead use the large distro
+    /// configured for the build variant. If that is not defined, then throw an error unless
+    /// the build variant is configured to be ignored.
+    ///
+    /// # Arguments
+    ///
+    /// * `task_def` - Task definition to base generated task on.
+    /// * `build_variant` - Build Variant to base generated task on.
+    ///
+    /// # Returns
+    ///
+    /// Large distro name if needed.
+    fn determine_distro(
+        &self,
+        task_def: &EvgTask,
+        build_variant: &BuildVariant,
+    ) -> Result<Option<String>> {
+        let use_large_distro =
+            self.evg_config_utils
+                .lookup_default_param_bool(task_def, USE_LARGE_DISTRO, false)?;
+        let large_distro_name = self
+            .evg_config_utils
+            .lookup_build_variant_expansion(LARGE_DISTRO_EXPANSION, build_variant);
+        let build_variant_name = build_variant.name.as_str();
+
+        if use_large_distro {
+            if large_distro_name.is_some() {
+                return Ok(large_distro_name);
+            }
+
+            if let Some(gen_task_config) = &self.gen_sub_tasks_config {
+                if gen_task_config.ignore_missing_large_distro(build_variant_name) {
+                    return Ok(None);
+                }
+            }
+
+            bail!(
+                r#"
+***************************************************************************************
+It appears we are trying to generate a task marked as requiring a large distro, but the
+build variant has not specified a large build variant. In order to resolve this error,
+you need to:
+
+(1) add a 'large_distro_name' expansion to this build variant ('{build_variant_name}').
+
+-- or --
+
+(2) add this build variant ('{build_variant_name}') to the 'build_variant_large_distro_exception'
+list in the 'etc/generate_subtasks_config.yml' file.
+***************************************************************************************
+"#
+            );
+        }
+
+        Ok(None)
     }
 }
 
@@ -174,6 +241,7 @@ impl ConfigExtractionService for ConfigExtractionServiceImpl {
     /// * `task_def` - Task definition of task to generate.
     /// * `is_enterprise` - Is this being generated for an enterprise build variant.
     /// * `platform` - Platform that task will run on.
+    /// * `build_variant` - Build Variant that task will run on.
     ///
     /// # Returns
     ///
@@ -183,21 +251,19 @@ impl ConfigExtractionService for ConfigExtractionServiceImpl {
         task_def: &EvgTask,
         is_enterprise: bool,
         platform: Option<String>,
+        build_variant: &BuildVariant,
     ) -> Result<ResmokeGenParams> {
         let task_name = remove_gen_suffix(&task_def.name).to_string();
         let suite = self.evg_config_utils.find_suite_name(task_def).to_string();
         let task_tags = self.evg_config_utils.get_task_tags(task_def);
         let require_multiversion_setup = task_tags.contains(MULTIVERSION);
         let no_multiversion_iteration = task_tags.contains(NO_MULTIVERSION_ITERATION);
+        let distro = self.determine_distro(task_def, build_variant)?;
 
         Ok(ResmokeGenParams {
             task_name,
             suite_name: suite,
-            use_large_distro: self.evg_config_utils.lookup_default_param_bool(
-                task_def,
-                USE_LARGE_DISTRO,
-                false,
-            )?,
+            distro,
             require_multiversion_setup,
             generate_multiversion_combos: require_multiversion_setup && !no_multiversion_iteration,
             repeat_suites: self
@@ -224,14 +290,20 @@ impl ConfigExtractionService for ConfigExtractionServiceImpl {
 mod tests {
     use super::*;
     use crate::evergreen::evg_config_utils::EvgConfigUtilsImpl;
+    use maplit::btreemap;
+    use maplit::hashmap;
+    use maplit::hashset;
     use rstest::rstest;
-    use shrub_rs::models::task::TaskDependency;
+    use shrub_rs::models::{
+        commands::fn_call_with_params, params::ParamValue, task::TaskDependency,
+    };
 
     fn build_mocked_config_extraction_service() -> ConfigExtractionServiceImpl {
         ConfigExtractionServiceImpl::new(
             Arc::new(EvgConfigUtilsImpl::new()),
             "generating_task".to_string(),
             "config_location".to_string(),
+            None,
         )
     }
 
@@ -269,5 +341,90 @@ mod tests {
                 .map(|d| d.to_string())
                 .collect::<Vec<String>>()
         );
+    }
+
+    // Tests for determine_distro.
+    #[rstest]
+    #[case(false, None, None)]
+    #[case(false, Some("large_distro".to_string()), None)]
+    fn test_valid_determine_distros_should_work(
+        #[case] use_large_distro: bool,
+        #[case] large_distro_name: Option<String>,
+        #[case] expected_distro: Option<String>,
+    ) {
+        let config_extraction_service = build_mocked_config_extraction_service();
+        let task_def = EvgTask {
+            commands: Some(vec![fn_call_with_params(
+                "generate resmoke tasks",
+                hashmap! {
+                    "use_large_distro".to_string() => ParamValue::from(use_large_distro),
+                },
+            )]),
+            ..Default::default()
+        };
+        let mut build_variant = BuildVariant {
+            ..Default::default()
+        };
+        if let Some(distro_name) = large_distro_name {
+            build_variant.expansions = Some(btreemap! {
+                "large_distro_name".to_string() => distro_name,
+            });
+        };
+
+        let distro = config_extraction_service
+            .determine_distro(&task_def, &build_variant)
+            .unwrap();
+
+        assert_eq!(distro, expected_distro);
+    }
+
+    #[test]
+    fn test_determine_distros_should_fail_if_no_large_distro() {
+        let config_extraction_service = build_mocked_config_extraction_service();
+        let task_def = EvgTask {
+            commands: Some(vec![fn_call_with_params(
+                "generate resmoke tasks",
+                hashmap! {
+                    "use_large_distro".to_string() => ParamValue::from("true"),
+                },
+            )]),
+            ..Default::default()
+        };
+        let build_variant = BuildVariant {
+            ..Default::default()
+        };
+
+        let distro = config_extraction_service.determine_distro(&task_def, &build_variant);
+
+        assert!(distro.is_err());
+    }
+
+    #[test]
+    fn test_determine_distros_should_no_large_distro_can_be_ignored() {
+        let mut config_extraction_service = build_mocked_config_extraction_service();
+        config_extraction_service.gen_sub_tasks_config = Some(GenerateSubTasksConfig {
+            build_variant_large_distro_exceptions: hashset! {
+                "build_variant_0".to_string(),
+                "my_build_variant".to_string(),
+                "build_variant_1".to_string(),
+            },
+        });
+        let task_def = EvgTask {
+            commands: Some(vec![fn_call_with_params(
+                "generate resmoke tasks",
+                hashmap! {
+                    "use_large_distro".to_string() => ParamValue::from("true"),
+                },
+            )]),
+            ..Default::default()
+        };
+        let build_variant = BuildVariant {
+            name: "my_build_variant".to_string(),
+            ..Default::default()
+        };
+
+        let distro = config_extraction_service.determine_distro(&task_def, &build_variant);
+
+        assert!(distro.is_ok());
     }
 }
