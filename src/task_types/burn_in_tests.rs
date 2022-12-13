@@ -31,6 +31,8 @@ const BURN_IN_REPEAT_CONFIG: &str =
     "--repeatTestsSecs=600 --repeatTestsMin=2 --repeatTestsMax=1000";
 /// How to label burn_in generated sub_tasks.
 const BURN_IN_LABEL: &str = "burn_in";
+/// How to label burn_in generated sub_tasks.
+const BURN_IN_TASK_LABEL: &str = "burn_in_task";
 /// Number of tasks to generate for burn_in_tasks.
 const BURN_IN_REPEAT_TASK_NUM: usize = 10;
 
@@ -122,6 +124,9 @@ struct BurnInSuiteInfo<'a> {
     /// Name of the task being generated.
     task_name: &'a str,
 
+    /// How to label burn_in generated sub_tasks.
+    burn_in_label: &'a str,
+
     /// The multiversion name being generated.
     multiversion_name: Option<&'a str>,
 
@@ -148,7 +153,7 @@ impl<'a> BurnInSuiteInfo<'a> {
     fn build_display_name(&self) -> String {
         format!(
             "{}:{}-{}",
-            BURN_IN_LABEL,
+            self.burn_in_label,
             self.build_task_name(),
             self.build_variant
         )
@@ -226,6 +231,7 @@ impl BurnInServiceImpl {
                         build_variant: run_build_variant,
                         total_tests: discovered_task.test_list.len(),
                         task_name: &discovered_task.task_name,
+                        burn_in_label: BURN_IN_LABEL,
                         multiversion_name: Some(&multiversion_name),
                         multiversion_tags,
                     };
@@ -237,6 +243,7 @@ impl BurnInServiceImpl {
                     build_variant: run_build_variant,
                     total_tests: discovered_task.test_list.len(),
                     task_name: &discovered_task.task_name,
+                    burn_in_label: BURN_IN_LABEL,
                     multiversion_name: None,
                     multiversion_tags: None,
                 };
@@ -287,6 +294,7 @@ impl BurnInServiceImpl {
                         build_variant: &build_variant.name,
                         total_tests: BURN_IN_REPEAT_TASK_NUM,
                         task_name: &task_def.name,
+                        burn_in_label: BURN_IN_TASK_LABEL,
                         multiversion_name: Some(&multiversion_name),
                         multiversion_tags,
                     };
@@ -297,6 +305,7 @@ impl BurnInServiceImpl {
                 let burn_in_suite_info = BurnInSuiteInfo {
                     build_variant: &build_variant.name,
                     total_tests: BURN_IN_REPEAT_TASK_NUM,
+                    burn_in_label: BURN_IN_TASK_LABEL,
                     task_name: &task_def.name,
                     multiversion_name: None,
                     multiversion_tags: None,
@@ -587,15 +596,17 @@ mod tests {
     fn test_display_name_should_include_all_components() {
         let task_name = "my_task";
         let build_variant = "my_build_variant";
+        let burn_in_label = "my_burn_in_label";
         let suite_info = BurnInSuiteInfo {
             task_name,
             build_variant,
+            burn_in_label,
             ..Default::default()
         };
 
         let display_name = suite_info.build_display_name();
 
-        assert!(display_name.contains(BURN_IN_LABEL));
+        assert!(display_name.contains(burn_in_label));
         assert!(display_name.contains(task_name));
         assert!(display_name.contains(build_variant));
     }
