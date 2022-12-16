@@ -157,7 +157,7 @@ of the task definition. When this tag is present, both the extra setup steps and
 of multiversion sub-tasks will be preformed. In order to only perform the extra setup steps
 the `"no_version_combinations"` tag should also be included.
 
-### Burn in tests and burn in tags
+### Burn in tests, burn in tags and burn in tasks
 
 Newly added or modified tests might become flaky. In order to avoid that, those tests can be run
 continuously multiple times in a row to see if the results are consistent. This process is called
@@ -198,6 +198,26 @@ of `burn_in_tag_buildvariants` buildvariant expansion:
 burn_in_tag_buildvariants: enterprise-rhel-80-64-bit-inmem enterprise-rhel-80-64-bit-multiversion
 burn_in_tag_compile_distro: rhel80-large
 burn_in_tag_compile_task_group_name: compile_and_archive_dist_test_TG
+```
+
+`burn_in_tasks_gen` task is used to generate several copies of the task. The example of task
+configuration:
+
+```yaml
+- <<: *gen_burn_in_task_template
+  name: burn_in_tasks_gen
+  tags: []
+  commands:
+  - func: "generate resmoke tasks"
+```
+
+`burn_in_task_names` buildvariant expansion is used to configure which task to burn-in. The
+example of `burn_in_task_names` buildvariant expansion:
+
+```yaml
+burn_in_task_names: >-
+  jsCore
+  replica_sets_jscore_passthrough_gen
 ```
 
 Burn-in related tasks are generated when `--burn-in` is passed.

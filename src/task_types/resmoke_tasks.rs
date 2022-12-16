@@ -768,19 +768,17 @@ impl GenResmokeTaskService for GenResmokeTaskServiceImpl {
         let run_test_vars =
             params.build_run_test_vars(&suite_file, sub_suite, &exclude_tags, suite_override);
 
-        let evg_task = EvgTask {
-            name: suite_file,
-            commands: Some(resmoke_commands(
-                RUN_GENERATED_TESTS,
-                run_test_vars,
-                params.require_multiversion_setup,
-            )),
-            depends_on: params.get_dependencies(),
-            ..Default::default()
-        };
-
         GeneratedSubTask {
-            evg_task,
+            evg_task: EvgTask {
+                name: suite_file,
+                commands: Some(resmoke_commands(
+                    RUN_GENERATED_TESTS,
+                    run_test_vars,
+                    params.require_multiversion_setup,
+                )),
+                depends_on: params.get_dependencies(),
+                ..Default::default()
+            },
             distro: params.distro.clone(),
         }
     }

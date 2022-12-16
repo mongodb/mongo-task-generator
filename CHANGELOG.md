@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.7.0 - 2022-12-13
+## 0.7.0 - 2022-12-16
 * Add support for burn_in_tasks generation.
 
 ## 0.6.7 - 2022-11-18

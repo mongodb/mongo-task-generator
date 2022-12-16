@@ -1206,7 +1206,10 @@ mod tests {
             _build_variant: &BuildVariant,
             _task_map: Arc<HashMap<String, EvgTask>>,
         ) -> Result<Box<dyn GeneratedSuite>> {
-            todo!()
+            Ok(Box::new(GeneratedResmokeSuite {
+                task_name: "burn_in_tasks".to_string(),
+                sub_suites: self.sub_suites.clone(),
+            }))
         }
     }
 
@@ -1283,6 +1286,66 @@ mod tests {
                 .lock()
                 .unwrap()
                 .contains_key(&format!("{}-{}", BURN_IN_TESTS_PREFIX, "run_bv_name")),
+            false
+        );
+    }
+
+    // tests for create_burn_in_tasks_worker.
+    #[tokio::test]
+    async fn test_create_burn_in_tasks_worker_should_add_task_when_burn_in_tasks_are_present() {
+        let mock_burn_in_service = build_mocked_burn_in_service(vec![GeneratedSubTask {
+            evg_task: EvgTask {
+                ..Default::default()
+            },
+            ..Default::default()
+        }]);
+        let mock_deps = build_mocked_dependencies(mock_burn_in_service);
+        let task_map = Arc::new(HashMap::new());
+        let generated_tasks = Arc::new(Mutex::new(HashMap::new()));
+
+        let thread_handle = create_burn_in_tasks_worker(
+            &mock_deps,
+            task_map.clone(),
+            &BuildVariant {
+                name: "bv_name".to_string(),
+                ..Default::default()
+            },
+            generated_tasks.clone(),
+        );
+        thread_handle.await.unwrap();
+
+        assert_eq!(
+            generated_tasks
+                .lock()
+                .unwrap()
+                .contains_key(&format!("{}-{}", BURN_IN_TASKS_PREFIX, "bv_name")),
+            true
+        );
+    }
+
+    #[tokio::test]
+    async fn test_create_burn_in_tasks_worker_should_not_add_task_when_burn_in_tasks_are_absent() {
+        let mock_burn_in_service = build_mocked_burn_in_service(vec![]);
+        let mock_deps = build_mocked_dependencies(mock_burn_in_service);
+        let task_map = Arc::new(HashMap::new());
+        let generated_tasks = Arc::new(Mutex::new(HashMap::new()));
+
+        let thread_handle = create_burn_in_tasks_worker(
+            &mock_deps,
+            task_map.clone(),
+            &BuildVariant {
+                name: "bv_name".to_string(),
+                ..Default::default()
+            },
+            generated_tasks.clone(),
+        );
+        thread_handle.await.unwrap();
+
+        assert_eq!(
+            generated_tasks
+                .lock()
+                .unwrap()
+                .contains_key(&format!("{}-{}", BURN_IN_TASKS_PREFIX, "bv_name")),
             false
         );
     }
