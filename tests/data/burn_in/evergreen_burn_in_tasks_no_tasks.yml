@@ -1,0 +1,35 @@
+functions:
+  "generate resmoke tasks":
+  - command: subprocess.exec
+    type: test
+    params:
+      binary: bash
+      args:
+      - "./src/evergreen/gen_tasks_activate.sh"
+
+tasks:
+- name: burn_in_tasks_gen
+  commands:
+  - func: "generate resmoke tasks"
+
+- name: task_1
+  commands:
+  - func: "generate resmoke tasks"
+    vars:
+      use_large_distro: "true"
+
+- name: task_2
+  commands:
+  - func: "generate resmoke tasks"
+
+buildvariants:
+- name: enterprise-rhel-80-64-bit-dynamic-required
+  display_name: "! Shared Library Enterprise RHEL 8.0"
+  run_on:
+  - rhel80-small
+  expansions:
+    large_distro_name: rhel80-medium
+  tasks:
+  - name: burn_in_tasks_gen
+  - name: task_1
+  - name: task_2
