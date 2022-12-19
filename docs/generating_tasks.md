@@ -211,13 +211,11 @@ configuration:
   - func: "generate resmoke tasks"
 ```
 
-`burn_in_task_names` buildvariant expansion is used to configure which task to burn-in. The
-example of `burn_in_task_names` buildvariant expansion:
+`burn_in_task_name` buildvariant expansion is used to configure which task to burn-in. The
+example of `burn_in_task_name` buildvariant expansion:
 
 ```yaml
-burn_in_task_names: >-
-  jsCore
-  replica_sets_jscore_passthrough_gen
+burn_in_task_name: replica_sets_jscore_passthrough_gen
 ```
 
 Burn-in related tasks are generated when `--burn-in` is passed.

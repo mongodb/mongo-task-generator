@@ -97,7 +97,7 @@ pub const BURN_IN_TAG_COMPILE_TASK_GROUP_NAME: &str = "burn_in_tag_compile_task_
 /// Name of build variant to determine the timeouts for.
 pub const BURN_IN_BYPASS: &str = "burn_in_bypass";
 /// List of tasks to burn in.
-pub const BURN_IN_TASK_NAMES: &str = "burn_in_task_names";
+pub const BURN_IN_TASK_NAME: &str = "burn_in_task_name";
 
 // Task Tags
 /// Tag to include multiversion setup is required.

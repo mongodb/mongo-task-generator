@@ -29,8 +29,7 @@ buildvariants:
   - rhel80-small
   expansions:
     large_distro_name: rhel80-medium
-    burn_in_task_names: >-
-      task_2
+    burn_in_task_name: task_2
   tasks:
   - name: burn_in_tasks_gen
   - name: task_1

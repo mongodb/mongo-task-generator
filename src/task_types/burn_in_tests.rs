@@ -8,10 +8,9 @@ use std::{
     collections::{BTreeMap, HashMap},
     sync::Arc,
 };
-use tracing::{event, Level};
 
 use crate::evergreen::evg_config_utils::EvgConfigUtils;
-use crate::evergreen_names::{BURN_IN_TASKS, BURN_IN_TASK_NAMES};
+use crate::evergreen_names::{BURN_IN_TASKS, BURN_IN_TASK_NAME};
 use crate::{
     evergreen_names::BURN_IN_BYPASS,
     resmoke::burn_in_proxy::{BurnInDiscovery, DiscoveredTask},
@@ -499,25 +498,19 @@ impl BurnInService for BurnInServiceImpl {
         task_map: Arc<HashMap<String, EvgTask>>,
     ) -> Result<Box<dyn GeneratedSuite>> {
         let mut sub_suites = vec![];
-        let burn_in_task_names = self
+
+        let burn_in_task_name = self
             .evg_config_utils
-            .lookup_and_split_by_whitespace_build_variant_expansion(
-                BURN_IN_TASK_NAMES,
-                build_variant,
-            );
-        if burn_in_task_names.is_empty() {
-            event!(
-                Level::INFO,
-                "`{}` build variant is either missing or has an empty list for the `{}` expansion. Skipping generating {}.",
-                build_variant.name,
-                BURN_IN_TASK_NAMES,
-                BURN_IN_TASKS
-            );
-        };
-        for task_name in burn_in_task_names {
-            if let Some(task_def) = task_map.get(&task_name) {
-                sub_suites.extend(self.build_burn_in_tasks_for_task(task_def, build_variant)?);
-            }
+            .lookup_build_variant_expansion(BURN_IN_TASK_NAME, build_variant)
+            .unwrap_or_else(|| {
+                panic!(
+                    "`{}` build variant is missing the `{}` expansion to run `{}`. Set the expansion in your project's config to continue.",
+                    build_variant.name, BURN_IN_TASK_NAME, BURN_IN_TASKS
+                )
+            });
+
+        if let Some(task_def) = task_map.get(&burn_in_task_name) {
+            sub_suites.extend(self.build_burn_in_tasks_for_task(task_def, build_variant)?);
         }
 
         Ok(Box::new(GeneratedResmokeSuite {
@@ -544,6 +537,7 @@ fn update_resmoke_params_for_burn_in(params: &mut ResmokeGenParams, test_name: &
 mod tests {
     use async_trait::async_trait;
     use maplit::{btreemap, hashmap};
+    use rstest::rstest;
     use shrub_rs::models::variant::BuildVariant;
 
     use crate::task_types::{
@@ -713,7 +707,7 @@ mod tests {
     }
 
     struct MockEvgConfigUtils {
-        burn_in_task_names: Vec<String>,
+        burn_in_task_name: Option<String>,
     }
     impl EvgConfigUtils for MockEvgConfigUtils {
         fn is_task_generated(&self, _task: &EvgTask) -> bool {
@@ -760,7 +754,7 @@ mod tests {
             _name: &str,
             _build_variant: &BuildVariant,
         ) -> Option<String> {
-            todo!()
+            self.burn_in_task_name.clone()
         }
 
         fn lookup_and_split_by_whitespace_build_variant_expansion(
@@ -768,7 +762,7 @@ mod tests {
             _name: &str,
             _build_variant: &BuildVariant,
         ) -> Vec<String> {
-            self.burn_in_task_names.clone()
+            todo!()
         }
 
         fn lookup_required_param_str(&self, _task_def: &EvgTask, _run_var: &str) -> Result<String> {
@@ -818,7 +812,7 @@ mod tests {
         }
     }
 
-    fn build_mocked_service() -> BurnInServiceImpl {
+    fn build_mocked_service(burn_in_task_name: Option<String>) -> BurnInServiceImpl {
         BurnInServiceImpl::new(
             Arc::new(MockBurnInDiscovery {}),
             Arc::new(MockGenResmokeTasksService {}),
@@ -829,15 +823,14 @@ mod tests {
                 old_version: vec![],
                 version_combos: vec![],
             }),
-            Arc::new(MockEvgConfigUtils {
-                burn_in_task_names: vec![],
-            }),
+            Arc::new(MockEvgConfigUtils { burn_in_task_name }),
         )
     }
 
     fn build_mv_mocked_service(
         old_version: Vec<String>,
         version_combos: Vec<String>,
+        burn_in_task_name: Option<String>,
     ) -> BurnInServiceImpl {
         BurnInServiceImpl::new(
             Arc::new(MockBurnInDiscovery {}),
@@ -849,26 +842,7 @@ mod tests {
                 old_version,
                 version_combos,
             }),
-            Arc::new(MockEvgConfigUtils {
-                burn_in_task_names: vec![],
-            }),
-        )
-    }
-
-    fn build_mocked_service_for_burn_in_tasks(
-        burn_in_task_names: Vec<String>,
-    ) -> BurnInServiceImpl {
-        BurnInServiceImpl::new(
-            Arc::new(MockBurnInDiscovery {}),
-            Arc::new(MockGenResmokeTasksService {}),
-            Arc::new(MockConfigExtractionService {
-                is_multiversion: false,
-            }),
-            Arc::new(MockMultiversionService {
-                old_version: vec![],
-                version_combos: vec![],
-            }),
-            Arc::new(MockEvgConfigUtils { burn_in_task_names }),
+            Arc::new(MockEvgConfigUtils { burn_in_task_name }),
         )
     }
 
@@ -886,7 +860,7 @@ mod tests {
             ..Default::default()
         };
         let run_build_variant = "my_build_variant";
-        let burn_in_service = build_mocked_service();
+        let burn_in_service = build_mocked_service(None);
 
         let tasks = burn_in_service
             .build_tests_for_task(
@@ -915,7 +889,8 @@ mod tests {
         let run_build_variant = "my_build_variant";
         let old_version = vec!["lts".to_string(), "continuous".to_string()];
         let version_combos = vec!["new_old_new".to_string(), "old_new_old".to_string()];
-        let burn_in_service = build_mv_mocked_service(old_version.clone(), version_combos.clone());
+        let burn_in_service =
+            build_mv_mocked_service(old_version.clone(), version_combos.clone(), None);
 
         let tasks = burn_in_service
             .build_tests_for_task(
@@ -941,7 +916,7 @@ mod tests {
         let build_variant = BuildVariant {
             ..Default::default()
         };
-        let burn_in_service = build_mocked_service();
+        let burn_in_service = build_mocked_service(None);
 
         let tasks = burn_in_service
             .build_burn_in_tasks_for_task(&task_def, &build_variant)
@@ -960,7 +935,8 @@ mod tests {
         };
         let old_version = vec!["lts".to_string(), "continuous".to_string()];
         let version_combos = vec!["new_old_new".to_string(), "old_new_old".to_string()];
-        let burn_in_service = build_mv_mocked_service(old_version.clone(), version_combos.clone());
+        let burn_in_service =
+            build_mv_mocked_service(old_version.clone(), version_combos.clone(), None);
 
         let tasks = burn_in_service
             .build_burn_in_tasks_for_task(&task_def, &build_variant)
@@ -998,7 +974,7 @@ mod tests {
                 ..Default::default()
             }],
         };
-        let burn_in_service = build_mocked_service();
+        let burn_in_service = build_mocked_service(None);
         let variant_task_dep = vec![TaskDependency {
             name: "mock_dependency".to_string(),
             variant: Some("mock_variant".to_string()),
@@ -1046,12 +1022,20 @@ mod tests {
     }
 
     // generate_burn_in_tasks_suite tests.
-    #[test]
-    fn test_generate_burn_in_tasks_suite() {
+    #[rstest]
+    #[case(Some("task_1".to_string()), BURN_IN_REPEAT_TASK_NUM)]
+    #[should_panic(
+        expected = "`bv_name` build variant is missing the `burn_in_task_name` expansion to run `burn_in_tasks_gen`. Set the expansion in your project's config to continue."
+    )]
+    #[case::panic_with_message(None, 0)]
+    fn test_generate_burn_in_tasks_suite(
+        #[case] burn_in_task_name: Option<String>,
+        #[case] expected_num_tasks: usize,
+    ) {
         let build_variant = BuildVariant {
+            name: "bv_name".to_string(),
             ..Default::default()
         };
-        let burn_in_task_names = vec!["task_1".to_string(), "task_2".to_string()];
         let task_map = Arc::new(hashmap! {
             "task_1".to_string() => EvgTask {
                 ..Default::default()
@@ -1060,12 +1044,12 @@ mod tests {
                 ..Default::default()
             },
         });
-        let burn_in_service = build_mocked_service_for_burn_in_tasks(burn_in_task_names);
+        let burn_in_service = build_mocked_service(burn_in_task_name);
 
         let suite = burn_in_service
             .generate_burn_in_tasks_suite(&build_variant, task_map)
             .unwrap();
 
-        assert_eq!(suite.sub_tasks().len(), BURN_IN_REPEAT_TASK_NUM * 2);
+        assert_eq!(suite.sub_tasks().len(), expected_num_tasks);
     }
 }

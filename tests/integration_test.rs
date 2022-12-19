@@ -107,7 +107,7 @@ fn test_end2end_burn_in_with_no_distro(#[case] config_location: String) {
 }
 
 #[rstest]
-#[case("tests/data/burn_in/evergreen_burn_in_tasks_no_tasks.yml", 4)]
+#[case("tests/data/burn_in/evergreen_burn_in_tasks_with_no_tasks.yml", 4)]
 #[case(
     "tests/data/burn_in/evergreen_burn_in_tasks_with_large_distro_task.yml",
     315
@@ -116,7 +116,6 @@ fn test_end2end_burn_in_with_no_distro(#[case] config_location: String) {
     "tests/data/burn_in/evergreen_burn_in_tasks_with_non_large_distro_task.yml",
     275
 )]
-#[case("tests/data/burn_in/evergreen_burn_in_tasks_with_two_tasks.yml", 565)]
 fn test_end2end_burn_in_tasks(#[case] config_location: String, #[case] expected_num_lines: usize) {
     let mut cmd = Command::cargo_bin("mongo-task-generator").unwrap();
     let tmp_dir = TempDir::new("generated_resmoke_config").unwrap();
