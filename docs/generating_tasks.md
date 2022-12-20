@@ -163,6 +163,8 @@ Newly added or modified tests might become flaky. In order to avoid that, those 
 continuously multiple times in a row to see if the results are consistent. This process is called
 burn-in.
 
+#### Burn in tests
+
 `burn_in_tests_gen` task is used to generate burn-in tasks on the same buildvariant the task is
 added to. The [example](https://github.com/mongodb/mongo/blob/81c41bdfdc56f05973fae70e80e80919f18f50c9/etc/evergreen_yml_components/definitions.yml#L3252-L3256)
 of task configuration:
@@ -174,6 +176,8 @@ of task configuration:
   commands:
   - func: "generate resmoke tasks"
 ```
+
+#### Burn in tags
 
 `burn_in_tags_gen` task is used to generate separate burn-in buildvariants. This way we can burn-in
 on the requested buildvariant as well as the other, additional buildvariants to ensure there is no
@@ -200,6 +204,8 @@ burn_in_tag_compile_distro: rhel80-large
 burn_in_tag_compile_task_group_name: compile_and_archive_dist_test_TG
 ```
 
+#### Burn in tasks
+
 `burn_in_tasks_gen` task is used to generate several copies of the task. The example of task
 configuration:
 
@@ -215,8 +221,11 @@ configuration:
 example of `burn_in_task_name` buildvariant expansion:
 
 ```yaml
-burn_in_task_name: replica_sets_jscore_passthrough_gen
+burn_in_task_name: replica_sets_jscore_passthrough
 ```
+
+WARNING! Task splitting is not supported for burn-in tasks. Large unsplitted `_gen` tasks may
+run too long and hit execution timeouts.
 
 Burn-in related tasks are generated when `--burn-in` is passed.
 
