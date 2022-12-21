@@ -22,8 +22,8 @@ use evergreen::{
     evg_task_history::{build_retryable_client, TaskHistoryServiceImpl},
 };
 use evergreen_names::{
-    BURN_IN_TAGS, BURN_IN_TAG_BUILD_VARIANTS, BURN_IN_TAG_COMPILE_TASK_GROUP_NAME, BURN_IN_TESTS,
-    ENTERPRISE_MODULE, GENERATOR_TASKS, LARGE_DISTRO_EXPANSION,
+    BURN_IN_TAGS, BURN_IN_TAG_BUILD_VARIANTS, BURN_IN_TAG_COMPILE_TASK_GROUP_NAME, BURN_IN_TASKS,
+    BURN_IN_TESTS, ENTERPRISE_MODULE, GENERATOR_TASKS,
 };
 use generate_sub_tasks_config::GenerateSubTasksConfig;
 use resmoke::{burn_in_proxy::BurnInProxy, resmoke_proxy::ResmokeProxy};
@@ -53,7 +53,8 @@ mod services;
 mod task_types;
 mod utils;
 
-const BURN_IN_PREFIX: &str = "burn_in_tests";
+const BURN_IN_TESTS_PREFIX: &str = "burn_in_tests";
+const BURN_IN_TASKS_PREFIX: &str = "burn_in_tasks";
 const MAX_SUB_TASKS_PER_TASK: usize = 5;
 
 type GenTaskCollection = HashMap<String, Box<dyn GeneratedSuite>>;
@@ -167,10 +168,14 @@ impl Dependencies {
         let evg_config_service = Arc::new(execution_config.project_info.get_project_config()?);
         let evg_config_utils = Arc::new(EvgConfigUtilsImpl::new());
         let gen_fuzzer_service = Arc::new(GenFuzzerServiceImpl::new(multiversion_service.clone()));
+        let gen_sub_tasks_config = execution_config
+            .project_info
+            .get_generate_sub_tasks_config()?;
         let config_extraction_service = Arc::new(ConfigExtractionServiceImpl::new(
             evg_config_utils.clone(),
             execution_config.generating_task.to_string(),
             execution_config.config_location.to_string(),
+            gen_sub_tasks_config,
         ));
         let client = build_retryable_client();
         let task_history_service = Arc::new(TaskHistoryServiceImpl::new(
@@ -202,16 +207,12 @@ impl Dependencies {
             fs_service,
             gen_resmoke_config,
         ));
-        let gen_sub_tasks_config = execution_config
-            .project_info
-            .get_generate_sub_tasks_config()?;
         let gen_task_service = Arc::new(GenerateTasksServiceImpl::new(
             evg_config_service,
             evg_config_utils.clone(),
             gen_fuzzer_service,
             gen_resmoke_task_service.clone(),
             config_extraction_service.clone(),
-            gen_sub_tasks_config,
             execution_config.gen_burn_in,
         ));
 
@@ -221,6 +222,7 @@ impl Dependencies {
             gen_resmoke_task_service,
             config_extraction_service,
             multiversion_service,
+            evg_config_utils.clone(),
         ));
 
         Ok(Self {
@@ -276,6 +278,7 @@ pub async fn generate_configuration(deps: &Dependencies, target_directory: &Path
         generated_tasks
             .values()
             .flat_map(|g| g.sub_tasks())
+            .map(|s| s.evg_task)
             .collect()
     };
 
@@ -373,7 +376,6 @@ struct GenerateTasksServiceImpl {
     gen_fuzzer_service: Arc<dyn GenFuzzerService>,
     gen_resmoke_service: Arc<dyn GenResmokeTaskService>,
     config_extraction_service: Arc<dyn ConfigExtractionService>,
-    gen_sub_tasks_config: Option<GenerateSubTasksConfig>,
     gen_burn_in: bool,
 }
 
@@ -387,14 +389,12 @@ impl GenerateTasksServiceImpl {
     /// * `gen_fuzzer_service` - Service to generate fuzzer tasks.
     /// * `gen_resmoke_service` - Service for generating resmoke tasks.
     /// * `config_extraction_service` - Service to extraction configuration from evergreen config.
-    /// * `gen_sub_tasks_config` - Configuration for generating sub-tasks.
     pub fn new(
         evg_config_service: Arc<dyn EvgConfigService>,
         evg_config_utils: Arc<dyn EvgConfigUtils>,
         gen_fuzzer_service: Arc<dyn GenFuzzerService>,
         gen_resmoke_service: Arc<dyn GenResmokeTaskService>,
         config_extraction_service: Arc<dyn ConfigExtractionService>,
-        gen_sub_tasks_config: Option<GenerateSubTasksConfig>,
         gen_burn_in: bool,
     ) -> Self {
         Self {
@@ -403,57 +403,8 @@ impl GenerateTasksServiceImpl {
             gen_fuzzer_service,
             gen_resmoke_service,
             config_extraction_service,
-            gen_sub_tasks_config,
             gen_burn_in,
         }
-    }
-
-    /// Determine which distro the given sub-tasks should run on.
-    ///
-    /// By default, we won't specify a distro and they will just use the default for the build
-    /// variant. If they specify `use_large_distro` then we should instead use the large distro
-    /// configured for the build variant. If that is not defined, then throw an error unless
-    /// the build variant is configured to be ignored.
-    ///
-    /// # Arguments
-    ///
-    /// * `large_distro_name` - Name
-    fn determine_distro(
-        &self,
-        large_distro_name: &Option<String>,
-        generated_task: &dyn GeneratedSuite,
-        build_variant_name: &str,
-    ) -> Result<Option<String>> {
-        if generated_task.use_large_distro() {
-            if large_distro_name.is_some() {
-                return Ok(large_distro_name.clone());
-            }
-
-            if let Some(gen_task_config) = &self.gen_sub_tasks_config {
-                if gen_task_config.ignore_missing_large_distro(build_variant_name) {
-                    return Ok(None);
-                }
-            }
-
-            bail!(
-                r#"
-***************************************************************************************
-It appears we are trying to generate a task marked as requiring a large distro, but the
-build variant has not specified a large build variant. In order to resolve this error,
-you need to:
-
-(1) add a 'large_distro_name' expansion to this build variant ('{build_variant_name}').
-
--- or --
-
-(2) add this build variant ('{build_variant_name}') to the 'build_variant_large_distro_exception'
-list in the 'etc/generate_subtasks_config.yml' file.
-***************************************************************************************
-"#
-            );
-        }
-
-        Ok(None)
     }
 }
 
@@ -524,10 +475,22 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                         }
                     }
 
+                    if task.name == BURN_IN_TASKS {
+                        thread_handles.push(create_burn_in_tasks_worker(
+                            deps,
+                            task_map.clone(),
+                            build_variant,
+                            generated_tasks.clone(),
+                        ));
+                    }
+
                     continue;
                 }
 
-                if task.name == BURN_IN_TESTS || task.name == BURN_IN_TAGS {
+                if task.name == BURN_IN_TESTS
+                    || task.name == BURN_IN_TAGS
+                    || task.name == BURN_IN_TASKS
+                {
                     continue;
                 }
 
@@ -600,6 +563,7 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                 task_def,
                 is_enterprise,
                 Some(platform),
+                build_variant,
             )?;
             Some(
                 self.gen_resmoke_service
@@ -712,9 +676,6 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                 .infer_build_variant_platform(build_variant);
             let mut gen_config = GeneratedConfig::new();
             let mut generating_tasks = vec![];
-            let large_distro_name = self
-                .evg_config_utils
-                .lookup_build_variant_expansion(LARGE_DISTRO_EXPANSION, build_variant);
             for task in &build_variant.tasks {
                 if task.name == BURN_IN_TAGS {
                     if self.gen_burn_in {
@@ -722,33 +683,30 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                             &mut burn_in_tag_build_variant_info,
                             build_variant,
                             &build_variant_map,
-                        )
+                        );
                     }
+                    generating_tasks.push(BURN_IN_TAGS);
                     continue;
                 }
 
                 let generated_tasks = generated_tasks.lock().unwrap();
 
                 let task_name = if task.name == BURN_IN_TESTS {
-                    format!("{}-{}", BURN_IN_PREFIX, build_variant.name)
+                    format!("{}-{}", BURN_IN_TESTS_PREFIX, bv_name)
+                } else if task.name == BURN_IN_TASKS {
+                    format!("{}-{}", BURN_IN_TASKS_PREFIX, bv_name)
                 } else {
                     lookup_task_name(is_enterprise, &task.name, &platform)
                 };
 
                 if let Some(generated_task) = generated_tasks.get(&task_name) {
-                    let distro = self.determine_distro(
-                        &large_distro_name,
-                        generated_task.as_ref(),
-                        bv_name,
-                    )?;
-
                     generating_tasks.push(&task.name);
                     gen_config
                         .display_tasks
                         .push(generated_task.build_display_task());
                     gen_config
                         .gen_task_specs
-                        .extend(generated_task.build_task_ref(distro));
+                        .extend(generated_task.build_task_ref());
                 }
             }
 
@@ -763,7 +721,7 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                 });
 
                 let gen_build_variant = BuildVariant {
-                    name: build_variant.name.clone(),
+                    name: bv_name.clone(),
                     tasks: gen_config.gen_task_specs.clone(),
                     display_tasks: Some(gen_config.display_tasks.clone()),
                     activate: Some(false),
@@ -777,7 +735,7 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
             let generated_tasks = generated_tasks.lock().unwrap();
             let base_build_variant = build_variant_map.get(&base_bv_name).unwrap();
             let run_build_variant_name = format!("{}-required", base_build_variant.name);
-            let task_name = format!("{}-{}", BURN_IN_PREFIX, run_build_variant_name);
+            let task_name = format!("{}-{}", BURN_IN_TESTS_PREFIX, run_build_variant_name);
             let variant_task_dependencies = vec![
                 TaskDependency {
                     name: bv_info.compile_task_group_name,
@@ -895,10 +853,46 @@ fn create_burn_in_worker(
 
     tokio::spawn(async move {
         let generated_task = burn_in_service
-            .generate_burn_in_suite(&build_variant.name, &run_build_variant_name, task_map)
+            .generate_burn_in_suite(&build_variant, &run_build_variant_name, task_map)
             .unwrap();
 
-        let task_name = format!("{}-{}", BURN_IN_PREFIX, run_build_variant_name);
+        let task_name = format!("{}-{}", BURN_IN_TESTS_PREFIX, run_build_variant_name);
+
+        if !generated_task.sub_tasks().is_empty() {
+            let mut generated_tasks = generated_tasks.lock().unwrap();
+            generated_tasks.insert(task_name, generated_task);
+        }
+    })
+}
+
+/// Spawn a tokio task to perform the burn_in_tasks generation work.
+///
+/// # Arguments
+///
+/// * `deps` - Service dependencies.
+/// * `task_map` - Map of task definitions in evergreen project configuration.
+/// * `build_variant` - Build variant to query timing information from.
+/// * `generated_tasks` - Map to stored generated tasks in.
+///
+/// # Returns
+///
+/// Handle to created tokio worker.
+fn create_burn_in_tasks_worker(
+    deps: &Dependencies,
+    task_map: Arc<HashMap<String, EvgTask>>,
+    build_variant: &BuildVariant,
+    generated_tasks: Arc<Mutex<GenTaskCollection>>,
+) -> tokio::task::JoinHandle<()> {
+    let burn_in_service = deps.burn_in_service.clone();
+    let build_variant = build_variant.clone();
+    let generated_tasks = generated_tasks.clone();
+
+    tokio::spawn(async move {
+        let generated_task = burn_in_service
+            .generate_burn_in_tasks_suite(&build_variant, task_map)
+            .unwrap();
+
+        let task_name = format!("{}-{}", BURN_IN_TASKS_PREFIX, build_variant.name);
 
         if !generated_task.sub_tasks().is_empty() {
             let mut generated_tasks = generated_tasks.lock().unwrap();
@@ -909,13 +903,13 @@ fn create_burn_in_worker(
 
 #[cfg(test)]
 mod tests {
-    use maplit::hashset;
     use rstest::rstest;
 
     use crate::{
         resmoke::burn_in_proxy::{BurnInDiscovery, DiscoveredTask},
         task_types::{
             fuzzer_tasks::FuzzerGenTaskParams,
+            generated_suite::GeneratedSubTask,
             multiversion::{MultiversionIterator, MultiversionService},
             resmoke_tasks::{
                 GeneratedResmokeSuite, ResmokeGenParams, ResmokeSuiteGenerationInfo, SubSuite,
@@ -970,7 +964,7 @@ mod tests {
             _total_sub_suites: usize,
             _params: &ResmokeGenParams,
             _suite_override: Option<String>,
-        ) -> EvgTask {
+        ) -> GeneratedSubTask {
             todo!()
         }
     }
@@ -986,74 +980,10 @@ mod tests {
                 evg_config_utils,
                 "generating_task".to_string(),
                 "config_location".to_string(),
+                None,
             )),
-            None,
             false,
         )
-    }
-
-    // Tests for determine_distro.
-    #[rstest]
-    #[case(false, None, None)]
-    #[case(false, Some("large_distro".to_string()), None)]
-    fn test_valid_determine_distros_should_work(
-        #[case] use_large_distro: bool,
-        #[case] large_distro_name: Option<String>,
-        #[case] expected_distro: Option<String>,
-    ) {
-        let gen_task_service = build_mock_generate_tasks_service();
-        let generated_task = Box::new(task_types::resmoke_tasks::GeneratedResmokeSuite {
-            task_name: "my task".to_string(),
-            sub_suites: vec![],
-            use_large_distro,
-        });
-
-        let distro = gen_task_service
-            .determine_distro(
-                &large_distro_name,
-                generated_task.as_ref(),
-                "my_build_variant",
-            )
-            .unwrap();
-
-        assert_eq!(distro, expected_distro);
-    }
-
-    #[test]
-    fn test_determine_distros_should_fail_if_no_large_distro() {
-        let gen_task_service = build_mock_generate_tasks_service();
-        let generated_task = Box::new(task_types::resmoke_tasks::GeneratedResmokeSuite {
-            task_name: "my task".to_string(),
-            sub_suites: vec![],
-            use_large_distro: true,
-        });
-
-        let distro =
-            gen_task_service.determine_distro(&None, generated_task.as_ref(), "my_build_variant");
-
-        assert!(distro.is_err());
-    }
-
-    #[test]
-    fn test_determine_distros_should_no_large_distro_can_be_ignored() {
-        let mut gen_task_service = build_mock_generate_tasks_service();
-        gen_task_service.gen_sub_tasks_config = Some(GenerateSubTasksConfig {
-            build_variant_large_distro_exceptions: hashset! {
-                "build_variant_0".to_string(),
-                "my_build_variant".to_string(),
-                "build_variant_1".to_string(),
-            },
-        });
-        let generated_task = Box::new(task_types::resmoke_tasks::GeneratedResmokeSuite {
-            task_name: "my task".to_string(),
-            sub_suites: vec![],
-            use_large_distro: true,
-        });
-
-        let distro =
-            gen_task_service.determine_distro(&None, generated_task.as_ref(), "my_build_variant");
-
-        assert!(distro.is_ok());
     }
 
     // tests for lookup_task_name.
@@ -1214,6 +1144,7 @@ mod tests {
             _task_def: &EvgTask,
             _is_enterprise: bool,
             _platform: Option<String>,
+            _build_variant: &BuildVariant,
         ) -> Result<ResmokeGenParams> {
             todo!()
         }
@@ -1244,19 +1175,18 @@ mod tests {
     }
 
     struct MockBurnInService {
-        sub_suites: Vec<EvgTask>,
+        sub_suites: Vec<GeneratedSubTask>,
     }
     impl BurnInService for MockBurnInService {
         fn generate_burn_in_suite(
             &self,
-            _build_variant: &str,
+            _build_variant: &BuildVariant,
             _run_build_variant_name: &str,
             _task_map: Arc<HashMap<String, EvgTask>>,
         ) -> Result<Box<dyn GeneratedSuite>> {
             Ok(Box::new(GeneratedResmokeSuite {
                 task_name: "burn_in_tests".to_string(),
                 sub_suites: self.sub_suites.clone(),
-                use_large_distro: false,
             }))
         }
 
@@ -1270,9 +1200,20 @@ mod tests {
         ) -> BuildVariant {
             todo!()
         }
+
+        fn generate_burn_in_tasks_suite(
+            &self,
+            _build_variant: &BuildVariant,
+            _task_map: Arc<HashMap<String, EvgTask>>,
+        ) -> Result<Box<dyn GeneratedSuite>> {
+            Ok(Box::new(GeneratedResmokeSuite {
+                task_name: "burn_in_tasks".to_string(),
+                sub_suites: self.sub_suites.clone(),
+            }))
+        }
     }
 
-    fn build_mocked_burn_in_service(sub_suites: Vec<EvgTask>) -> MockBurnInService {
+    fn build_mocked_burn_in_service(sub_suites: Vec<GeneratedSubTask>) -> MockBurnInService {
         MockBurnInService {
             sub_suites: sub_suites.clone(),
         }
@@ -1292,7 +1233,10 @@ mod tests {
     // tests for create_burn_in_worker.
     #[tokio::test]
     async fn test_create_burn_in_worker_should_add_task_when_burn_in_suites_are_present() {
-        let mock_burn_in_service = build_mocked_burn_in_service(vec![EvgTask {
+        let mock_burn_in_service = build_mocked_burn_in_service(vec![GeneratedSubTask {
+            evg_task: EvgTask {
+                ..Default::default()
+            },
             ..Default::default()
         }]);
         let mock_deps = build_mocked_dependencies(mock_burn_in_service);
@@ -1314,7 +1258,7 @@ mod tests {
             generated_tasks
                 .lock()
                 .unwrap()
-                .contains_key(&format!("{}-{}", BURN_IN_PREFIX, "run_bv_name")),
+                .contains_key(&format!("{}-{}", BURN_IN_TESTS_PREFIX, "run_bv_name")),
             true
         );
     }
@@ -1341,7 +1285,67 @@ mod tests {
             generated_tasks
                 .lock()
                 .unwrap()
-                .contains_key(&format!("{}-{}", BURN_IN_PREFIX, "run_bv_name")),
+                .contains_key(&format!("{}-{}", BURN_IN_TESTS_PREFIX, "run_bv_name")),
+            false
+        );
+    }
+
+    // tests for create_burn_in_tasks_worker.
+    #[tokio::test]
+    async fn test_create_burn_in_tasks_worker_should_add_task_when_burn_in_tasks_are_present() {
+        let mock_burn_in_service = build_mocked_burn_in_service(vec![GeneratedSubTask {
+            evg_task: EvgTask {
+                ..Default::default()
+            },
+            ..Default::default()
+        }]);
+        let mock_deps = build_mocked_dependencies(mock_burn_in_service);
+        let task_map = Arc::new(HashMap::new());
+        let generated_tasks = Arc::new(Mutex::new(HashMap::new()));
+
+        let thread_handle = create_burn_in_tasks_worker(
+            &mock_deps,
+            task_map.clone(),
+            &BuildVariant {
+                name: "bv_name".to_string(),
+                ..Default::default()
+            },
+            generated_tasks.clone(),
+        );
+        thread_handle.await.unwrap();
+
+        assert_eq!(
+            generated_tasks
+                .lock()
+                .unwrap()
+                .contains_key(&format!("{}-{}", BURN_IN_TASKS_PREFIX, "bv_name")),
+            true
+        );
+    }
+
+    #[tokio::test]
+    async fn test_create_burn_in_tasks_worker_should_not_add_task_when_burn_in_tasks_are_absent() {
+        let mock_burn_in_service = build_mocked_burn_in_service(vec![]);
+        let mock_deps = build_mocked_dependencies(mock_burn_in_service);
+        let task_map = Arc::new(HashMap::new());
+        let generated_tasks = Arc::new(Mutex::new(HashMap::new()));
+
+        let thread_handle = create_burn_in_tasks_worker(
+            &mock_deps,
+            task_map.clone(),
+            &BuildVariant {
+                name: "bv_name".to_string(),
+                ..Default::default()
+            },
+            generated_tasks.clone(),
+        );
+        thread_handle.await.unwrap();
+
+        assert_eq!(
+            generated_tasks
+                .lock()
+                .unwrap()
+                .contains_key(&format!("{}-{}", BURN_IN_TASKS_PREFIX, "bv_name")),
             false
         );
     }

@@ -20,7 +20,10 @@ use crate::{
     utils::task_name::name_generated_task,
 };
 
-use super::{generated_suite::GeneratedSuite, multiversion::MultiversionService};
+use super::{
+    generated_suite::{GeneratedSubTask, GeneratedSuite},
+    multiversion::MultiversionService,
+};
 
 /// Parameters for how a fuzzer task should be generated.
 #[derive(Default, Debug, Clone)]
@@ -158,13 +161,15 @@ impl GeneratedSuite for FuzzerTask {
     }
 
     /// Get the list of sub-tasks that comprise the generated task.
-    fn sub_tasks(&self) -> Vec<EvgTask> {
-        self.sub_tasks.clone()
-    }
-
-    /// If true, generate this task on a large distro.
-    fn use_large_distro(&self) -> bool {
-        false
+    fn sub_tasks(&self) -> Vec<GeneratedSubTask> {
+        self.sub_tasks
+            .clone()
+            .into_iter()
+            .map(|s| GeneratedSubTask {
+                evg_task: s,
+                ..Default::default()
+            })
+            .collect()
     }
 }
 

@@ -33,7 +33,8 @@ use crate::{
 };
 
 use super::{
-    generated_suite::GeneratedSuite, multiversion::MultiversionService,
+    generated_suite::{GeneratedSubTask, GeneratedSuite},
+    multiversion::MultiversionService,
     resmoke_config_writer::ResmokeConfigActor,
 };
 
@@ -44,8 +45,8 @@ pub struct ResmokeGenParams {
     pub task_name: String,
     /// Name of suite being generated.
     pub suite_name: String,
-    /// Should the generated tasks run on a 'large' distro.
-    pub use_large_distro: bool,
+    /// Distro this task should run on.
+    pub distro: Option<String>,
     /// Does this task require multiversion setup.
     pub require_multiversion_setup: bool,
     /// Should multiversion combinations be used for this task.
@@ -220,16 +221,13 @@ pub struct ResmokeSuiteGenerationInfo {
 }
 
 /// Representation of a generated resmoke suite.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct GeneratedResmokeSuite {
     /// Name of display task to create.
     pub task_name: String,
 
     /// Sub suites that comprise generated task.
-    pub sub_suites: Vec<EvgTask>,
-
-    /// If true, run generated task on a large distro.
-    pub use_large_distro: bool,
+    pub sub_suites: Vec<GeneratedSubTask>,
 }
 
 impl GeneratedSuite for GeneratedResmokeSuite {
@@ -239,13 +237,8 @@ impl GeneratedSuite for GeneratedResmokeSuite {
     }
 
     /// Get the list of sub-tasks that comprise the generated task.
-    fn sub_tasks(&self) -> Vec<EvgTask> {
+    fn sub_tasks(&self) -> Vec<GeneratedSubTask> {
         self.sub_suites.clone()
-    }
-
-    // If true, run generated task on a large distro.
-    fn use_large_distro(&self) -> bool {
-        self.use_large_distro
     }
 }
 
@@ -284,7 +277,7 @@ pub trait GenResmokeTaskService: Sync + Send {
         total_sub_suites: usize,
         params: &ResmokeGenParams,
         suite_override: Option<String>,
-    ) -> EvgTask;
+    ) -> GeneratedSubTask;
 }
 
 #[derive(Debug, Clone)]
@@ -741,7 +734,6 @@ impl GenResmokeTaskService for GenResmokeTaskServiceImpl {
                 .into_iter()
                 .map(|s| self.build_resmoke_sub_task(&s, sub_task_total, params, None))
                 .collect(),
-            use_large_distro: params.use_large_distro,
         }))
     }
 
@@ -761,7 +753,7 @@ impl GenResmokeTaskService for GenResmokeTaskServiceImpl {
         total_sub_suites: usize,
         params: &ResmokeGenParams,
         suite_override: Option<String>,
-    ) -> EvgTask {
+    ) -> GeneratedSubTask {
         let exclude_tags = self
             .multiversion_service
             .exclude_tags_for_task(&params.task_name, sub_suite.mv_exclude_tags.clone());
@@ -776,15 +768,18 @@ impl GenResmokeTaskService for GenResmokeTaskServiceImpl {
         let run_test_vars =
             params.build_run_test_vars(&suite_file, sub_suite, &exclude_tags, suite_override);
 
-        EvgTask {
-            name: suite_file,
-            commands: Some(resmoke_commands(
-                RUN_GENERATED_TESTS,
-                run_test_vars,
-                params.require_multiversion_setup,
-            )),
-            depends_on: params.get_dependencies(),
-            ..Default::default()
+        GeneratedSubTask {
+            evg_task: EvgTask {
+                name: suite_file,
+                commands: Some(resmoke_commands(
+                    RUN_GENERATED_TESTS,
+                    run_test_vars,
+                    params.require_multiversion_setup,
+                )),
+                depends_on: params.get_dependencies(),
+                ..Default::default()
+            },
+            distro: params.distro.clone(),
         }
     }
 }

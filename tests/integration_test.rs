@@ -1,5 +1,7 @@
 use assert_cmd::Command;
 use rstest::rstest;
+use std::fs::File;
+use std::io::{BufRead, BufReader};
 use tempdir::TempDir;
 
 #[test]
@@ -102,4 +104,49 @@ fn test_end2end_burn_in_with_no_distro(#[case] config_location: String) {
         "python3 tests/mocks/burn_in_tests.py",
     ])
     .unwrap();
+}
+
+#[rstest]
+#[case("tests/data/burn_in/evergreen_burn_in_tasks_with_no_tasks.yml", 4)]
+#[case(
+    "tests/data/burn_in/evergreen_burn_in_tasks_with_large_distro_task.yml",
+    315
+)]
+#[case(
+    "tests/data/burn_in/evergreen_burn_in_tasks_with_non_large_distro_task.yml",
+    275
+)]
+fn test_end2end_burn_in_tasks(#[case] config_location: String, #[case] expected_num_lines: usize) {
+    let mut cmd = Command::cargo_bin("mongo-task-generator").unwrap();
+    let tmp_dir = TempDir::new("generated_resmoke_config").unwrap();
+
+    cmd.args(&[
+        "--target-directory",
+        tmp_dir.path().to_str().unwrap(),
+        "--expansion-file",
+        "tests/data/sample_expansions.yml",
+        "--evg-project-file",
+        &config_location,
+        "--evg-auth-file",
+        "tests/data/sample_evergreen_auth.yml",
+        "--resmoke-command",
+        "python3 tests/mocks/resmoke.py",
+        "--use-task-split-fallback",
+        "--generate-sub-tasks-config",
+        "tests/data/sample_generate_subtasks_config.yml",
+        "--burn-in",
+        "--burn-in-tests-command",
+        "python3 tests/mocks/burn_in_tests.py",
+    ])
+    .assert()
+    .success();
+
+    let tmp_dir_path = tmp_dir.path();
+    assert!(tmp_dir_path.exists());
+
+    let config_file = tmp_dir_path.join("evergreen_config.json");
+    assert!(config_file.exists());
+
+    let num_lines = BufRead::lines(BufReader::new(File::open(config_file).unwrap())).count();
+    assert_eq!(expected_num_lines, num_lines);
 }
