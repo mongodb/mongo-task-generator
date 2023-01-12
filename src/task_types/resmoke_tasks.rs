@@ -45,8 +45,8 @@ pub struct ResmokeGenParams {
     pub task_name: String,
     /// Name of suite being generated.
     pub suite_name: String,
-    /// Distro this task should run on.
-    pub distro: Option<String>,
+    /// Should the generated tasks run on a 'large' distro.
+    pub use_large_distro: bool,
     /// Does this task require multiversion setup.
     pub require_multiversion_setup: bool,
     /// Should multiversion combinations be used for this task.
@@ -779,7 +779,7 @@ impl GenResmokeTaskService for GenResmokeTaskServiceImpl {
                 depends_on: params.get_dependencies(),
                 ..Default::default()
             },
-            distro: params.distro.clone(),
+            use_large_distro: params.use_large_distro,
         }
     }
 }
@@ -994,6 +994,46 @@ mod tests {
         assert!(resmoke_args.contains("--originSuite=my_origin_suite"));
         assert!(resmoke_args.contains("--args to --pass to resmoke"));
         assert!(resmoke_args.contains("--repeatSuites=3"));
+    }
+
+    // GeneratedResmokeSuite tests
+    #[rstest]
+    #[case(vec![false, false, false])]
+    #[case(vec![true, false, false])]
+    #[case(vec![false, true, false])]
+    #[case(vec![false, false, true])]
+    #[case(vec![true, true, false])]
+    #[case(vec![true, false, true])]
+    #[case(vec![false, true, true])]
+    #[case(vec![true, true, true])]
+    fn test_build_task_ref(#[case] use_large_distro: Vec<bool>) {
+        let distro = "distro".to_string();
+        let gen_suite = GeneratedResmokeSuite {
+            task_name: "display_task_name".to_string(),
+            sub_suites: use_large_distro
+                .iter()
+                .enumerate()
+                .map(|(i, value)| GeneratedSubTask {
+                    evg_task: EvgTask {
+                        name: format!("sub_suite_name_{}", i),
+                        ..Default::default()
+                    },
+                    use_large_distro: *value,
+                })
+                .collect(),
+        };
+
+        let task_refs = gen_suite.build_task_ref(Some(distro.clone()));
+
+        for (i, task) in task_refs.iter().enumerate() {
+            assert_eq!(task.name, format!("sub_suite_name_{}", i));
+            if use_large_distro[i] {
+                assert_eq!(task.distros.as_ref().unwrap().len(), 1);
+                assert!(task.distros.as_ref().unwrap().contains(&distro));
+            } else {
+                assert_eq!(task.distros.as_ref(), None);
+            }
+        }
     }
 
     // split_task tests

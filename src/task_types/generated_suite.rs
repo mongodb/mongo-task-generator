@@ -8,8 +8,8 @@ use shrub_rs::models::{
 pub struct GeneratedSubTask {
     /// Definition of an Evergreen task.
     pub evg_task: EvgTask,
-    /// Distro this task should run on.
-    pub distro: Option<String>,
+    /// Whether to run generated task on a large distro.
+    pub use_large_distro: bool,
 }
 
 /// Interface for representing a generated task.
@@ -19,6 +19,13 @@ pub trait GeneratedSuite: Sync + Send {
 
     /// Get the list of sub-tasks that comprise the generated task.
     fn sub_tasks(&self) -> Vec<GeneratedSubTask>;
+
+    /// Check whether any sub task requires large distro.
+    fn use_large_distro(&self) -> bool {
+        self.sub_tasks()
+            .iter()
+            .any(|sub_task| sub_task.use_large_distro)
+    }
 
     /// Build a shrub display task for this generated task.
     fn build_display_task(&self) -> DisplayTask {
@@ -33,12 +40,17 @@ pub trait GeneratedSuite: Sync + Send {
     }
 
     /// Build a shrub task reference for this generated task.
-    fn build_task_ref(&self) -> Vec<TaskRef> {
+    fn build_task_ref(&self, distro: Option<String>) -> Vec<TaskRef> {
         self.sub_tasks()
             .iter()
-            .map(|s| {
-                s.evg_task
-                    .get_reference(s.distro.clone().map(|d| vec![d]), Some(false))
+            .map(|sub_task| {
+                let mut large_distro = None;
+                if sub_task.use_large_distro {
+                    large_distro = distro.clone();
+                }
+                sub_task
+                    .evg_task
+                    .get_reference(large_distro.map(|d| vec![d]), Some(false))
             })
             .collect()
     }

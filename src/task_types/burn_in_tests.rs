@@ -76,7 +76,7 @@ pub trait BurnInService: Sync + Send {
         run_build_variant_name: String,
         generated_task: &dyn GeneratedSuite,
         variant_task_dependencies: &[TaskDependency],
-    ) -> BuildVariant;
+    ) -> Result<BuildVariant>;
 
     /// Generate a burn_in_tasks task for the given build variant.
     ///
@@ -192,7 +192,6 @@ impl BurnInServiceImpl {
     ///
     /// * `discovered_task` - Task discovered to pull into resmoke.
     /// * `task_def` - Evergreen project definition of task.
-    /// * `build_variant` - Build variant being generated for.
     /// * `run_build_variant` - Name of build variant to run burn_in_tests task on.
     ///
     /// # Returns
@@ -202,17 +201,13 @@ impl BurnInServiceImpl {
         &self,
         discovered_task: &DiscoveredTask,
         task_def: &EvgTask,
-        build_variant: &BuildVariant,
         run_build_variant: &str,
     ) -> Result<Vec<GeneratedSubTask>> {
         let mut sub_suites = vec![];
         for (index, test) in discovered_task.test_list.iter().enumerate() {
-            let mut params = self.config_extraction_service.task_def_to_resmoke_params(
-                task_def,
-                false,
-                None,
-                build_variant,
-            )?;
+            let mut params = self
+                .config_extraction_service
+                .task_def_to_resmoke_params(task_def, false, None)?;
             update_resmoke_params_for_burn_in(&mut params, test);
 
             if params.generate_multiversion_combos {
@@ -271,12 +266,9 @@ impl BurnInServiceImpl {
     ) -> Result<Vec<GeneratedSubTask>> {
         let mut sub_suites = vec![];
         for index in 0..BURN_IN_REPEAT_TASK_NUM {
-            let params = self.config_extraction_service.task_def_to_resmoke_params(
-                task_def,
-                false,
-                None,
-                build_variant,
-            )?;
+            let params = self
+                .config_extraction_service
+                .task_def_to_resmoke_params(task_def, false, None)?;
 
             if params.generate_multiversion_combos {
                 for (old_version, version_combination) in self
@@ -410,7 +402,6 @@ impl BurnInService for BurnInServiceImpl {
                 sub_suites.extend(self.build_tests_for_task(
                     &discovered_task,
                     task_def,
-                    build_variant,
                     run_build_variant_name,
                 )?);
             }
@@ -443,7 +434,7 @@ impl BurnInService for BurnInServiceImpl {
         run_build_variant_name: String,
         generated_task: &dyn GeneratedSuite,
         variant_task_dependencies: &[TaskDependency],
-    ) -> BuildVariant {
+    ) -> Result<BuildVariant> {
         let mut gen_config = BurnInTagsGeneratedConfig::new();
 
         gen_config.build_variant_name = run_build_variant_name;
@@ -461,14 +452,18 @@ impl BurnInService for BurnInServiceImpl {
             .expansions
             .insert(COMPILE_VARIANT.to_string(), compile_build_variant_name);
 
+        let large_distro = self
+            .config_extraction_service
+            .determine_distro(generated_task, base_build_variant)?;
+
         gen_config
             .gen_task_specs
-            .extend(generated_task.build_task_ref());
+            .extend(generated_task.build_task_ref(large_distro));
         gen_config
             .display_tasks
             .push(generated_task.build_display_task());
 
-        BuildVariant {
+        Ok(BuildVariant {
             name: gen_config.build_variant_name.clone(),
             tasks: gen_config.gen_task_specs.clone(),
             display_name: gen_config.build_variant_display_name.clone(),
@@ -479,7 +474,7 @@ impl BurnInService for BurnInServiceImpl {
             depends_on: Some(variant_task_dependencies.to_vec()),
             activate: Some(false),
             ..Default::default()
-        }
+        })
     }
 
     /// Generate a burn_in_tasks task for the given build variant.
@@ -667,12 +662,19 @@ mod tests {
             _task_def: &EvgTask,
             _is_enterprise: bool,
             _platform: Option<String>,
-            _build_variant: &BuildVariant,
         ) -> Result<ResmokeGenParams> {
             Ok(ResmokeGenParams {
                 generate_multiversion_combos: self.is_multiversion,
                 ..Default::default()
             })
+        }
+
+        fn determine_distro(
+            &self,
+            _generated_task: &dyn GeneratedSuite,
+            _build_variant: &BuildVariant,
+        ) -> Result<Option<String>> {
+            Ok(None)
         }
     }
 
@@ -856,19 +858,11 @@ mod tests {
         let task_def = EvgTask {
             ..Default::default()
         };
-        let build_variant = BuildVariant {
-            ..Default::default()
-        };
         let run_build_variant = "my_build_variant";
         let burn_in_service = build_mocked_service(None);
 
         let tasks = burn_in_service
-            .build_tests_for_task(
-                &discovered_task,
-                &task_def,
-                &build_variant,
-                run_build_variant,
-            )
+            .build_tests_for_task(&discovered_task, &task_def, run_build_variant)
             .unwrap();
 
         assert_eq!(tasks.len(), discovered_task.test_list.len());
@@ -883,9 +877,6 @@ mod tests {
         let task_def = EvgTask {
             ..Default::default()
         };
-        let build_variant = BuildVariant {
-            ..Default::default()
-        };
         let run_build_variant = "my_build_variant";
         let old_version = vec!["lts".to_string(), "continuous".to_string()];
         let version_combos = vec!["new_old_new".to_string(), "old_new_old".to_string()];
@@ -893,12 +884,7 @@ mod tests {
             build_mv_mocked_service(old_version.clone(), version_combos.clone(), None);
 
         let tasks = burn_in_service
-            .build_tests_for_task(
-                &discovered_task,
-                &task_def,
-                &build_variant,
-                run_build_variant,
-            )
+            .build_tests_for_task(&discovered_task, &task_def, run_build_variant)
             .unwrap();
 
         assert_eq!(
@@ -980,13 +966,15 @@ mod tests {
             variant: Some("mock_variant".to_string()),
         }];
 
-        let burn_in_tags_build_variant = burn_in_service.generate_burn_in_tags_build_variant(
-            &base_build_variant,
-            compile_build_variant_name,
-            run_build_variant_name,
-            generated_task,
-            &variant_task_dep,
-        );
+        let burn_in_tags_build_variant = burn_in_service
+            .generate_burn_in_tags_build_variant(
+                &base_build_variant,
+                compile_build_variant_name,
+                run_build_variant_name,
+                generated_task,
+                &variant_task_dep,
+            )
+            .unwrap();
 
         let expansions = burn_in_tags_build_variant.expansions.unwrap_or_default();
 

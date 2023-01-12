@@ -563,7 +563,6 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                 task_def,
                 is_enterprise,
                 Some(platform),
-                build_variant,
             )?;
             Some(
                 self.gen_resmoke_service
@@ -700,13 +699,17 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                 };
 
                 if let Some(generated_task) = generated_tasks.get(&task_name) {
+                    let large_distro = self
+                        .config_extraction_service
+                        .determine_distro(generated_task.as_ref(), build_variant)?;
+
                     generating_tasks.push(&task.name);
                     gen_config
                         .display_tasks
                         .push(generated_task.build_display_task());
                     gen_config
                         .gen_task_specs
-                        .extend(generated_task.build_task_ref());
+                        .extend(generated_task.build_task_ref(large_distro));
                 }
             }
 
@@ -755,7 +758,7 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                         run_build_variant_name,
                         generated_task.as_ref(),
                         &variant_task_dependencies,
-                    ),
+                    )?,
                 );
             }
         }
@@ -1144,8 +1147,15 @@ mod tests {
             _task_def: &EvgTask,
             _is_enterprise: bool,
             _platform: Option<String>,
-            _build_variant: &BuildVariant,
         ) -> Result<ResmokeGenParams> {
+            todo!()
+        }
+
+        fn determine_distro(
+            &self,
+            _generated_suite: &dyn GeneratedSuite,
+            _build_variant: &BuildVariant,
+        ) -> Result<Option<String>> {
             todo!()
         }
     }
@@ -1197,7 +1207,7 @@ mod tests {
             _run_build_variant_name: String,
             _generated_task: &dyn GeneratedSuite,
             _variant_task_dependencies: &[TaskDependency],
-        ) -> BuildVariant {
+        ) -> Result<BuildVariant> {
             todo!()
         }
 

@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.7.1 - 2022-01-12
+* Apply appropriate large distros to tasks according to build variant configuration.
+
 ## 0.7.0 - 2022-12-16
 * Add support for burn_in_tasks generation.
 
