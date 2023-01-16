@@ -454,7 +454,7 @@ impl BurnInService for BurnInServiceImpl {
 
         let large_distro = self
             .config_extraction_service
-            .determine_distro(generated_task, base_build_variant)?;
+            .determine_large_distro(generated_task, base_build_variant)?;
 
         gen_config
             .gen_task_specs
@@ -669,7 +669,7 @@ mod tests {
             })
         }
 
-        fn determine_distro(
+        fn determine_large_distro(
             &self,
             _generated_task: &dyn GeneratedSuite,
             _build_variant: &BuildVariant,

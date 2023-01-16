@@ -701,7 +701,7 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                 if let Some(generated_task) = generated_tasks.get(&task_name) {
                     let large_distro = self
                         .config_extraction_service
-                        .determine_distro(generated_task.as_ref(), build_variant)?;
+                        .determine_large_distro(generated_task.as_ref(), build_variant)?;
 
                     generating_tasks.push(&task.name);
                     gen_config
@@ -1151,7 +1151,7 @@ mod tests {
             todo!()
         }
 
-        fn determine_distro(
+        fn determine_large_distro(
             &self,
             _generated_suite: &dyn GeneratedSuite,
             _build_variant: &BuildVariant,

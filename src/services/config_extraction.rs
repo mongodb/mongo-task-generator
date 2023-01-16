@@ -54,7 +54,7 @@ pub trait ConfigExtractionService: Sync + Send {
         platform: Option<String>,
     ) -> Result<ResmokeGenParams>;
 
-    /// Determine which distro the given sub-tasks should run on.
+    /// Determine large distro name if the given sub-tasks should run on it.
     ///
     /// By default, we won't specify a distro and they will just use the default for the build
     /// variant. If they specify `use_large_distro` then we should instead use the large distro
@@ -69,7 +69,7 @@ pub trait ConfigExtractionService: Sync + Send {
     /// # Returns
     ///
     /// Large distro name if needed.
-    fn determine_distro(
+    fn determine_large_distro(
         &self,
         generated_task: &dyn GeneratedSuite,
         build_variant: &BuildVariant,
@@ -248,7 +248,7 @@ impl ConfigExtractionService for ConfigExtractionServiceImpl {
         })
     }
 
-    /// Determine which distro the given sub-tasks should run on.
+    /// Determine large distro name if the given sub-tasks should run on it.
     ///
     /// By default, we won't specify a distro and they will just use the default for the build
     /// variant. If they specify `use_large_distro` then we should instead use the large distro
@@ -263,7 +263,7 @@ impl ConfigExtractionService for ConfigExtractionServiceImpl {
     /// # Returns
     ///
     /// Large distro name if needed.
-    fn determine_distro(
+    fn determine_large_distro(
         &self,
         generated_task: &dyn GeneratedSuite,
         build_variant: &BuildVariant,
@@ -362,14 +362,14 @@ mod tests {
         );
     }
 
-    // Tests for determine_distro.
+    // Tests for determine_large_distro.
     #[rstest]
     #[case(vec![false, false], None, None)]
     #[case(vec![false, false], Some("large_distro".to_string()), None)]
     #[case(vec![true, false], Some("large_distro".to_string()), Some("large_distro".to_string()))]
     #[case(vec![false, true], Some("large_distro".to_string()), Some("large_distro".to_string()))]
     #[case(vec![true, true], Some("large_distro".to_string()), Some("large_distro".to_string()))]
-    fn test_determine_distro_should_return_large_distro_name(
+    fn test_determine_large_distro_should_return_large_distro_name(
         #[case] use_large_distro: Vec<bool>,
         #[case] large_distro_name: Option<String>,
         #[case] expected_distro: Option<String>,
@@ -398,15 +398,15 @@ mod tests {
             });
         };
 
-        let distro = config_extraction_service
-            .determine_distro(generated_task, &build_variant)
+        let large_distro = config_extraction_service
+            .determine_large_distro(generated_task, &build_variant)
             .unwrap();
 
-        assert_eq!(distro, expected_distro);
+        assert_eq!(large_distro, expected_distro);
     }
 
     #[test]
-    fn test_determine_distro_should_fail_if_no_large_distro() {
+    fn test_determine_large_distro_should_fail_if_no_large_distro() {
         let config_extraction_service = build_mocked_config_extraction_service();
         let generated_task: &dyn GeneratedSuite = &GeneratedResmokeSuite {
             task_name: "display_task_name".to_string(),
@@ -422,13 +422,14 @@ mod tests {
             ..Default::default()
         };
 
-        let distro = config_extraction_service.determine_distro(generated_task, &build_variant);
+        let large_distro =
+            config_extraction_service.determine_large_distro(generated_task, &build_variant);
 
-        assert!(distro.is_err());
+        assert!(large_distro.is_err());
     }
 
     #[test]
-    fn test_determine_distro_respects_ignore_missing_large_distro() {
+    fn test_determine_large_distro_respects_ignore_missing_large_distro() {
         let mut config_extraction_service = build_mocked_config_extraction_service();
         config_extraction_service.gen_sub_tasks_config = Some(GenerateSubTasksConfig {
             build_variant_large_distro_exceptions: hashset! {
@@ -452,8 +453,9 @@ mod tests {
             ..Default::default()
         };
 
-        let distro = config_extraction_service.determine_distro(generated_task, &build_variant);
+        let large_distro =
+            config_extraction_service.determine_large_distro(generated_task, &build_variant);
 
-        assert!(distro.is_ok());
+        assert!(large_distro.is_ok());
     }
 }
