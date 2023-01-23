@@ -165,9 +165,9 @@ impl GeneratedSuite for FuzzerTask {
         self.sub_tasks
             .clone()
             .into_iter()
-            .map(|s| GeneratedSubTask {
-                evg_task: s,
-                ..Default::default()
+            .map(|sub_task| GeneratedSubTask {
+                evg_task: sub_task,
+                use_large_distro: false,
             })
             .collect()
     }
@@ -453,6 +453,27 @@ mod tests {
         };
 
         assert_eq!(fuzzer_task.sub_tasks().len(), 2);
+    }
+
+    #[test]
+    fn test_build_task_ref() {
+        let fuzzer_task = FuzzerTask {
+            task_name: "my fuzzer".to_string(),
+            sub_tasks: vec![
+                EvgTask {
+                    ..Default::default()
+                },
+                EvgTask {
+                    ..Default::default()
+                },
+            ],
+        };
+
+        let task_refs = fuzzer_task.build_task_ref(Some("distro".to_string()));
+
+        for task in task_refs {
+            assert_eq!(task.distros.as_ref(), None);
+        }
     }
 
     // build_name
