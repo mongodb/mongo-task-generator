@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.7.2 - 2022-01-25
+* Use the compile variant of burn_in_tag_buildvariant for generating burn_in_tags.
+
 ## 0.7.1 - 2022-01-12
 * Apply appropriate large distros to tasks according to build variant configuration.
 

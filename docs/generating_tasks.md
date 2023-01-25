@@ -200,8 +200,7 @@ of `burn_in_tag_buildvariants` buildvariant expansion:
 
 ```yaml
 burn_in_tag_buildvariants: enterprise-rhel-80-64-bit-inmem enterprise-rhel-80-64-bit-multiversion
-burn_in_tag_compile_distro: rhel80-large
-burn_in_tag_compile_task_group_name: compile_and_archive_dist_test_TG
+burn_in_tag_compile_task_dependency: archive_dist_test_debug
 ```
 
 #### Burn in tasks

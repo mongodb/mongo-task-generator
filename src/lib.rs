@@ -13,7 +13,6 @@ use std::{
     vec,
 };
 
-use crate::evergreen_names::{COMPILE_VARIANT, VERSION_GEN_TASK, VERSION_GEN_VARIANT};
 use anyhow::{bail, Result};
 use async_trait::async_trait;
 use evergreen::{
@@ -22,13 +21,12 @@ use evergreen::{
     evg_task_history::{build_retryable_client, TaskHistoryServiceImpl},
 };
 use evergreen_names::{
-    BURN_IN_TAGS, BURN_IN_TAG_BUILD_VARIANTS, BURN_IN_TAG_COMPILE_TASK_GROUP_NAME, BURN_IN_TASKS,
+    BURN_IN_TAGS, BURN_IN_TAG_BUILD_VARIANTS, BURN_IN_TAG_COMPILE_TASK_DEPENDENCY, BURN_IN_TASKS,
     BURN_IN_TESTS, ENTERPRISE_MODULE, GENERATOR_TASKS,
 };
 use generate_sub_tasks_config::GenerateSubTasksConfig;
 use resmoke::{burn_in_proxy::BurnInProxy, resmoke_proxy::ResmokeProxy};
 use services::config_extraction::{ConfigExtractionService, ConfigExtractionServiceImpl};
-use shrub_rs::models::task::TaskDependency;
 use shrub_rs::models::{
     project::EvgProject,
     task::{EvgTask, TaskRef},
@@ -60,8 +58,7 @@ const MAX_SUB_TASKS_PER_TASK: usize = 5;
 type GenTaskCollection = HashMap<String, Box<dyn GeneratedSuite>>;
 
 pub struct BurnInTagBuildVariantInfo {
-    pub compile_task_group_name: String,
-    pub compile_variant: String,
+    pub compile_task_dependency: String,
 }
 
 /// Information about the Evergreen project being run against.
@@ -604,22 +601,18 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
         )
         }
 
-        let compile_variant = self
+        let compile_task_dependency = self
             .evg_config_utils
-            .lookup_build_variant_expansion(COMPILE_VARIANT, build_variant)
-            .unwrap_or_else(|| build_variant.name.clone());
+            .lookup_build_variant_expansion(
+                BURN_IN_TAG_COMPILE_TASK_DEPENDENCY,
+                build_variant,
+            ).unwrap_or_else(|| {
+                panic!(
+                    "`{}` build variant is missing the `{}` expansion to run `{}`. Set the expansion in your project's config to continue.",
+                    build_variant.name, BURN_IN_TAG_COMPILE_TASK_DEPENDENCY, BURN_IN_TAGS
+                )
+            });
 
-        let compile_task_group_name = self
-        .evg_config_utils
-        .lookup_build_variant_expansion(
-            BURN_IN_TAG_COMPILE_TASK_GROUP_NAME,
-            build_variant,
-        ).unwrap_or_else(|| {
-            panic!(
-                "`{}` build variant is missing the `{}` expansion to run `{}`. Set the expansion in your project's config to continue.",
-                build_variant.name, BURN_IN_TAG_COMPILE_TASK_GROUP_NAME, BURN_IN_TAGS
-            )
-        });
         for variant in burn_in_tag_build_variants {
             if !build_variant_map.contains_key(&variant) {
                 panic!("`{}` is trying to create a build variant that does not exist: {}. Check the {} expansion in this variant.",
@@ -628,20 +621,13 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
             let bv_info = burn_in_tag_build_variant_info
                 .entry(variant.clone())
                 .or_insert(BurnInTagBuildVariantInfo {
-                    compile_task_group_name: compile_task_group_name.clone(),
-                    compile_variant: compile_variant.clone(),
+                    compile_task_dependency: compile_task_dependency.clone(),
                 });
-            if bv_info.compile_task_group_name != compile_task_group_name {
+            if bv_info.compile_task_dependency != compile_task_dependency {
                 panic!(
-                    "`{}` is trying to set a different compile task group name than already exists for `{}`. Check the `{}` expansions in your config.",
-                build_variant.name, variant, BURN_IN_TAG_COMPILE_TASK_GROUP_NAME
+                    "`{}` is trying to set a different compile task dependency than already exists for `{}`. Check the `{}` expansions in your config.",
+                build_variant.name, variant, BURN_IN_TAG_COMPILE_TASK_DEPENDENCY
             )
-            }
-            if bv_info.compile_variant != compile_variant {
-                panic!(
-                    "`{}` is trying to set a different compile variant than already exists for `{}`. Check the `{}` expansions in your config.",
-                    build_variant.name, variant, COMPILE_VARIANT
-                )
             }
         }
     }
@@ -739,25 +725,14 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
             let base_build_variant = build_variant_map.get(&base_bv_name).unwrap();
             let run_build_variant_name = format!("{}-required", base_build_variant.name);
             let task_name = format!("{}-{}", BURN_IN_TESTS_PREFIX, run_build_variant_name);
-            let variant_task_dependencies = vec![
-                TaskDependency {
-                    name: bv_info.compile_task_group_name,
-                    variant: Some(bv_info.compile_variant.clone()),
-                },
-                TaskDependency {
-                    name: VERSION_GEN_TASK.to_string(),
-                    variant: Some(VERSION_GEN_VARIANT.to_string()),
-                },
-            ];
 
             if let Some(generated_task) = generated_tasks.get(&task_name) {
                 generated_build_variants.push(
                     deps.burn_in_service.generate_burn_in_tags_build_variant(
                         base_build_variant,
-                        bv_info.compile_variant,
                         run_build_variant_name,
                         generated_task.as_ref(),
-                        &variant_task_dependencies,
+                        bv_info.compile_task_dependency,
                     )?,
                 );
             }
@@ -1203,10 +1178,9 @@ mod tests {
         fn generate_burn_in_tags_build_variant(
             &self,
             _base_build_variant: &BuildVariant,
-            _compile_build_variant_name: String,
             _run_build_variant_name: String,
             _generated_task: &dyn GeneratedSuite,
-            _variant_task_dependencies: &[TaskDependency],
+            _compile_task_dependency: String,
         ) -> Result<BuildVariant> {
             todo!()
         }

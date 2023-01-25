@@ -71,7 +71,7 @@ fn test_end2end_burn_in_execution() {
 
 #[rstest]
 #[should_panic(
-    expected = "`enterprise-rhel-80-64-bit-dynamic-required` build variant is missing the `burn_in_tag_compile_task_group_name` expansion to run `burn_in_tags_gen`. Set the expansion in your project\\'s config to continue.\\"
+    expected = "`enterprise-rhel-80-64-bit-dynamic-required` build variant is missing the `burn_in_tag_compile_task_dependency` expansion to run `burn_in_tags_gen`. Set the expansion in your project\\'s config to continue.\\"
 )]
 #[case::panic_with_message("tests/data/burn_in/evergreen_with_no_burn_in_task_group.yml")]
 #[should_panic(
