@@ -92,8 +92,8 @@ pub const MULTIVERSION_EXCLUDE_TAGS: &str = "multiversion_exclude_tags_version";
 pub const LARGE_DISTRO_EXPANSION: &str = "large_distro_name";
 /// List of build variant names delimited by spaces to generate burn_in_tags for.
 pub const BURN_IN_TAG_BUILD_VARIANTS: &str = "burn_in_tag_buildvariants";
-/// The distro to use when compiling burn_in_tags.
-pub const BURN_IN_TAG_COMPILE_TASK_GROUP_NAME: &str = "burn_in_tag_compile_task_group_name";
+/// Compile task name generated build variant should depend on.
+pub const BURN_IN_TAG_COMPILE_TASK_DEPENDENCY: &str = "burn_in_tag_compile_task_dependency";
 /// Name of build variant to determine the timeouts for.
 pub const BURN_IN_BYPASS: &str = "burn_in_bypass";
 /// List of tasks to burn in.
@@ -128,5 +128,5 @@ pub const LINUX: &str = "linux";
 // Constants in evergreen.yml.
 /// Name of the variant that calls generate.task on the version.
 pub const VERSION_GEN_VARIANT: &str = "generate-tasks-for-version";
-/// Name of the task that calls generate.task on the version.
-pub const VERSION_GEN_TASK: &str = "version_gen";
+/// Name of the task that calls generate.task on the version for burn-in.
+pub const VERSION_BURN_IN_GEN_TASK: &str = "version_burn_in_gen";

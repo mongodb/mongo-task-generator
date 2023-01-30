@@ -105,7 +105,7 @@ pre:
 
   - func: cargo_install rust
     vars:
-      rust_version: stable
+      rust_version: 1.66.1
 
   - func: cargo_enable nextest
 

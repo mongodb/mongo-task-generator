@@ -156,8 +156,7 @@ buildvariants:
       exec_timeout_factor: 1.5
       large_distro_name: rhel80-medium
       # burn_in_tag_buildvariants: enterprise-rhel-80-64-bit-dynamic-required
-      burn_in_tag_compile_distro: rhelx-80
-      burn_in_tag_compile_task_group_name: compile-name
+      burn_in_tag_compile_task_dependency: compile-name
       num_scons_link_jobs_available: 0.99
     tasks:
     - name: burn_in_tags_gen
