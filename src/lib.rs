@@ -213,7 +213,10 @@ impl Dependencies {
             execution_config.gen_burn_in,
         ));
 
-        let burn_in_discovery = Arc::new(BurnInProxy::new(execution_config.burn_in_tests_command));
+        let burn_in_discovery = Arc::new(BurnInProxy::new(
+            execution_config.burn_in_tests_command,
+            &execution_config.project_info.evg_project_location,
+        ));
         let burn_in_service = Arc::new(BurnInServiceImpl::new(
             burn_in_discovery,
             gen_resmoke_task_service,

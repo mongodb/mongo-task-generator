@@ -1,4 +1,4 @@
-use std::time::Instant;
+use std::{path::Path, time::Instant};
 
 use anyhow::Result;
 use serde::Deserialize;
@@ -41,6 +41,8 @@ pub struct BurnInProxy {
     burn_in_tests_cmd: String,
     /// Script to invoke burn_in_tests.
     burn_in_tests_script: Vec<String>,
+    /// File containing evergreen project configuration.
+    evg_project_location: String,
 }
 
 impl BurnInProxy {
@@ -49,13 +51,15 @@ impl BurnInProxy {
     /// # Arguments
     ///
     /// * `burn_in_tests_cmd` - Command to invoke resmoke.
-    pub fn new(burn_in_tests_cmd: &str) -> Self {
+    /// * `evg_project_location` - File containing evergreen project configuration.
+    pub fn new(burn_in_tests_cmd: &str, evg_project_location: &Path) -> Self {
         let cmd_parts: Vec<_> = burn_in_tests_cmd.split(' ').collect();
         let cmd = cmd_parts[0];
         let script = cmd_parts[1..].iter().map(|s| s.to_string()).collect();
         Self {
             burn_in_tests_cmd: cmd.to_string(),
             burn_in_tests_script: script,
+            evg_project_location: String::from(evg_project_location.to_str().unwrap()),
         }
     }
 }
@@ -79,7 +83,13 @@ impl BurnInDiscovery for BurnInProxy {
                 .map(|s| s.as_str())
                 .collect(),
         );
-        cmd.append(&mut vec!["--build-variant", build_variant, "--yaml"]);
+        cmd.append(&mut vec![
+            "--build-variant",
+            build_variant,
+            "--yaml",
+            "--evg-project-file",
+            self.evg_project_location.as_str(),
+        ]);
         let start = Instant::now();
 
         let cmd_output = run_command(&cmd)?;
