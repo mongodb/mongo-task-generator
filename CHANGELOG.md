@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.7.3 - 2022-03-30
+* Pass evergreen file location when calling burn_in_tests.py.
+
 ## 0.7.2 - 2022-01-25
 * Use the compile variant of burn_in_tag_buildvariant for generating burn_in_tags.
 
