@@ -26,6 +26,9 @@ pub const GET_PROJECT_WITH_NO_MODULES: &str = "git get project no modules";
 /// Function to add a git tag.
 pub const ADD_GIT_TAG: &str = "add git tag";
 
+// Noop function which stores multiversion task data.
+pub const INITIALIZE_MULTIVERSION_TASKS: &str = "initialize multiversion tasks";
+//
 // Functions for generating tasks.
 pub const GENERATE_RESMOKE_TASKS: &str = "generate resmoke tasks";
 
@@ -103,7 +106,7 @@ pub const BURN_IN_TASK_NAME: &str = "burn_in_task_name";
 /// Tag to include multiversion setup is required.
 pub const MULTIVERSION: &str = "multiversion";
 /// Tag to indicate multiversion combination should not be created.
-pub const NO_MULTIVERSION_ITERATION: &str = "no_version_combination";
+pub const NO_MULTIVERSION_GENERATE_TASKS: &str = "no_multiversion_generate_tasks";
 
 // Multiversion values
 /// Tag to include required backport.

@@ -4313,7 +4313,7 @@ tasks:
 
 - <<: *gen_task_template
   name: multiversion_future_git_tag_gen
-  tags: ["multiversion", "no_version_combination", "multiversion_future_git_tag"]
+  tags: ["multiversion", "no_multiversion_generate_tasks", "multiversion_future_git_tag"]
   commands:
   - func: "generate resmoke tasks"
     vars:
@@ -4321,7 +4321,7 @@ tasks:
 
 - <<: *gen_task_template
   name: multiversion_auth_future_git_tag_gen
-  tags: ["auth", "multiversion", "no_version_combination", "multiversion_future_git_tag"]
+  tags: ["auth", "multiversion", "no_multiversion_generate_tasks", "multiversion_future_git_tag"]
   commands:
   - func: "generate resmoke tasks"
     vars:
@@ -4922,13 +4922,13 @@ tasks:
 
 - <<: *gen_task_template
   name: multiversion_auth_gen
-  tags: ["auth", "multiversion", "no_version_combination", "future_git_tag_incompatible"]
+  tags: ["auth", "multiversion", "no_multiversion_generate_tasks", "future_git_tag_incompatible"]
   commands:
   - func: "generate resmoke tasks"
 
 - <<: *gen_task_template
   name: multiversion_gen
-  tags: ["multiversion", "no_version_combination", "future_git_tag_incompatible"]
+  tags: ["multiversion", "no_multiversion_generate_tasks", "future_git_tag_incompatible"]
   commands:
   - func: "generate resmoke tasks"
 
@@ -4937,7 +4937,7 @@ tasks:
 # build variants that enable this task.
 - <<: *gen_task_template
   name: feature_flag_multiversion_gen
-  tags: ["multiversion", "no_version_combination"]
+  tags: ["multiversion", "no_multiversion_generate_tasks"]
   commands:
   - func: "generate resmoke tasks"
 
@@ -5679,7 +5679,7 @@ tasks:
 
 - <<: *gen_task_template
   name: sharding_last_lts_mongos_and_mixed_shards_gen
-  tags: ["sharding", "common", "multiversion", "no_version_combination"]
+  tags: ["sharding", "common", "multiversion", "no_multiversion_generate_tasks"]
   commands:
   - func: "generate resmoke tasks"
     vars:
@@ -5800,13 +5800,13 @@ tasks:
 # with all Repl multiversion combinations.
 - <<: *gen_task_template
   name: retryable_writes_downgrade_last_continuous_gen
-  tags: ["multiversion_passthrough", "multiversion", "no_version_combination"]
+  tags: ["multiversion_passthrough", "multiversion", "no_multiversion_generate_tasks"]
   commands:
   - func: "generate resmoke tasks"
 
 - <<: *gen_task_template
   name: retryable_writes_downgrade_last_lts_gen
-  tags: ["multiversion_passthrough", "multiversion", "no_version_combination"]
+  tags: ["multiversion_passthrough", "multiversion", "no_multiversion_generate_tasks"]
   commands:
     - func: "generate resmoke tasks"
 

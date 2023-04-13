@@ -210,7 +210,7 @@ impl BurnInServiceImpl {
                 .task_def_to_resmoke_params(task_def, false, None)?;
             update_resmoke_params_for_burn_in(&mut params, test);
 
-            if params.generate_multiversion_combos {
+            if params.require_multiversion_generate_tasks {
                 for (old_version, version_combination) in self
                     .multiversion_service
                     .multiversion_iter(&params.suite_name)?
@@ -270,7 +270,7 @@ impl BurnInServiceImpl {
                 .config_extraction_service
                 .task_def_to_resmoke_params(task_def, false, None)?;
 
-            if params.generate_multiversion_combos {
+            if params.require_multiversion_generate_tasks {
                 for (old_version, version_combination) in self
                     .multiversion_service
                     .multiversion_iter(&params.suite_name)?
@@ -674,7 +674,7 @@ mod tests {
             _platform: Option<String>,
         ) -> Result<ResmokeGenParams> {
             Ok(ResmokeGenParams {
-                generate_multiversion_combos: self.is_multiversion,
+                require_multiversion_generate_tasks: self.is_multiversion,
                 ..Default::default()
             })
         }

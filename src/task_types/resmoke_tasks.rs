@@ -19,9 +19,9 @@ use tokio::sync::Mutex;
 use tracing::{event, warn, Level};
 
 use crate::{
-    evergreen::evg_task_history::{
+    evergreen::{evg_task_history::{
         get_test_name, TaskHistoryService, TaskRuntimeHistory, TestRuntimeHistory,
-    },
+    }, evg_config_utils::MultiversionGenerateTaskConfig},
     evergreen_names::{
         ADD_GIT_TAG, CONFIGURE_EVG_API_CREDS, DO_MULTIVERSION_SETUP, DO_SETUP,
         GEN_TASK_CONFIG_LOCATION, GET_PROJECT_WITH_NO_MODULES, MULTIVERSION_EXCLUDE_TAG,
@@ -34,8 +34,7 @@ use crate::{
 
 use super::{
     generated_suite::{GeneratedSubTask, GeneratedSuite},
-    multiversion::MultiversionService,
-    resmoke_config_writer::ResmokeConfigActor,
+    resmoke_config_writer::ResmokeConfigActor, multiversion::MultiversionService,
 };
 
 /// Parameters describing how a specific resmoke suite should be generated.
@@ -43,14 +42,16 @@ use super::{
 pub struct ResmokeGenParams {
     /// Name of task being generated.
     pub task_name: String,
+    /// Multiversion tasks to generate.
+    pub multiversion_generate_tasks: Vec<MultiversionGenerateTaskConfig>,
     /// Name of suite being generated.
     pub suite_name: String,
     /// Should the generated tasks run on a 'large' distro.
     pub use_large_distro: bool,
     /// Does this task require multiversion setup.
     pub require_multiversion_setup: bool,
-    /// Should multiversion combinations be used for this task.
-    pub generate_multiversion_combos: bool,
+    /// Should multiversion generate tasks exist for this.
+    pub require_multiversion_generate_tasks: bool,
     /// Specify how many times resmoke should repeat the suite being tested.
     pub repeat_suites: Option<u64>,
     /// Arguments that should be passed to resmoke.
@@ -216,8 +217,8 @@ pub struct ResmokeSuiteGenerationInfo {
     /// List of generated sub-suites comprising task.
     pub sub_suites: Vec<SubSuite>,
 
-    /// If true, sub-tasks should be generated for multiversion combinations.
-    pub generate_multiversion_combos: bool,
+    /// If true, sub-tasks should be generated the the multiversion generate tasks.
+    pub require_multiversion_generate_tasks: bool,
 }
 
 /// Representation of a generated resmoke suite.
@@ -552,28 +553,22 @@ impl GenResmokeTaskServiceImpl {
     /// # Returns
     ///
     /// List of sub-suites that includes versions fall all multiversion combinations.
-    async fn create_multiversion_combinations(
+    async fn create_multiversion_tasks(
         &self,
         params: &ResmokeGenParams,
         build_variant: &str,
     ) -> Result<Vec<SubSuite>> {
+        if params.multiversion_generate_tasks.is_empty() {
+           panic!("Multiversion task definition expected to have 'multiversion_generate_tasks' but did not: `{}`", params.task_name)
+        }
         let mut mv_sub_suites = vec![];
-        for (old_version, version_combination) in self
-            .multiversion_service
-            .multiversion_iter(&params.suite_name)?
-        {
-            let multiversion_name = self.multiversion_service.name_multiversion_suite(
-                &params.suite_name,
-                &old_version,
-                &version_combination,
-            );
-            let multiversion_tags = Some(old_version.clone());
+        for multiversion_task in &params.multiversion_generate_tasks {
             let suites = self
                 .create_tasks(
                     params,
                     build_variant,
-                    Some(&multiversion_name),
-                    multiversion_tags,
+                    Some(&multiversion_task.suite_name.clone()),
+                    Some(multiversion_task.old_version.clone()),
                 )
                 .await?;
             mv_sub_suites.extend_from_slice(&suites);
@@ -711,8 +706,8 @@ impl GenResmokeTaskService for GenResmokeTaskServiceImpl {
         params: &ResmokeGenParams,
         build_variant: &str,
     ) -> Result<Box<dyn GeneratedSuite>> {
-        let sub_suites = if params.generate_multiversion_combos {
-            self.create_multiversion_combinations(params, build_variant)
+        let sub_suites = if params.require_multiversion_generate_tasks {
+            self.create_multiversion_tasks(params, build_variant)
                 .await?
         } else {
             self.create_tasks(params, build_variant, None, None).await?
@@ -723,7 +718,7 @@ impl GenResmokeTaskService for GenResmokeTaskServiceImpl {
             task_name: params.task_name.to_string(),
             origin_suite: params.suite_name.to_string(),
             sub_suites: sub_suites.clone(),
-            generate_multiversion_combos: params.generate_multiversion_combos,
+            require_multiversion_generate_tasks: params.require_multiversion_generate_tasks,
         };
         let mut resmoke_config_actor = self.resmoke_config_actor.lock().await;
         resmoke_config_actor.write_sub_suite(&suite_info).await;

@@ -404,7 +404,7 @@ mod tests {
         let suite_info = ResmokeSuiteGenerationInfo {
             task_name: "my_task".to_string(),
             origin_suite: "original_suite".to_string(),
-            generate_multiversion_combos: false,
+            require_multiversion_generate_tasks: false,
             sub_suites: vec![
                 SubSuite {
                     index: 0,
@@ -438,7 +438,7 @@ mod tests {
         let suite_info = ResmokeSuiteGenerationInfo {
             task_name: "my_task".to_string(),
             origin_suite: "original_suite".to_string(),
-            generate_multiversion_combos: false,
+            require_multiversion_generate_tasks: false,
             sub_suites: vec![
                 SubSuite {
                     index: 0,

@@ -17,12 +17,11 @@ use crate::{
         RESMOKE_JOBS_MAX, RUN_FUZZER, RUN_GENERATED_TESTS, SETUP_JSTESTFUZZ, SHOULD_SHUFFLE_TESTS,
         SUITE_NAME, TASK_NAME,
     },
-    utils::task_name::name_generated_task,
+    utils::task_name::name_generated_task, evergreen::evg_config_utils::MultiversionGenerateTaskConfig,
 };
 
 use super::{
-    generated_suite::{GeneratedSubTask, GeneratedSuite},
-    multiversion::MultiversionService,
+    generated_suite::{GeneratedSubTask, GeneratedSuite}, multiversion::MultiversionService,
 };
 
 /// Parameters for how a fuzzer task should be generated.
@@ -30,6 +29,8 @@ use super::{
 pub struct FuzzerGenTaskParams {
     /// Name of task being generated.
     pub task_name: String,
+    /// Multiversion tasks to generate.
+    pub multiversion_generate_tasks: Vec<MultiversionGenerateTaskConfig>,
     /// Name of build variant being generated on.
     pub variant: String,
     /// Resmoke suite for generated tests.
@@ -216,27 +217,24 @@ impl GenFuzzerService for GenFuzzerServiceImpl {
         let task_name = &params.task_name;
         let mut sub_tasks: Vec<EvgTask> = vec![];
         if params.is_multiversion() {
+            if params.multiversion_generate_tasks.is_empty() {
+               panic!("Multiversion task definition expected to have 'multiversion_generate_tasks' but did not: `{}`", params.task_name)
+            }
             event!(
                 Level::INFO,
                 task_name = task_name.as_str(),
                 "Generating multiversion fuzzer"
             );
-            for (old_version, version_combination) in
-                self.multiversion_service.multiversion_iter(&params.suite)?
-            {
-                let base_task_name =
-                    build_name(&params.task_name, &old_version, &version_combination);
-                let base_suite_name = build_name(&params.suite, &old_version, &version_combination);
-
+            for multiversion_task in &params.multiversion_generate_tasks {
                 sub_tasks.extend(
                     (0..params.num_tasks as usize)
                         .map(|i| {
                             build_fuzzer_sub_task(
-                                &base_task_name,
+                                &multiversion_task.suite_name,
                                 i,
                                 params,
-                                Some(&base_suite_name),
-                                Some(&old_version),
+                                Some(&multiversion_task.suite_name),
+                                Some(&multiversion_task.old_version),
                             )
                         })
                         .collect::<Vec<EvgTask>>(),

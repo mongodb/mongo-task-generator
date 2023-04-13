@@ -9,7 +9,7 @@ use shrub_rs::models::params::ParamValue;
 use shrub_rs::models::{commands::FunctionCall, task::EvgTask, variant::BuildVariant};
 
 use crate::evergreen_names::{
-    ENTERPRISE_MODULE, GENERATE_RESMOKE_TASKS, IS_FUZZER, LINUX, MACOS, RUN_RESMOKE_TESTS, WINDOWS,
+    ENTERPRISE_MODULE, GENERATE_RESMOKE_TASKS, IS_FUZZER, LINUX, MACOS, RUN_RESMOKE_TESTS, WINDOWS, INITIALIZE_MULTIVERSION_TASKS,
 };
 use crate::utils::task_name::remove_gen_suffix;
 
@@ -18,6 +18,15 @@ lazy_static! {
     ///   `${expansion}` or `${expansion|default_value}`
     static ref EXPANSION_RE: Regex =
         Regex::new(r"\$\{(?P<id>[a-zA-Z0-9_]+)(\|(?P<default>.*))?}").unwrap();
+}
+
+/// Multiversion task that will be generated.
+#[derive(Default, Debug, Clone)]
+pub struct MultiversionGenerateTaskConfig {
+    /// Name of suite to use for the generated task.
+    pub suite_name: String,
+    /// Old version to run testing against.
+    pub old_version: String,
 }
 
 pub trait EvgConfigUtils: Sync + Send {
@@ -64,6 +73,17 @@ pub trait EvgConfigUtils: Sync + Send {
     ///
     /// Set of tags assigned to the task.
     fn get_task_tags(&self, task: &EvgTask) -> HashSet<String>;
+
+    /// Get the multiversion generate tasks in the task definition.
+    ///
+    /// # Arguments
+    ///
+    /// * `task` - Evergreen task to query.
+    ///
+    /// # Returns
+    ///
+    /// List of multiversion generate tasks.
+    fn get_multiversion_generate_tasks(&self, task: &EvgTask) -> Vec<MultiversionGenerateTaskConfig>;
 
     /// Get a list of tasks the given task depends on.
     ///
@@ -341,6 +361,27 @@ impl EvgConfigUtils for EvgConfigUtilsImpl {
             .collect()
     }
 
+    /// Get the multiversion generate tasks in the task definition.
+    ///
+    /// # Arguments
+    ///
+    /// * `task` - Evergreen task to query.
+    ///
+    /// # Returns
+    ///
+    /// List of multiversion generate tasks.
+    fn get_multiversion_generate_tasks(&self, task: &EvgTask) -> Vec<MultiversionGenerateTaskConfig> {
+        let mut multiversion_generate_tasks = vec![];
+        if let Some(multiversion_task_map) = get_func_vars_by_name(task, INITIALIZE_MULTIVERSION_TASKS) {
+            for (suite_name, old_version) in multiversion_task_map {
+                if let ParamValue::String(value) = old_version {
+                    multiversion_generate_tasks.push(MultiversionGenerateTaskConfig{suite_name: suite_name.clone(), old_version: value.clone()});
+                }
+            }
+        }
+        return multiversion_generate_tasks;
+    }
+
     /// Get a list of tasks the given task depends on.
     ///
     /// # Arguments
@@ -370,7 +411,7 @@ impl EvgConfigUtils for EvgConfigUtilsImpl {
     ///
     /// Value of given variable in the 'generate resmoke task' vars.
     fn get_gen_task_var<'a>(&self, task: &'a EvgTask, var: &str) -> Option<&'a str> {
-        let generate_func = get_generate_resmoke_func(task);
+        let generate_func = get_func_by_name(task, GENERATE_RESMOKE_TASKS);
         if let Some(func) = generate_func {
             if let Some(vars) = &func.vars {
                 if let Some(ParamValue::String(value)) = vars.get(var) {
@@ -391,11 +432,8 @@ impl EvgConfigUtils for EvgConfigUtilsImpl {
     ///
     /// HashMap of vars in the 'generate resmoke task'.
     fn get_gen_task_vars(&self, task: &EvgTask) -> Option<HashMap<String, ParamValue>> {
-        let generate_func = get_generate_resmoke_func(task);
-        if let Some(func) = generate_func {
-            if let Some(vars) = &func.vars {
-                return Some(vars.clone());
-            }
+        if let Some(vars) = get_func_vars_by_name(task, GENERATE_RESMOKE_TASKS) {
+            return Some(vars.clone());
         }
         None
     }
@@ -636,15 +674,16 @@ impl EvgConfigUtils for EvgConfigUtilsImpl {
 /// # Arguments
 ///
 /// * `task` - Shrub task to query.
+/// * `func_name` - Function to lookup.
 ///
 /// # Returns
 ///
 /// Function call to 'generate resmoke task'.
-fn get_generate_resmoke_func(task: &EvgTask) -> Option<&FunctionCall> {
+fn get_func_by_name<'a>(task: &'a EvgTask, func_name: &str) -> Option<&'a FunctionCall> {
     let command = if let Some(commands) = &task.commands {
         commands.iter().find(|c| {
             if let Function(func) = c {
-                if func.func == GENERATE_RESMOKE_TASKS {
+                if func.func == func_name {
                     return true;
                 }
             }
@@ -661,6 +700,23 @@ fn get_generate_resmoke_func(task: &EvgTask) -> Option<&FunctionCall> {
     }
 }
 
+/// Get vars HashMap of the given func.
+///
+/// # Arguments
+///
+/// * `task` - Shrub task to query.
+/// * `func_name` - Function to lookup.
+///
+/// # Returns
+///
+/// HashMap of vars in the given function.
+fn get_func_vars_by_name<'a>(task: &'a EvgTask, func_name: &str) -> Option<&'a HashMap<String, ParamValue>> {
+    if let Some(func) = get_func_by_name(task, func_name) {
+        return func.vars.as_ref();
+    }
+    None
+}
+
 /// Get the vars passed to "generate resmoke task" or "run tests".
 ///
 /// # Arguments
@@ -671,26 +727,10 @@ fn get_generate_resmoke_func(task: &EvgTask) -> Option<&FunctionCall> {
 ///
 /// vars forwarded to resmoke.py.
 fn get_resmoke_vars(task: &EvgTask) -> Option<&HashMap<String, ParamValue>> {
-    let command = if let Some(commands) = &task.commands {
-        commands.iter().find(|c| {
-            if let Function(func) = c {
-                return func.func == GENERATE_RESMOKE_TASKS || func.func == RUN_RESMOKE_TESTS;
-            }
-            false
-        })
-    } else {
-        None
-    };
-
-    if let Some(Function(func)) = command {
-        if let Some(vars) = &func.vars {
-            Some(vars)
-        } else {
-            None
-        }
-    } else {
-        None
+    if let Some(generate_resmoke_tasks_vars) = get_func_vars_by_name(task, GENERATE_RESMOKE_TASKS) {
+        return Some(generate_resmoke_tasks_vars);
     }
+    return get_func_vars_by_name(task, RUN_RESMOKE_TESTS);
 }
 
 #[cfg(test)]
@@ -1094,7 +1134,7 @@ mod tests {
             ..Default::default()
         };
 
-        let func = get_generate_resmoke_func(&evg_task);
+        let func = get_func_by_name(&evg_task, GENERATE_RESMOKE_TASKS);
 
         assert_eq!(
             func.map(|f| &f.func),
@@ -1109,7 +1149,7 @@ mod tests {
             ..Default::default()
         };
 
-        let func = get_generate_resmoke_func(&evg_task);
+        let func = get_func_by_name(&evg_task, GENERATE_RESMOKE_TASKS);
 
         assert_eq!(func.is_none(), true);
     }
