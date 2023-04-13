@@ -34,7 +34,7 @@ pub fn run_command(command: &[&str]) -> Result<String> {
             stdout = regular_info,
             "Command encountered an error",
         );
-        bail!("Command encountered an error")
+        bail!(error_message)
     }
 
     let output = String::from_utf8_lossy(&cmd.stdout);
