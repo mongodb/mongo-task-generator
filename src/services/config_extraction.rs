@@ -7,8 +7,8 @@ use crate::{
     evergreen::evg_config_utils::EvgConfigUtils,
     evergreen_names::{
         CONTINUE_ON_FAILURE, FUZZER_PARAMETERS, IDLE_TIMEOUT, LARGE_DISTRO_EXPANSION, MULTIVERSION,
-        NO_MULTIVERSION_GENERATE_TASKS, NPM_COMMAND, NUM_FUZZER_FILES, NUM_FUZZER_TASKS, REPEAT_SUITES,
-        RESMOKE_ARGS, RESMOKE_JOBS_MAX, SHOULD_SHUFFLE_TESTS, USE_LARGE_DISTRO,
+        NO_MULTIVERSION_GENERATE_TASKS, NPM_COMMAND, NUM_FUZZER_FILES, NUM_FUZZER_TASKS,
+        REPEAT_SUITES, RESMOKE_ARGS, RESMOKE_JOBS_MAX, SHOULD_SHUFFLE_TESTS, USE_LARGE_DISTRO,
     },
     generate_sub_tasks_config::GenerateSubTasksConfig,
     task_types::{
@@ -229,7 +229,8 @@ impl ConfigExtractionService for ConfigExtractionServiceImpl {
                 false,
             )?,
             require_multiversion_setup,
-            require_multiversion_generate_tasks: require_multiversion_setup && !no_multiversion_generate_tasks,
+            require_multiversion_generate_tasks: require_multiversion_setup
+                && !no_multiversion_generate_tasks,
             repeat_suites: self
                 .evg_config_utils
                 .lookup_optional_param_u64(task_def, REPEAT_SUITES)?,
@@ -241,7 +242,9 @@ impl ConfigExtractionService for ConfigExtractionServiceImpl {
             resmoke_jobs_max: self
                 .evg_config_utils
                 .lookup_optional_param_u64(task_def, RESMOKE_JOBS_MAX)?,
-            multiversion_generate_tasks: self.evg_config_utils.get_multiversion_generate_tasks(task_def),
+            multiversion_generate_tasks: self
+                .evg_config_utils
+                .get_multiversion_generate_tasks(task_def),
             config_location: self.config_location.clone(),
             dependencies: self.determine_task_dependencies(task_def),
             is_enterprise,

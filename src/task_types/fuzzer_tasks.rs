@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
 use anyhow::Result;
 use maplit::hashmap;
@@ -10,6 +10,7 @@ use shrub_rs::models::{
 use tracing::{event, Level};
 
 use crate::{
+    evergreen::evg_config_utils::MultiversionGenerateTaskConfig,
     evergreen_names::{
         ADD_GIT_TAG, CONFIGURE_EVG_API_CREDS, CONTINUE_ON_FAILURE, DO_MULTIVERSION_SETUP, DO_SETUP,
         FUZZER_PARAMETERS, GEN_TASK_CONFIG_LOCATION, GET_PROJECT_WITH_NO_MODULES, IDLE_TIMEOUT,
@@ -17,12 +18,10 @@ use crate::{
         RESMOKE_JOBS_MAX, RUN_FUZZER, RUN_GENERATED_TESTS, SETUP_JSTESTFUZZ, SHOULD_SHUFFLE_TESTS,
         SUITE_NAME, TASK_NAME,
     },
-    utils::task_name::name_generated_task, evergreen::evg_config_utils::MultiversionGenerateTaskConfig,
+    utils::task_name::name_generated_task,
 };
 
-use super::{
-    generated_suite::{GeneratedSubTask, GeneratedSuite}, multiversion::MultiversionService,
-};
+use super::generated_suite::{GeneratedSubTask, GeneratedSuite};
 
 /// Parameters for how a fuzzer task should be generated.
 #[derive(Default, Debug, Clone)]
@@ -182,23 +181,7 @@ pub trait GenFuzzerService: Sync + Send {
 }
 
 /// Implementation of the GenFuzzerService.
-pub struct GenFuzzerServiceImpl {
-    /// Service to help generate multiversion test suites.
-    multiversion_service: Arc<dyn MultiversionService>,
-}
-
-impl GenFuzzerServiceImpl {
-    /// Create a new instance of the GenFuzzerService.
-    ///
-    /// # Arguments
-    ///
-    /// * `multiversion_service` - Service to help generate multiversion test suites.
-    pub fn new(multiversion_service: Arc<dyn MultiversionService>) -> Self {
-        Self {
-            multiversion_service: multiversion_service.clone(),
-        }
-    }
-}
+pub struct GenFuzzerServiceImpl;
 
 impl GenFuzzerService for GenFuzzerServiceImpl {
     /// Generate a fuzzer task based on the given parameters.
@@ -218,7 +201,7 @@ impl GenFuzzerService for GenFuzzerServiceImpl {
         let mut sub_tasks: Vec<EvgTask> = vec![];
         if params.is_multiversion() {
             if params.multiversion_generate_tasks.is_empty() {
-               panic!("Multiversion task definition expected to have 'multiversion_generate_tasks' but did not: `{}`", params.task_name)
+                panic!("Multiversion task definition expected to have 'multiversion_generate_tasks' but did not: `{}`", params.task_name)
             }
             event!(
                 Level::INFO,
@@ -309,31 +292,6 @@ fn build_fuzzer_sub_task(
         depends_on: params.get_dependencies(),
         ..Default::default()
     }
-}
-
-/// Build the name to use for a sub-task.
-///
-/// # Arguments
-///
-/// * `base_name` - Name of task.
-/// * `old_version` - Previous version to test against (i.e. lts or continuous).
-/// * `version_combination` - Versions to start replica set with.
-///
-/// # Returns
-///
-/// Name to use for generated sub-task.
-fn build_name(base_name: &str, old_version: &str, version_combination: &str) -> String {
-    [base_name, old_version, version_combination]
-        .iter()
-        .filter_map(|p| {
-            if !p.is_empty() {
-                Some(p.to_string())
-            } else {
-                None
-            }
-        })
-        .collect::<Vec<String>>()
-        .join("_")
 }
 
 #[cfg(test)]
@@ -475,24 +433,24 @@ mod tests {
     }
 
     // build_name
-    #[rstest]
-    #[case(
-        "agg_fuzzer",
-        "last_lts",
-        "new_old_new",
-        "agg_fuzzer_last_lts_new_old_new"
-    )]
-    #[case("agg_fuzzer", "last_lts", "", "agg_fuzzer_last_lts")]
-    fn test_build_name(
-        #[case] base_name: &str,
-        #[case] old_version: &str,
-        #[case] version_combination: &str,
-        #[case] expected: &str,
-    ) {
-        let name = build_name(base_name, old_version, version_combination);
+    // #[rstest]
+    // #[case(
+    //     "agg_fuzzer",
+    //     "last_lts",
+    //     "new_old_new",
+    //     "agg_fuzzer_last_lts_new_old_new"
+    // )]
+    // #[case("agg_fuzzer", "last_lts", "", "agg_fuzzer_last_lts")]
+    // fn test_build_name(
+    //     #[case] base_name: &str,
+    //     #[case] old_version: &str,
+    //     #[case] version_combination: &str,
+    //     #[case] expected: &str,
+    // ) {
+    //     let name = build_name(base_name, old_version, version_combination);
 
-        assert_eq!(name, expected);
-    }
+    //     assert_eq!(name, expected);
+    // }
 
     // `build_fuzzer_sub_task` tests.
 

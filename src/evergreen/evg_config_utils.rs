@@ -9,7 +9,8 @@ use shrub_rs::models::params::ParamValue;
 use shrub_rs::models::{commands::FunctionCall, task::EvgTask, variant::BuildVariant};
 
 use crate::evergreen_names::{
-    ENTERPRISE_MODULE, GENERATE_RESMOKE_TASKS, IS_FUZZER, LINUX, MACOS, RUN_RESMOKE_TESTS, WINDOWS, INITIALIZE_MULTIVERSION_TASKS,
+    ENTERPRISE_MODULE, GENERATE_RESMOKE_TASKS, INITIALIZE_MULTIVERSION_TASKS, IS_FUZZER, LINUX,
+    MACOS, RUN_RESMOKE_TESTS, WINDOWS,
 };
 use crate::utils::task_name::remove_gen_suffix;
 
@@ -83,7 +84,10 @@ pub trait EvgConfigUtils: Sync + Send {
     /// # Returns
     ///
     /// List of multiversion generate tasks.
-    fn get_multiversion_generate_tasks(&self, task: &EvgTask) -> Vec<MultiversionGenerateTaskConfig>;
+    fn get_multiversion_generate_tasks(
+        &self,
+        task: &EvgTask,
+    ) -> Vec<MultiversionGenerateTaskConfig>;
 
     /// Get a list of tasks the given task depends on.
     ///
@@ -370,16 +374,24 @@ impl EvgConfigUtils for EvgConfigUtilsImpl {
     /// # Returns
     ///
     /// List of multiversion generate tasks.
-    fn get_multiversion_generate_tasks(&self, task: &EvgTask) -> Vec<MultiversionGenerateTaskConfig> {
+    fn get_multiversion_generate_tasks(
+        &self,
+        task: &EvgTask,
+    ) -> Vec<MultiversionGenerateTaskConfig> {
         let mut multiversion_generate_tasks = vec![];
-        if let Some(multiversion_task_map) = get_func_vars_by_name(task, INITIALIZE_MULTIVERSION_TASKS) {
+        if let Some(multiversion_task_map) =
+            get_func_vars_by_name(task, INITIALIZE_MULTIVERSION_TASKS)
+        {
             for (suite_name, old_version) in multiversion_task_map {
                 if let ParamValue::String(value) = old_version {
-                    multiversion_generate_tasks.push(MultiversionGenerateTaskConfig{suite_name: suite_name.clone(), old_version: value.clone()});
+                    multiversion_generate_tasks.push(MultiversionGenerateTaskConfig {
+                        suite_name: suite_name.clone(),
+                        old_version: value.clone(),
+                    });
                 }
             }
         }
-        return multiversion_generate_tasks;
+        multiversion_generate_tasks
     }
 
     /// Get a list of tasks the given task depends on.
@@ -710,7 +722,10 @@ fn get_func_by_name<'a>(task: &'a EvgTask, func_name: &str) -> Option<&'a Functi
 /// # Returns
 ///
 /// HashMap of vars in the given function.
-fn get_func_vars_by_name<'a>(task: &'a EvgTask, func_name: &str) -> Option<&'a HashMap<String, ParamValue>> {
+fn get_func_vars_by_name<'a>(
+    task: &'a EvgTask,
+    func_name: &str,
+) -> Option<&'a HashMap<String, ParamValue>> {
     if let Some(func) = get_func_by_name(task, func_name) {
         return func.vars.as_ref();
     }
