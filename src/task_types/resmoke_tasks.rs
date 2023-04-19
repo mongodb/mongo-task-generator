@@ -47,7 +47,7 @@ pub struct ResmokeGenParams {
     /// Name of task being generated.
     pub task_name: String,
     /// Multiversion tasks to generate.
-    pub multiversion_generate_tasks: Vec<MultiversionGenerateTaskConfig>,
+    pub multiversion_generate_tasks: Option<Vec<MultiversionGenerateTaskConfig>>,
     /// Name of suite being generated.
     pub suite_name: String,
     /// Should the generated tasks run on a 'large' distro.
@@ -562,11 +562,8 @@ impl GenResmokeTaskServiceImpl {
         params: &ResmokeGenParams,
         build_variant: &str,
     ) -> Result<Vec<SubSuite>> {
-        if params.multiversion_generate_tasks.is_empty() {
-            panic!("Multiversion task definition expected to have 'multiversion_generate_tasks' but did not: `{}`", params.task_name)
-        }
         let mut mv_sub_suites = vec![];
-        for multiversion_task in &params.multiversion_generate_tasks {
+        for multiversion_task in params.multiversion_generate_tasks.as_ref().unwrap() {
             let suites = self
                 .create_tasks(
                     params,
@@ -1093,10 +1090,7 @@ mod tests {
         }
     }
 
-    struct MockMultiversionService {
-        old_version: Vec<String>,
-        version_combos: Vec<String>,
-    }
+    struct MockMultiversionService {}
     impl MultiversionService for MockMultiversionService {
         fn exclude_tags_for_task(&self, _task_name: &str, _mv_mode: Option<String>) -> String {
             "tag_0,tag_1".to_string()
@@ -1107,14 +1101,9 @@ mod tests {
         test_list: Vec<String>,
         task_history: TaskRuntimeHistory,
         n_suites: usize,
-        old_version: Vec<String>,
-        version_combos: Vec<String>,
     ) -> GenResmokeTaskServiceImpl {
         let test_discovery = MockTestDiscovery { test_list };
-        let multiversion_service = MockMultiversionService {
-            old_version,
-            version_combos,
-        };
+        let multiversion_service = MockMultiversionService {};
         let task_history_service = MockTaskHistoryService {
             task_history: task_history.clone(),
         };
@@ -1162,13 +1151,8 @@ mod tests {
                 "test_5".to_string() => build_mock_test_runtime("test_5.js", 30.0),
             },
         };
-        let gen_resmoke_service = build_mocked_service(
-            test_list.clone(),
-            task_history.clone(),
-            n_suites,
-            vec![],
-            vec![],
-        );
+        let gen_resmoke_service =
+            build_mocked_service(test_list.clone(), task_history.clone(), n_suites);
 
         let params = ResmokeGenParams {
             ..Default::default()
@@ -1205,8 +1189,7 @@ mod tests {
                 "test_2".to_string() => build_mock_test_runtime("test_2.js", 50.0),
             },
         };
-        let gen_resmoke_service =
-            build_mocked_service(test_list, task_history.clone(), n_suites, vec![], vec![]);
+        let gen_resmoke_service = build_mocked_service(test_list, task_history.clone(), n_suites);
 
         let params = ResmokeGenParams {
             ..Default::default()
@@ -1240,8 +1223,7 @@ mod tests {
                 "test_2".to_string() => build_mock_test_runtime("test_2.js", 50.0),
             },
         };
-        let gen_resmoke_service =
-            build_mocked_service(test_list, task_history.clone(), n_suites, vec![], vec![]);
+        let gen_resmoke_service = build_mocked_service(test_list, task_history.clone(), n_suites);
 
         let params = ResmokeGenParams {
             ..Default::default()
@@ -1280,13 +1262,8 @@ mod tests {
             task_name: "my task".to_string(),
             test_map: hashmap! {},
         };
-        let gen_resmoke_service = build_mocked_service(
-            test_list.clone(),
-            task_history.clone(),
-            n_suites,
-            vec![],
-            vec![],
-        );
+        let gen_resmoke_service =
+            build_mocked_service(test_list.clone(), task_history.clone(), n_suites);
 
         let params = ResmokeGenParams {
             ..Default::default()
@@ -1334,8 +1311,7 @@ mod tests {
             task_name: "my task".to_string(),
             test_map: hashmap! {},
         };
-        let gen_resmoke_service =
-            build_mocked_service(test_list, task_history.clone(), n_suites, vec![], vec![]);
+        let gen_resmoke_service = build_mocked_service(test_list, task_history.clone(), n_suites);
 
         let params = ResmokeGenParams {
             is_enterprise,
@@ -1375,7 +1351,7 @@ mod tests {
             test_map: hashmap! {},
         };
         let mut gen_resmoke_service =
-            build_mocked_service(test_list, task_history.clone(), n_suites, vec![], vec![]);
+            build_mocked_service(test_list, task_history.clone(), n_suites);
         gen_resmoke_service.config.enterprise_dir = None;
 
         let params = ResmokeGenParams {
@@ -1394,66 +1370,58 @@ mod tests {
     }
 
     // create_multiversion_combinations tests.
-    // #[tokio::test]
-    // async fn test_create_multiversion_combinations() {
-    //     let old_version = vec!["last_lts".to_string(), "continuous".to_string()];
-    //     let version_combos = vec!["new_new_new".to_string(), "old_new_old".to_string()];
-    //     let sub_suites = vec![
-    //         SubSuite {
-    //             index: 0,
-    //             name: "suite".to_string(),
-    //             origin_suite: "suite".to_string(),
-    //             test_list: vec!["test_0.js".to_string(), "test_1.js".to_string()],
-    //             ..Default::default()
-    //         },
-    //         SubSuite {
-    //             index: 1,
-    //             name: "suite".to_string(),
-    //             origin_suite: "suite".to_string(),
-    //             test_list: vec!["test_2.js".to_string(), "test_3.js".to_string()],
-    //             ..Default::default()
-    //         },
-    //     ];
-    //     let params = ResmokeGenParams {
-    //         suite_name: "suite".to_string(),
-    //         ..Default::default()
-    //     };
-    //     let task_history = TaskRuntimeHistory {
-    //         task_name: "my task".to_string(),
-    //         test_map: hashmap! {},
-    //     };
-    //     let gen_resmoke_service = build_mocked_service(
-    //         vec![
-    //             "test_0.js".to_string(),
-    //             "test_1.js".to_string(),
-    //             "test_2.js".to_string(),
-    //             "test_3.js".to_string(),
-    //         ],
-    //         task_history,
-    //         1,
-    //         old_version.clone(),
-    //         version_combos.clone(),
-    //     );
+    #[tokio::test]
+    async fn test_create_multiversion_tasks() {
+        let params = ResmokeGenParams {
+            multiversion_generate_tasks: Some(vec![
+                MultiversionGenerateTaskConfig {
+                    suite_name: "suite1_last_lts".to_string(),
+                    old_version: "last-lts".to_string(),
+                },
+                MultiversionGenerateTaskConfig {
+                    suite_name: "suite1_last_continuous".to_string(),
+                    old_version: "last-continuous".to_string(),
+                },
+            ]),
+            ..Default::default()
+        };
+        let task_history = TaskRuntimeHistory {
+            task_name: "my task".to_string(),
+            test_map: hashmap! {},
+        };
+        let test_list = vec![
+            "test_0.js".to_string(),
+            "test_1.js".to_string(),
+            "test_2.js".to_string(),
+            "test_3.js".to_string(),
+        ];
+        let gen_resmoke_service = build_mocked_service(test_list.clone(), task_history, 1);
 
-    //     let suite_list = gen_resmoke_service
-    //         .create_multiversion_tasks(&params, "build_variant")
-    //         .await
-    //         .unwrap();
+        let suite_list = gen_resmoke_service
+            .create_multiversion_tasks(&params, "build_variant")
+            .await
+            .unwrap();
 
-    //     for version in old_version {
-    //         for combo in &version_combos {
-    //             for sub_suite in &sub_suites {
-    //                 let sub_task_name = format!("{}_{}_{}", &sub_suite.name, version, combo);
-    //                 let suite = suite_list.iter().find(|s| s.name == sub_task_name);
-    //                 assert!(suite.is_some());
-    //             }
-    //         }
-    //     }
-    // }
+        assert_eq!(suite_list[0].name, "suite1_last_lts".to_string());
+        assert_eq!(suite_list[0].mv_exclude_tags, Some("last-lts".to_string()));
+        assert!(suite_list[0]
+            .test_list
+            .iter()
+            .all(|test| test_list.contains(test)));
+        assert_eq!(suite_list[1].name, "suite1_last_continuous".to_string());
+        assert_eq!(
+            suite_list[1].mv_exclude_tags,
+            Some("last-continuous".to_string())
+        );
+        assert!(suite_list[1]
+            .test_list
+            .iter()
+            .all(|test| test_list.contains(test)));
+    }
 
     // generate_resmoke_task tests.
     #[tokio::test]
-    async fn test_generate_resmoke_tasks() {
+    async fn test_generate_resmoke_tasks_standard() {
         // In this test we will create 3 subtasks with 6 tests. The first sub task should contain
         // a single test. The second 2 tests and the third 3 tests. We will set the test runtimes
         // to make this happen.
@@ -1473,11 +1441,11 @@ mod tests {
                 "test_5".to_string() => build_mock_test_runtime("test_5.js", 34.0),
             },
         };
-        let gen_resmoke_service =
-            build_mocked_service(test_list, task_history.clone(), n_suites, vec![], vec![]);
+        let gen_resmoke_service = build_mocked_service(test_list, task_history.clone(), n_suites);
 
         let params = ResmokeGenParams {
             task_name: "my_task".to_string(),
+            require_multiversion_generate_tasks: false,
             ..Default::default()
         };
 
@@ -1488,6 +1456,86 @@ mod tests {
 
         assert_eq!(suite.display_name(), "my_task".to_string());
         assert_eq!(suite.sub_tasks().len(), n_suites);
+    }
+
+    #[tokio::test]
+    async fn test_generate_resmoke_tasks_multiversion_success() {
+        let n_suites = 3;
+        let test_list: Vec<String> = (0..6)
+            .into_iter()
+            .map(|i| format!("test_{}.js", i))
+            .collect();
+        let task_history = TaskRuntimeHistory {
+            task_name: "my_task".to_string(),
+            test_map: hashmap! {
+                "test_0".to_string() => build_mock_test_runtime("test_0.js", 100.0),
+                "test_1".to_string() => build_mock_test_runtime("test_1.js", 50.0),
+                "test_2".to_string() => build_mock_test_runtime("test_2.js", 50.0),
+                "test_3".to_string() => build_mock_test_runtime("test_3.js", 34.0),
+                "test_4".to_string() => build_mock_test_runtime("test_4.js", 34.0),
+                "test_5".to_string() => build_mock_test_runtime("test_5.js", 34.0),
+            },
+        };
+        let gen_resmoke_service = build_mocked_service(test_list, task_history.clone(), n_suites);
+
+        let generate_tasks = vec![
+            MultiversionGenerateTaskConfig {
+                suite_name: "suite1_last_lts".to_string(),
+                old_version: "last-lts".to_string(),
+            },
+            MultiversionGenerateTaskConfig {
+                suite_name: "suite1_last_continuous".to_string(),
+                old_version: "last-continuous".to_string(),
+            },
+        ];
+        let params = ResmokeGenParams {
+            task_name: "my_task".to_string(),
+            multiversion_generate_tasks: Some(generate_tasks.clone()),
+            require_multiversion_generate_tasks: true,
+            ..Default::default()
+        };
+
+        let suite = gen_resmoke_service
+            .generate_resmoke_task(&params, "build-variant")
+            .await
+            .unwrap();
+
+        assert_eq!(suite.display_name(), "my_task".to_string());
+        assert_eq!(suite.sub_tasks().len(), n_suites * generate_tasks.len());
+    }
+
+    #[tokio::test]
+    #[should_panic]
+    async fn test_generate_resmoke_tasks_multiversion_fail() {
+        let n_suites = 3;
+        let test_list: Vec<String> = (0..6)
+            .into_iter()
+            .map(|i| format!("test_{}.js", i))
+            .collect();
+        let task_history = TaskRuntimeHistory {
+            task_name: "my_task".to_string(),
+            test_map: hashmap! {
+                "test_0".to_string() => build_mock_test_runtime("test_0.js", 100.0),
+                "test_1".to_string() => build_mock_test_runtime("test_1.js", 50.0),
+                "test_2".to_string() => build_mock_test_runtime("test_2.js", 50.0),
+                "test_3".to_string() => build_mock_test_runtime("test_3.js", 34.0),
+                "test_4".to_string() => build_mock_test_runtime("test_4.js", 34.0),
+                "test_5".to_string() => build_mock_test_runtime("test_5.js", 34.0),
+            },
+        };
+        let gen_resmoke_service = build_mocked_service(test_list, task_history.clone(), n_suites);
+
+        let params = ResmokeGenParams {
+            task_name: "my_task".to_string(),
+            multiversion_generate_tasks: None,
+            require_multiversion_generate_tasks: true,
+            ..Default::default()
+        };
+
+        gen_resmoke_service
+            .generate_resmoke_task(&params, "build-variant")
+            .await
+            .unwrap();
     }
 
     // resmoke_commands tests.

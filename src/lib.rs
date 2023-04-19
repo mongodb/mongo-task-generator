@@ -168,7 +168,7 @@ impl Dependencies {
         )?);
         let evg_config_service = Arc::new(execution_config.project_info.get_project_config()?);
         let evg_config_utils = Arc::new(EvgConfigUtilsImpl::new());
-        let gen_fuzzer_service = Arc::new(GenFuzzerServiceImpl);
+        let gen_fuzzer_service = Arc::new(GenFuzzerServiceImpl::new());
         let gen_sub_tasks_config = execution_config
             .project_info
             .get_generate_sub_tasks_config()?;
@@ -991,8 +991,8 @@ mod tests {
     impl EvgConfigUtils for MockEvgConfigUtils {
         fn get_multiversion_generate_tasks(
             &self,
-            task: &EvgTask,
-        ) -> Vec<MultiversionGenerateTaskConfig> {
+            _task: &EvgTask,
+        ) -> Option<Vec<MultiversionGenerateTaskConfig>> {
             todo!()
         }
         fn is_task_generated(&self, _task: &EvgTask) -> bool {

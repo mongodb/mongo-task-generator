@@ -22,7 +22,7 @@ lazy_static! {
 }
 
 /// Multiversion task that will be generated.
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Debug, Clone, PartialEq)]
 pub struct MultiversionGenerateTaskConfig {
     /// Name of suite to use for the generated task.
     pub suite_name: String,
@@ -87,7 +87,7 @@ pub trait EvgConfigUtils: Sync + Send {
     fn get_multiversion_generate_tasks(
         &self,
         task: &EvgTask,
-    ) -> Vec<MultiversionGenerateTaskConfig>;
+    ) -> Option<Vec<MultiversionGenerateTaskConfig>>;
 
     /// Get a list of tasks the given task depends on.
     ///
@@ -377,11 +377,11 @@ impl EvgConfigUtils for EvgConfigUtilsImpl {
     fn get_multiversion_generate_tasks(
         &self,
         task: &EvgTask,
-    ) -> Vec<MultiversionGenerateTaskConfig> {
-        let mut multiversion_generate_tasks = vec![];
+    ) -> Option<Vec<MultiversionGenerateTaskConfig>> {
         if let Some(multiversion_task_map) =
             get_func_vars_by_name(task, INITIALIZE_MULTIVERSION_TASKS)
         {
+            let mut multiversion_generate_tasks = vec![];
             for (suite_name, old_version) in multiversion_task_map {
                 if let ParamValue::String(value) = old_version {
                     multiversion_generate_tasks.push(MultiversionGenerateTaskConfig {
@@ -390,8 +390,9 @@ impl EvgConfigUtils for EvgConfigUtilsImpl {
                     });
                 }
             }
+            return Some(multiversion_generate_tasks);
         }
-        multiversion_generate_tasks
+        None
     }
 
     /// Get a list of tasks the given task depends on.
@@ -423,12 +424,9 @@ impl EvgConfigUtils for EvgConfigUtilsImpl {
     ///
     /// Value of given variable in the 'generate resmoke task' vars.
     fn get_gen_task_var<'a>(&self, task: &'a EvgTask, var: &str) -> Option<&'a str> {
-        let generate_func = get_func_by_name(task, GENERATE_RESMOKE_TASKS);
-        if let Some(func) = generate_func {
-            if let Some(vars) = &func.vars {
-                if let Some(ParamValue::String(value)) = vars.get(var) {
-                    return Some(value);
-                }
+        if let Some(vars) = get_func_vars_by_name(task, GENERATE_RESMOKE_TASKS) {
+            if let Some(ParamValue::String(value)) = vars.get(var) {
+                return Some(value);
             }
         }
         None
@@ -1137,13 +1135,97 @@ mod tests {
         );
     }
 
-    // get_generated_resmoke_func tests.
+    // get_multiversion_generate_tasks tests.
     #[test]
-    fn test_get_generated_resmoke_func_should_return_resmoke_function() {
+    fn test_get_multiversion_generate_tasks_returns_empty_if_init_func_dne() {
         let evg_task = EvgTask {
             commands: Some(vec![
                 fn_call("hello world"),
-                fn_call("generate resmoke tasks"),
+                fn_call(GENERATE_RESMOKE_TASKS),
+                fn_call("run tests"),
+            ]),
+            ..Default::default()
+        };
+        let evg_config_utils = EvgConfigUtilsImpl::new();
+        let multiversion_generate_tasks =
+            evg_config_utils.get_multiversion_generate_tasks(&evg_task);
+        assert_eq!(multiversion_generate_tasks, None)
+    }
+
+    #[test]
+    fn test_get_multiversion_generate_tasks_if_init_func_exists() {
+        let vars = hashmap! {
+                        "mv_suite1_last_continuous".to_string() => ParamValue::from("last-continuous"),
+                        "mv_suite1_last_lts".to_string() => ParamValue::from("last-lts"),
+        };
+        let evg_task = EvgTask {
+            commands: Some(vec![
+                fn_call("hello world"),
+                fn_call_with_params(INITIALIZE_MULTIVERSION_TASKS, vars.clone()),
+                fn_call(GENERATE_RESMOKE_TASKS),
+                fn_call("run tests"),
+            ]),
+            ..Default::default()
+        };
+        let evg_config_utils = EvgConfigUtilsImpl::new();
+        let multiversion_generate_tasks =
+            evg_config_utils.get_multiversion_generate_tasks(&evg_task);
+        let expected_generate_tasks = vec![
+            MultiversionGenerateTaskConfig {
+                suite_name: "mv_suite1_last_continuous".to_string(),
+                old_version: "last-continuous".to_string(),
+            },
+            MultiversionGenerateTaskConfig {
+                suite_name: "mv_suite1_last_lts".to_string(),
+                old_version: "last-lts".to_string(),
+            },
+        ];
+        assert!(multiversion_generate_tasks
+            .unwrap()
+            .iter()
+            .all(|task| expected_generate_tasks.contains(task)));
+    }
+
+    // get_func_vars_by_name tests.
+    #[test]
+    fn test_get_func_vars_by_name_return_none_if_no_func_exists() {
+        let evg_task = EvgTask {
+            commands: Some(vec![
+                fn_call("hello world"),
+                fn_call(GENERATE_RESMOKE_TASKS),
+                fn_call("run tests"),
+            ]),
+            ..Default::default()
+        };
+        let vars = get_func_vars_by_name(&evg_task, GENERATE_RESMOKE_TASKS);
+        assert_eq!(vars, None)
+    }
+
+    #[test]
+    fn test_get_func_vars_by_name_return_vars_if_func_exists() {
+        let vars = hashmap! {
+                        "var1".to_string() => ParamValue::from("value1"),
+                        "var2".to_string() => ParamValue::from("value2"),
+        };
+        let evg_task = EvgTask {
+            commands: Some(vec![
+                fn_call("hello world"),
+                fn_call_with_params(GENERATE_RESMOKE_TASKS, vars.clone()),
+                fn_call("run tests"),
+            ]),
+            ..Default::default()
+        };
+        let extracted_vars = get_func_vars_by_name(&evg_task, GENERATE_RESMOKE_TASKS);
+        assert_eq!(extracted_vars.unwrap(), &vars)
+    }
+
+    // get_func_by_name tests.
+    #[test]
+    fn test_get_func_by_name_should_return_function_if_func_exists() {
+        let evg_task = EvgTask {
+            commands: Some(vec![
+                fn_call("hello world"),
+                fn_call(GENERATE_RESMOKE_TASKS),
                 fn_call("run tests"),
             ]),
             ..Default::default()
@@ -1158,7 +1240,7 @@ mod tests {
     }
 
     #[test]
-    fn test_get_generated_resmoke_func_should_return_none_if_no_func_exists() {
+    fn test_get_func_by_name_should_return_none_if_no_func_exists() {
         let evg_task = EvgTask {
             commands: Some(vec![fn_call("hello world"), fn_call("run tests")]),
             ..Default::default()
