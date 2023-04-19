@@ -184,7 +184,7 @@ pub trait GenFuzzerService: Sync + Send {
 pub struct GenFuzzerServiceImpl {}
 
 impl GenFuzzerServiceImpl {
-    /// Create a new instance of the EvgConfigUtilsImpl.
+    /// Create a new instance of the GenFuzzerService.
     pub fn new() -> Self {
         Self {}
     }

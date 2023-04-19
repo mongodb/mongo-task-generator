@@ -54,7 +54,7 @@ impl MultiversionServiceImpl {
     ///
     /// # Arguments
     ///
-    /// * `discovery_service` - Instance of service to query details about test suites.
+    /// * `multiversion_config` - Instance of multiversion config.
     pub fn new(multiversion_config: MultiversionConfig) -> Result<Self> {
         Ok(Self {
             multiversion_config,

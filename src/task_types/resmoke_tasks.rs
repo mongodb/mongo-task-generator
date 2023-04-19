@@ -221,7 +221,7 @@ pub struct ResmokeSuiteGenerationInfo {
     /// List of generated sub-suites comprising task.
     pub sub_suites: Vec<SubSuite>,
 
-    /// If true, sub-tasks should be generated the the multiversion generate tasks.
+    /// If true, sub-tasks should be generated for the multiversion generate tasks.
     pub require_multiversion_generate_tasks: bool,
 }
 
@@ -556,7 +556,7 @@ impl GenResmokeTaskServiceImpl {
     ///
     /// # Returns
     ///
-    /// List of sub-suites that includes versions fall all multiversion combinations.
+    /// List of all sub-suites for a multiversion task with generate tasks.
     async fn create_multiversion_tasks(
         &self,
         params: &ResmokeGenParams,
@@ -1461,20 +1461,15 @@ mod tests {
     #[tokio::test]
     async fn test_generate_resmoke_tasks_multiversion_success() {
         let n_suites = 3;
-        let test_list: Vec<String> = (0..6)
-            .into_iter()
-            .map(|i| format!("test_{}.js", i))
-            .collect();
+        let test_list = vec![
+            "test_0.js".to_string(),
+            "test_1.js".to_string(),
+            "test_2.js".to_string(),
+            "test_3.js".to_string(),
+        ];
         let task_history = TaskRuntimeHistory {
             task_name: "my_task".to_string(),
-            test_map: hashmap! {
-                "test_0".to_string() => build_mock_test_runtime("test_0.js", 100.0),
-                "test_1".to_string() => build_mock_test_runtime("test_1.js", 50.0),
-                "test_2".to_string() => build_mock_test_runtime("test_2.js", 50.0),
-                "test_3".to_string() => build_mock_test_runtime("test_3.js", 34.0),
-                "test_4".to_string() => build_mock_test_runtime("test_4.js", 34.0),
-                "test_5".to_string() => build_mock_test_runtime("test_5.js", 34.0),
-            },
+            test_map: hashmap! {},
         };
         let gen_resmoke_service = build_mocked_service(test_list, task_history.clone(), n_suites);
 
@@ -1508,20 +1503,15 @@ mod tests {
     #[should_panic]
     async fn test_generate_resmoke_tasks_multiversion_fail() {
         let n_suites = 3;
-        let test_list: Vec<String> = (0..6)
-            .into_iter()
-            .map(|i| format!("test_{}.js", i))
-            .collect();
+        let test_list = vec![
+            "test_0.js".to_string(),
+            "test_1.js".to_string(),
+            "test_2.js".to_string(),
+            "test_3.js".to_string(),
+        ];
         let task_history = TaskRuntimeHistory {
             task_name: "my_task".to_string(),
-            test_map: hashmap! {
-                "test_0".to_string() => build_mock_test_runtime("test_0.js", 100.0),
-                "test_1".to_string() => build_mock_test_runtime("test_1.js", 50.0),
-                "test_2".to_string() => build_mock_test_runtime("test_2.js", 50.0),
-                "test_3".to_string() => build_mock_test_runtime("test_3.js", 34.0),
-                "test_4".to_string() => build_mock_test_runtime("test_4.js", 34.0),
-                "test_5".to_string() => build_mock_test_runtime("test_5.js", 34.0),
-            },
+            test_map: hashmap! {},
         };
         let gen_resmoke_service = build_mocked_service(test_list, task_history.clone(), n_suites);
 
