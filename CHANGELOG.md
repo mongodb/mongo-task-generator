@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.7.4 - 2022-04-14
+## 0.7.5 - 2022-04-14
 * Make resmoke errors easier to see in version_gen.
 
 ## 0.7.3 - 2022-03-30
