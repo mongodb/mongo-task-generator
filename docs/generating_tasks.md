@@ -36,17 +36,17 @@ we can see how this is controlled:
 ...
 
 - <<: *jstestfuzz_template
-  name: aggregation_expression_multiversion_fuzzer_gen
-  tags: ["aggfuzzer", "multiversion", "require_npm", "random_name"]
+  name: initial_sync_fuzzer_gen
+  tags: ["require_npm", "random_name"]
   commands:
   - func: "generate resmoke tasks"
     vars:
       <<: *jstestfuzz_config_vars
-      num_files: 5
+      num_files: 10
       num_tasks: 5
-      suite: generational_fuzzer
+      npm_command: initsync-fuzzer
+      suite: initial_sync_fuzzer
       resmoke_args: "--mongodSetParameters='{logComponentVerbosity: {command: 2}}'"
-      npm_command: agg-expr-fuzzer
 ```
 
 When generating a fuzzer most of the variables under the `"generate resmoke tasks"` function will
@@ -54,8 +54,8 @@ be passed along to the generated tasks. The one exception is the `num_tasks` var
 variable controls how many instances of this task will be created and executed. Since these
 generated tasks can be executed independently, they can be executed on multiple hosts in parallel.
 
-In this sample, we would generated 5 tasks of this fuzzer and each of them would create and run 5
-fuzzer test files, executing a total of 25 fuzzer tests.
+In this sample, we would generated 5 tasks of this fuzzer and each of them would create and run 10
+fuzzer test files, executing a total of 50 fuzzer tests.
 
 It is important to note that the `mongo-task-generator` can tell this is a task it should generate
 configuration for because it runs the `"generate resmoke tasks"` function. Additionally, it is able
@@ -145,7 +145,7 @@ tasks configuration:
 ```yaml
 - <<: *gen_task_template
   name: multiversion_auth_future_git_tag_gen
-  tags: ["auth", "multiversion", "no_version_combination", "multiversion_future_git_tag"]
+  tags: ["auth", "multiversion", "no_multiversion_generate_tasks", "multiversion_future_git_tag"]
   commands:
   - func: "generate resmoke tasks"
     vars:
@@ -154,9 +154,28 @@ tasks configuration:
 
 A task is marked as a multiversion version task by including `"multiversion"` in the `tags` section
 of the task definition. When this tag is present, both the extra setup steps and the generation
-of multiversion sub-tasks will be preformed. In order to only perform the extra setup steps
-the `"no_version_combinations"` tag should also be included.
+of multiversion sub-tasks will be performed. In order to only perform the extra setup steps
+the `"no_multiversion_generate_tasks"` tag should also be included. This is typically used for [explicit multiversion](https://github.com/10gen/mongo/blob/99f7a334eee4b724a231c0db75052eb8199ad8e1/docs/evergreen-testing/multiversion.md#explicit-and-implicit-multiversion-suites) tasks since those suites explicitly test against various mongodb topologies/versions and do not require running additional suites/tasks to ensure multiversion suite converage.
 
+[Implicit multiversion](https://github.com/10gen/mongo/blob/99f7a334eee4b724a231c0db75052eb8199ad8e1/docs/evergreen-testing/multiversion.md#explicit-and-implicit-multiversion-suites) tasks on the other hand must be configured differently to account for various multiversion topologies/version combinations. Here is an example:
+```yaml
+- <<: *gen_task_template
+  name: concurrency_replication_multiversion_gen
+  tags: ["multiversion", "multiversion_passthrough"]
+  commands:
+  - func: "initialize multiversion tasks"
+    vars:
+      concurrency_replication_last_continuous_new_new_old: last_continuous
+      concurrency_replication_last_continuous_new_old_new: last_continuous
+      concurrency_replication_last_continuous_old_new_new: last_continuous
+      concurrency_replication_last_lts_new_new_old: last_lts
+      concurrency_replication_last_lts_new_old_new: last_lts
+      concurrency_replication_last_lts_old_new_new: last_lts
+  - func: "generate resmoke tasks"
+    vars:
+      run_no_feature_flag_tests: "true
+```
+The `"initialize multiversion tasks"` function has all of the related suites to run as sub-tasks of this task as variable names and the "old" version to run against as the values. The absence of the `"no_multiversion_generate_tasks"` tag indicates to the task generator to generate sub-tasks for this task according to the `"initialize multiversion tasks"` function variables. Because the `suite` name is embedded in the `"initialize multiversion tasks"` variables, a `suite` variable passed to `"generate resmoke tasks"` will have no effect. Additionally, the variable/suite names in `"initialize multiversion tasks"` must be globally unique because these are ultimately going to become the sub-task name and evergreen requires task names to be unique.
 ### Burn in tests, burn in tags and burn in tasks
 
 Newly added or modified tests might become flaky. In order to avoid that, those tests can be run
