@@ -20,6 +20,7 @@
 use anyhow::Result;
 
 use crate::{
+    evergreen::evg_config_utils::MultiversionGenerateTaskConfig,
     evergreen_names::{
         BACKPORT_REQUIRED_TAG, MULTIVERSION_INCOMPATIBLE, MULTIVERSION_LAST_CONTINUOUS,
         MULTIVERSION_LAST_LTS,
@@ -40,6 +41,20 @@ pub trait MultiversionService: Sync + Send {
     ///
     /// Exclude tags as a comma-separated string.
     fn exclude_tags_for_task(&self, task_name: &str, mv_mode: Option<String>) -> String;
+
+    /// Get the filtered multiversion generate tasks based on the config.
+    ///
+    /// # Arguments
+    ///
+    /// * `multiversion_generate_tasks` - Array of desired tasks to generate.
+    ///
+    /// # Returns
+    ///
+    /// Multiversion generate tasks that match the config's `last versions`.
+    fn filter_multiversion_generate_tasks(
+        &self,
+        multiversion_generate_tasks: Option<Vec<MultiversionGenerateTaskConfig>>,
+    ) -> Option<Vec<MultiversionGenerateTaskConfig>>;
 }
 
 /// Implementation of Multiversion service.
@@ -93,5 +108,114 @@ impl MultiversionService for MultiversionServiceImpl {
         ];
 
         tags.join(",")
+    }
+
+    /// Get the filtered multiversion generate tasks based on the config.
+    ///
+    /// # Arguments
+    ///
+    /// * `multiversion_generate_tasks` - Array of desired tasks to generate.
+    ///
+    /// # Returns
+    ///
+    /// Multiversion generate tasks that match the config's `last versions`.
+    fn filter_multiversion_generate_tasks(
+        &self,
+        multiversion_generate_tasks: Option<Vec<MultiversionGenerateTaskConfig>>,
+    ) -> Option<Vec<MultiversionGenerateTaskConfig>> {
+        Some(
+            multiversion_generate_tasks?
+                .into_iter()
+                .filter(|task_config| {
+                    self.multiversion_config
+                        .last_versions
+                        .contains(&task_config.old_version)
+                })
+                .collect(),
+        )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        evergreen::evg_config_utils::MultiversionGenerateTaskConfig,
+        resmoke::resmoke_proxy::MultiversionConfig,
+    };
+
+    use super::{MultiversionService, MultiversionServiceImpl};
+
+    #[test]
+    fn test_multiversion_generate_tasks_exist() {
+        let multiversion_generate_tasks = vec![
+            MultiversionGenerateTaskConfig {
+                suite_name: "suite1".to_string(),
+                old_version: "last_lts".to_string(),
+            },
+            MultiversionGenerateTaskConfig {
+                suite_name: "suite2".to_string(),
+                old_version: "last_continuous".to_string(),
+            },
+        ];
+        let multiversion_service = MultiversionServiceImpl {
+            multiversion_config: MultiversionConfig {
+                last_versions: vec!["last_lts".to_string(), "last_continuous".to_string()],
+                requires_fcv_tag: "requires_fcv_71".to_string(),
+                requires_fcv_tag_lts: Some("requires_fcv_71".to_string()),
+                requires_fcv_tag_continuous: Some("requires_fcv_71".to_string()),
+            },
+        };
+        assert_eq!(
+            multiversion_service
+                .filter_multiversion_generate_tasks(Some(multiversion_generate_tasks.clone()))
+                .unwrap(),
+            multiversion_generate_tasks
+        );
+    }
+    #[test]
+    fn test_multiversion_generate_tasks_exist_and_filter() {
+        let multiversion_generate_tasks = vec![
+            MultiversionGenerateTaskConfig {
+                suite_name: "suite1".to_string(),
+                old_version: "last_lts".to_string(),
+            },
+            MultiversionGenerateTaskConfig {
+                suite_name: "suite2".to_string(),
+                old_version: "last_continuous".to_string(),
+            },
+        ];
+        let multiversion_service = MultiversionServiceImpl {
+            multiversion_config: MultiversionConfig {
+                last_versions: vec!["last_continuous".to_string()],
+                requires_fcv_tag: "requires_fcv_71".to_string(),
+                requires_fcv_tag_lts: Some("requires_fcv_71".to_string()),
+                requires_fcv_tag_continuous: Some("requires_fcv_71".to_string()),
+            },
+        };
+        let filtered_multiversion_generate_tasks = multiversion_service
+            .filter_multiversion_generate_tasks(Some(multiversion_generate_tasks.clone()))
+            .unwrap();
+        assert_eq!(filtered_multiversion_generate_tasks.len(), 1);
+        assert_eq!(
+            filtered_multiversion_generate_tasks[0],
+            multiversion_generate_tasks[1]
+        );
+    }
+    #[test]
+    fn test_multiversion_generate_tasks_none() {
+        let multiversion_service = MultiversionServiceImpl {
+            multiversion_config: MultiversionConfig {
+                last_versions: vec!["last_continuous".to_string()],
+                requires_fcv_tag: "requires_fcv_71".to_string(),
+                requires_fcv_tag_lts: Some("requires_fcv_71".to_string()),
+                requires_fcv_tag_continuous: Some("requires_fcv_71".to_string()),
+            },
+        };
+        assert_eq!(
+            multiversion_service
+                .filter_multiversion_generate_tasks(None)
+                .is_none(),
+            true
+        );
     }
 }

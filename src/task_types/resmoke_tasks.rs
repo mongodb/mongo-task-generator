@@ -1095,6 +1095,12 @@ mod tests {
         fn exclude_tags_for_task(&self, _task_name: &str, _mv_mode: Option<String>) -> String {
             "tag_0,tag_1".to_string()
         }
+        fn filter_multiversion_generate_tasks(
+            &self,
+            multiversion_generate_tasks: Option<Vec<MultiversionGenerateTaskConfig>>,
+        ) -> Option<Vec<MultiversionGenerateTaskConfig>> {
+            return multiversion_generate_tasks;
+        }
     }
 
     fn build_mocked_service(

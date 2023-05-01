@@ -603,6 +603,7 @@ mod tests {
     fn build_mocked_config_extraction_service() -> ConfigExtractionServiceImpl {
         ConfigExtractionServiceImpl::new(
             Arc::new(EvgConfigUtilsImpl::new()),
+            Arc::new(MockMultiversionService {}),
             "generating_task".to_string(),
             "config_location".to_string(),
             None,
@@ -681,6 +682,12 @@ mod tests {
     impl MultiversionService for MockMultiversionService {
         fn exclude_tags_for_task(&self, _task_name: &str, _mv_mode: Option<String>) -> String {
             todo!()
+        }
+        fn filter_multiversion_generate_tasks(
+            &self,
+            multiversion_generate_tasks: Option<Vec<MultiversionGenerateTaskConfig>>,
+        ) -> Option<Vec<MultiversionGenerateTaskConfig>> {
+            return multiversion_generate_tasks;
         }
     }
 

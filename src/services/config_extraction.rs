@@ -13,7 +13,7 @@ use crate::{
     generate_sub_tasks_config::GenerateSubTasksConfig,
     task_types::{
         fuzzer_tasks::FuzzerGenTaskParams, generated_suite::GeneratedSuite,
-        resmoke_tasks::ResmokeGenParams,
+        multiversion::MultiversionService, resmoke_tasks::ResmokeGenParams,
     },
     utils::task_name::remove_gen_suffix,
 };
@@ -79,6 +79,7 @@ pub trait ConfigExtractionService: Sync + Send {
 /// Implementation for performing extractions of evergreen project configuration.
 pub struct ConfigExtractionServiceImpl {
     evg_config_utils: Arc<dyn EvgConfigUtils>,
+    multiversion_service: Arc<dyn MultiversionService>,
     generating_task: String,
     config_location: String,
     gen_sub_tasks_config: Option<GenerateSubTasksConfig>,
@@ -96,12 +97,14 @@ impl ConfigExtractionServiceImpl {
     ///
     pub fn new(
         evg_config_utils: Arc<dyn EvgConfigUtils>,
+        multiversion_service: Arc<dyn MultiversionService>,
         generating_task: String,
         config_location: String,
         gen_sub_tasks_config: Option<GenerateSubTasksConfig>,
     ) -> Self {
         Self {
             evg_config_utils,
+            multiversion_service,
             generating_task,
             config_location,
             gen_sub_tasks_config,
@@ -189,7 +192,11 @@ impl ConfigExtractionService for ConfigExtractionServiceImpl {
             require_multiversion_setup: evg_config_utils
                 .get_task_tags(task_def)
                 .contains(MULTIVERSION),
-            multiversion_generate_tasks: evg_config_utils.get_multiversion_generate_tasks(task_def),
+            multiversion_generate_tasks: self
+                .multiversion_service
+                .filter_multiversion_generate_tasks(
+                    evg_config_utils.get_multiversion_generate_tasks(task_def),
+                ),
             config_location: self.config_location.clone(),
             dependencies: self.determine_task_dependencies(task_def),
             is_enterprise,
@@ -243,8 +250,11 @@ impl ConfigExtractionService for ConfigExtractionServiceImpl {
                 .evg_config_utils
                 .lookup_optional_param_u64(task_def, RESMOKE_JOBS_MAX)?,
             multiversion_generate_tasks: self
-                .evg_config_utils
-                .get_multiversion_generate_tasks(task_def),
+                .multiversion_service
+                .filter_multiversion_generate_tasks(
+                    self.evg_config_utils
+                        .get_multiversion_generate_tasks(task_def),
+                ),
             config_location: self.config_location.clone(),
             dependencies: self.determine_task_dependencies(task_def),
             is_enterprise,
@@ -315,16 +325,29 @@ list in the 'etc/generate_subtasks_config.yml' file.
 mod tests {
     use super::*;
     use crate::{
-        evergreen::evg_config_utils::EvgConfigUtilsImpl,
+        evergreen::evg_config_utils::{EvgConfigUtilsImpl, MultiversionGenerateTaskConfig},
         task_types::{generated_suite::GeneratedSubTask, resmoke_tasks::GeneratedResmokeSuite},
     };
     use maplit::{btreemap, hashset};
     use rstest::rstest;
     use shrub_rs::models::task::TaskDependency;
 
+    struct MockMultiversionService {}
+    impl MultiversionService for MockMultiversionService {
+        fn exclude_tags_for_task(&self, _task_name: &str, _mv_mode: Option<String>) -> String {
+            todo!()
+        }
+        fn filter_multiversion_generate_tasks(
+            &self,
+            multiversion_generate_tasks: Option<Vec<MultiversionGenerateTaskConfig>>,
+        ) -> Option<Vec<MultiversionGenerateTaskConfig>> {
+            return multiversion_generate_tasks;
+        }
+    }
     fn build_mocked_config_extraction_service() -> ConfigExtractionServiceImpl {
         ConfigExtractionServiceImpl::new(
             Arc::new(EvgConfigUtilsImpl::new()),
+            Arc::new(MockMultiversionService {}),
             "generating_task".to_string(),
             "config_location".to_string(),
             None,

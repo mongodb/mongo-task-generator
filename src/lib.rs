@@ -174,6 +174,7 @@ impl Dependencies {
             .get_generate_sub_tasks_config()?;
         let config_extraction_service = Arc::new(ConfigExtractionServiceImpl::new(
             evg_config_utils.clone(),
+            multiversion_service.clone(),
             execution_config.generating_task.to_string(),
             execution_config.config_location.to_string(),
             gen_sub_tasks_config,
@@ -963,6 +964,7 @@ mod tests {
             Arc::new(MockGenResmokeTasksService {}),
             Arc::new(ConfigExtractionServiceImpl::new(
                 evg_config_utils,
+                Arc::new(MockMultiversionService {}),
                 "generating_task".to_string(),
                 "config_location".to_string(),
                 None,
@@ -1152,6 +1154,12 @@ mod tests {
     impl MultiversionService for MockMultiversionService {
         fn exclude_tags_for_task(&self, _task_name: &str, _mv_mode: Option<String>) -> String {
             todo!()
+        }
+        fn filter_multiversion_generate_tasks(
+            &self,
+            multiversion_generate_tasks: Option<Vec<MultiversionGenerateTaskConfig>>,
+        ) -> Option<Vec<MultiversionGenerateTaskConfig>> {
+            return multiversion_generate_tasks;
         }
     }
 
