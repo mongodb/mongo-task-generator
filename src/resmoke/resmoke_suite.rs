@@ -81,6 +81,7 @@ pub struct ResmokeExecutor {
 /// Configuration of a resmoke test suite.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ResmokeSuiteConfig {
+    pub description: String,
     pub test_kind: String,
     pub selector: ResmokeSelector,
     pub executor: ResmokeExecutor,
