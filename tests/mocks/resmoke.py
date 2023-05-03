@@ -13,6 +13,8 @@ requires_fcv_tag: requires_fcv_51,requires_fcv_52,requires_fcv_53,requires_fcv_6
 
 def suiteconfig():
     print("""
+description: Task description
+
 test_kind: js_test
 
 selector:

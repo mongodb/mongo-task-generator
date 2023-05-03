@@ -186,6 +186,8 @@ mod tests {
     #[test]
     fn test_no_fixture_defined_should_return_shell() {
         let config_yaml = "
+            description: Task description
+
             test_kind: js_test
 
             selector:
@@ -211,6 +213,8 @@ mod tests {
     #[test]
     fn test_shared_cluster_fixture_should_return_sharded() {
         let config_yaml = "
+            description: Task description
+
             test_kind: js_test
 
             selector:
@@ -239,6 +243,8 @@ mod tests {
     #[test]
     fn test_replica_set_fixture_should_return_repl() {
         let config_yaml = "
+            description: Task description
+
             test_kind: js_test
 
             selector:
@@ -267,6 +273,8 @@ mod tests {
     #[test]
     fn test_other_fixture_should_return_other() {
         let config_yaml = "
+            description: Task description
+
             test_kind: js_test
 
             selector:
@@ -296,6 +304,8 @@ mod tests {
     #[test]
     fn test_with_new_tests_can_add_tests_to_exclude_list() {
         let config_yaml = "
+            description: Task description
+
             test_kind: js_test
 
             selector:
@@ -329,6 +339,8 @@ mod tests {
     #[test]
     fn test_with_new_tests_can_add_tests_to_test_root() {
         let config_yaml = "
+            description: Task description
+
             test_kind: js_test
 
             selector:

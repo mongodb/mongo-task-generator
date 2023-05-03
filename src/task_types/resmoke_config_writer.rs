@@ -315,6 +315,8 @@ mod tests {
             _suite_name: &str,
         ) -> anyhow::Result<crate::resmoke::resmoke_suite::ResmokeSuiteConfig> {
             let sample_config = "
+                description: Task description
+
                 test_kind: js_test
 
                 selector:

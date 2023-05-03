@@ -298,6 +298,8 @@ mod tests {
     #[test]
     fn test_multiversion_iterator() {
         let suite_config_yaml = "
+            description: Task description
+
             test_kind: js_test
 
             selector:
@@ -334,6 +336,8 @@ mod tests {
     #[test]
     fn test_mv_get_version_combinations() {
         let suite_config_yaml = "
+            description: Task description
+
             test_kind: js_test
 
             selector:
