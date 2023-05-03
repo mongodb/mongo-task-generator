@@ -15,6 +15,8 @@ def suiteconfig():
     print("""
 description: Task description
 
+matrix_suite: true
+
 test_kind: js_test
 
 selector:

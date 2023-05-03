@@ -317,6 +317,8 @@ mod tests {
             let sample_config = "
                 description: Task description
 
+                matrix_suite: true
+
                 test_kind: js_test
 
                 selector:

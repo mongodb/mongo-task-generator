@@ -81,6 +81,7 @@ pub struct ResmokeExecutor {
 /// Configuration of a resmoke test suite.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ResmokeSuiteConfig {
+    pub matrix_suite: bool,
     pub description: String,
     pub test_kind: String,
     pub selector: ResmokeSelector,
@@ -188,6 +189,8 @@ mod tests {
         let config_yaml = "
             description: Task description
 
+            matrix_suite: true
+
             test_kind: js_test
 
             selector:
@@ -214,6 +217,8 @@ mod tests {
     fn test_shared_cluster_fixture_should_return_sharded() {
         let config_yaml = "
             description: Task description
+
+            matrix_suite: true
 
             test_kind: js_test
 
@@ -245,6 +250,8 @@ mod tests {
         let config_yaml = "
             description: Task description
 
+            matrix_suite: true
+
             test_kind: js_test
 
             selector:
@@ -274,6 +281,8 @@ mod tests {
     fn test_other_fixture_should_return_other() {
         let config_yaml = "
             description: Task description
+
+            matrix_suite: true
 
             test_kind: js_test
 
@@ -305,6 +314,8 @@ mod tests {
     fn test_with_new_tests_can_add_tests_to_exclude_list() {
         let config_yaml = "
             description: Task description
+
+            matrix_suite: true
 
             test_kind: js_test
 
@@ -340,6 +351,8 @@ mod tests {
     fn test_with_new_tests_can_add_tests_to_test_root() {
         let config_yaml = "
             description: Task description
+
+            matrix_suite: true
 
             test_kind: js_test
 

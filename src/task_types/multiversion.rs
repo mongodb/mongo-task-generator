@@ -300,6 +300,8 @@ mod tests {
         let suite_config_yaml = "
             description: Task description
 
+            matrix_suite: true
+
             test_kind: js_test
 
             selector:
@@ -337,6 +339,8 @@ mod tests {
     fn test_mv_get_version_combinations() {
         let suite_config_yaml = "
             description: Task description
+
+            matrix_suite: true
 
             test_kind: js_test
 
