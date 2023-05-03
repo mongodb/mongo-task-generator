@@ -1,7 +1,7 @@
 # Changelog
 
 ## 0.7.6 - 2022-05-02
-* Add description to subsuites
+* Add description and matrix_suite to subsuites
 
 ## 0.7.5 - 2022-04-25
 * Upgrade build artifact for github runner service
