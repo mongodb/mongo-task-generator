@@ -298,7 +298,7 @@ mod tests {
     #[test]
     fn test_multiversion_iterator() {
         let suite_config_yaml = "
-            description: Task description
+            description: Suite description
 
             matrix_suite: true
 
@@ -338,10 +338,6 @@ mod tests {
     #[test]
     fn test_mv_get_version_combinations() {
         let suite_config_yaml = "
-            description: Task description
-
-            matrix_suite: true
-
             test_kind: js_test
 
             selector:
