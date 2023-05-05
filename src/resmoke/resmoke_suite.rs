@@ -81,6 +81,10 @@ pub struct ResmokeExecutor {
 /// Configuration of a resmoke test suite.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ResmokeSuiteConfig {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub matrix_suite: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
     pub test_kind: String,
     pub selector: ResmokeSelector,
     pub executor: ResmokeExecutor,
@@ -238,6 +242,10 @@ mod tests {
     #[test]
     fn test_replica_set_fixture_should_return_repl() {
         let config_yaml = "
+            description: Suite description
+
+            matrix_suite: true
+
             test_kind: js_test
 
             selector:

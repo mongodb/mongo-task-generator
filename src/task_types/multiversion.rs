@@ -298,6 +298,10 @@ mod tests {
     #[test]
     fn test_multiversion_iterator() {
         let suite_config_yaml = "
+            description: Suite description
+
+            matrix_suite: true
+
             test_kind: js_test
 
             selector:
