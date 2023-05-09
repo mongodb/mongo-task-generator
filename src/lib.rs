@@ -25,7 +25,10 @@ use evergreen_names::{
     BURN_IN_TESTS, ENTERPRISE_MODULE, GENERATOR_TASKS,
 };
 use generate_sub_tasks_config::GenerateSubTasksConfig;
-use resmoke::{burn_in_proxy::BurnInProxy, resmoke_proxy::ResmokeProxy};
+use resmoke::{
+    burn_in_proxy::BurnInProxy,
+    resmoke_proxy::{ResmokeProxy, TestDiscovery},
+};
 use services::config_extraction::{ConfigExtractionService, ConfigExtractionServiceImpl};
 use shrub_rs::models::{
     project::EvgProject,
@@ -160,16 +163,18 @@ impl Dependencies {
     pub fn new(execution_config: ExecutionConfiguration) -> Result<Self> {
         let fs_service = Arc::new(FsServiceImpl::new());
         let discovery_service = Arc::new(ResmokeProxy::new(execution_config.resmoke_command));
-        let multiversion_service =
-            Arc::new(MultiversionServiceImpl::new(discovery_service.clone())?);
+        let multiversion_service = Arc::new(MultiversionServiceImpl::new(
+            discovery_service.get_multiversion_config()?,
+        )?);
         let evg_config_service = Arc::new(execution_config.project_info.get_project_config()?);
         let evg_config_utils = Arc::new(EvgConfigUtilsImpl::new());
-        let gen_fuzzer_service = Arc::new(GenFuzzerServiceImpl::new(multiversion_service.clone()));
+        let gen_fuzzer_service = Arc::new(GenFuzzerServiceImpl::new());
         let gen_sub_tasks_config = execution_config
             .project_info
             .get_generate_sub_tasks_config()?;
         let config_extraction_service = Arc::new(ConfigExtractionServiceImpl::new(
             evg_config_utils.clone(),
+            multiversion_service.clone(),
             execution_config.generating_task.to_string(),
             execution_config.config_location.to_string(),
             gen_sub_tasks_config,
@@ -200,7 +205,7 @@ impl Dependencies {
             task_history_service,
             discovery_service,
             resmoke_config_actor.clone(),
-            multiversion_service.clone(),
+            multiversion_service,
             fs_service,
             gen_resmoke_config,
         ));
@@ -221,7 +226,6 @@ impl Dependencies {
             burn_in_discovery,
             gen_resmoke_task_service,
             config_extraction_service,
-            multiversion_service,
             evg_config_utils.clone(),
         ));
 
@@ -887,11 +891,12 @@ mod tests {
     use rstest::rstest;
 
     use crate::{
+        evergreen::evg_config_utils::MultiversionGenerateTaskConfig,
         resmoke::burn_in_proxy::{BurnInDiscovery, DiscoveredTask},
         task_types::{
             fuzzer_tasks::FuzzerGenTaskParams,
             generated_suite::GeneratedSubTask,
-            multiversion::{MultiversionIterator, MultiversionService},
+            multiversion::MultiversionService,
             resmoke_tasks::{
                 GeneratedResmokeSuite, ResmokeGenParams, ResmokeSuiteGenerationInfo, SubSuite,
             },
@@ -959,6 +964,7 @@ mod tests {
             Arc::new(MockGenResmokeTasksService {}),
             Arc::new(ConfigExtractionServiceImpl::new(
                 evg_config_utils,
+                Arc::new(MockMultiversionService {}),
                 "generating_task".to_string(),
                 "config_location".to_string(),
                 None,
@@ -985,6 +991,12 @@ mod tests {
 
     struct MockEvgConfigUtils {}
     impl EvgConfigUtils for MockEvgConfigUtils {
+        fn get_multiversion_generate_tasks(
+            &self,
+            _task: &EvgTask,
+        ) -> Option<Vec<MultiversionGenerateTaskConfig>> {
+            todo!()
+        }
         fn is_task_generated(&self, _task: &EvgTask) -> bool {
             todo!()
         }
@@ -1140,25 +1152,14 @@ mod tests {
 
     struct MockMultiversionService {}
     impl MultiversionService for MockMultiversionService {
-        fn get_version_combinations(&self, _suite_name: &str) -> Result<Vec<String>> {
-            todo!()
-        }
-
-        fn multiversion_iter(&self, _suite_name: &str) -> Result<MultiversionIterator> {
-            todo!()
-        }
-
-        fn name_multiversion_suite(
-            &self,
-            _base_name: &str,
-            _old_version: &str,
-            _version_combination: &str,
-        ) -> String {
-            todo!()
-        }
-
         fn exclude_tags_for_task(&self, _task_name: &str, _mv_mode: Option<String>) -> String {
             todo!()
+        }
+        fn filter_multiversion_generate_tasks(
+            &self,
+            multiversion_generate_tasks: Option<Vec<MultiversionGenerateTaskConfig>>,
+        ) -> Option<Vec<MultiversionGenerateTaskConfig>> {
+            return multiversion_generate_tasks;
         }
     }
 

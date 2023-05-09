@@ -6,22 +6,6 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_yaml::{Error, Value};
 
-const SHARDED_CLUSTER_FIXTURE_NAME: &str = "ShardedClusterFixture";
-const REPLICA_SET_FIXTURE_NAME: &str = "ReplicaSetFixture";
-
-/// Types of fixtures used by resmoke suites.
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub enum SuiteFixtureType {
-    /// A suite with no fixtures defined.
-    Shell,
-    /// A ReplicaSet fixture.
-    Repl,
-    /// A Sharded fixture.
-    Shard,
-    /// Some other fixture.
-    Other,
-}
-
 #[derive(Serialize, Debug, Clone, Deserialize)]
 #[serde(untagged)]
 pub enum TestRoot {
@@ -107,39 +91,6 @@ impl ToString for ResmokeSuiteConfig {
 }
 
 impl ResmokeSuiteConfig {
-    /// Get the fixture type of this suite.
-    pub fn get_fixture_type(&self) -> SuiteFixtureType {
-        let executor = &self.executor;
-        if let Some(fixture) = &executor.fixture {
-            Self::get_type_from_fixture_class(fixture)
-        } else {
-            SuiteFixtureType::Shell
-        }
-    }
-
-    /// Get the type of the given fixture class.
-    ///
-    /// # Arguments
-    ///
-    /// * `fixture` - Yaml representation of the fixture configuration.
-    ///
-    /// # Returns
-    ///
-    /// Type of fixture the suite uses.
-    fn get_type_from_fixture_class(fixture: &Value) -> SuiteFixtureType {
-        if let Value::Mapping(map) = fixture {
-            if let Some(Value::String(fixture_class)) = map.get(&Value::String("class".to_string()))
-            {
-                return match fixture_class.as_str() {
-                    SHARDED_CLUSTER_FIXTURE_NAME => SuiteFixtureType::Shard,
-                    REPLICA_SET_FIXTURE_NAME => SuiteFixtureType::Repl,
-                    _ => SuiteFixtureType::Other,
-                };
-            }
-        }
-        SuiteFixtureType::Other
-    }
-
     /// Create a new resmoke suite configuration based on this one but running certain tests.
     ///
     /// # Arguments
@@ -184,120 +135,6 @@ impl ResmokeSuiteConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // get_fixture_type tests.
-    #[test]
-    fn test_no_fixture_defined_should_return_shell() {
-        let config_yaml = "
-            test_kind: js_test
-
-            selector:
-              roots:
-                - jstests/auth/*.js
-              exclude_files:
-                - jstests/auth/repl.js
-        
-            executor:
-              config:
-                shell_options:
-                  global_vars:
-                    TestData:
-                      roleGraphInvalidationIsFatal: true
-                  nodb: '' 
-        ";
-
-        let config = ResmokeSuiteConfig::from_str(config_yaml).unwrap();
-
-        assert_eq!(config.get_fixture_type(), SuiteFixtureType::Shell);
-    }
-
-    #[test]
-    fn test_shared_cluster_fixture_should_return_sharded() {
-        let config_yaml = "
-            test_kind: js_test
-
-            selector:
-              roots:
-                - jstests/auth/*.js
-              exclude_files:
-                - jstests/auth/repl.js
-        
-            executor:
-              config:
-                shell_options:
-                  global_vars:
-                    TestData:
-                      roleGraphInvalidationIsFatal: true
-                  nodb: '' 
-              fixture:
-                class: ShardedClusterFixture
-                num_shards: 2
-        ";
-
-        let config = ResmokeSuiteConfig::from_str(config_yaml).unwrap();
-
-        assert_eq!(config.get_fixture_type(), SuiteFixtureType::Shard);
-    }
-
-    #[test]
-    fn test_replica_set_fixture_should_return_repl() {
-        let config_yaml = "
-            description: Suite description
-
-            matrix_suite: true
-
-            test_kind: js_test
-
-            selector:
-              roots:
-                - jstests/auth/*.js
-              exclude_files:
-                - jstests/auth/repl.js
-        
-            executor:
-              config:
-                shell_options:
-                  global_vars:
-                    TestData:
-                      roleGraphInvalidationIsFatal: true
-                  nodb: '' 
-              fixture:
-                class: ReplicaSetFixture
-                num_nodes: 3
-        ";
-
-        let config = ResmokeSuiteConfig::from_str(config_yaml).unwrap();
-
-        assert_eq!(config.get_fixture_type(), SuiteFixtureType::Repl);
-    }
-
-    #[test]
-    fn test_other_fixture_should_return_other() {
-        let config_yaml = "
-            test_kind: js_test
-
-            selector:
-              roots:
-                - jstests/auth/*.js
-              exclude_files:
-                - jstests/auth/repl.js
-        
-            executor:
-              config:
-                shell_options:
-                  global_vars:
-                    TestData:
-                      roleGraphInvalidationIsFatal: true
-                  nodb: '' 
-              fixture:
-                class: SomeOtherFixture
-                num_nodes: 3
-        ";
-
-        let config = ResmokeSuiteConfig::from_str(config_yaml).unwrap();
-
-        assert_eq!(config.get_fixture_type(), SuiteFixtureType::Other);
-    }
 
     // with_new_tests tests
     #[test]

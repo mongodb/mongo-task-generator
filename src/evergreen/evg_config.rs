@@ -58,7 +58,6 @@ impl EvgConfigService for EvgProjectConfig {
         let build_variant_map = self.get_build_variant_map();
         let mut build_variants: Vec<String> = build_variant_map
             .keys()
-            .into_iter()
             .filter_map(|bv| {
                 if bv.ends_with(REQUIRED_PREFIX) {
                     Some(bv.to_string())
@@ -71,7 +70,6 @@ impl EvgConfigService for EvgProjectConfig {
         build_variants.extend::<Vec<String>>(
             build_variant_map
                 .keys()
-                .into_iter()
                 .filter_map(|bv| {
                     if !bv.ends_with(REQUIRED_PREFIX) {
                         Some(bv.to_string())

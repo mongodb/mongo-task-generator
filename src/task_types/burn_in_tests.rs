@@ -24,7 +24,6 @@ use crate::{
 use super::generated_suite::GeneratedSubTask;
 use super::{
     generated_suite::GeneratedSuite,
-    multiversion::MultiversionService,
     resmoke_tasks::{GenResmokeTaskService, ResmokeGenParams},
 };
 
@@ -105,9 +104,6 @@ pub struct BurnInServiceImpl {
     /// Service to extraction configuration from evergreen project data.
     config_extraction_service: Arc<dyn ConfigExtractionService>,
 
-    /// Service to get multiversion configuration.
-    multiversion_service: Arc<dyn MultiversionService>,
-
     /// Utilities to work with evergreen project configuration.
     evg_config_utils: Arc<dyn EvgConfigUtils>,
 }
@@ -168,20 +164,17 @@ impl BurnInServiceImpl {
     /// * `burn_in_discovery` - Burn in discovery service.
     /// * `gen_resmoke_task_service` - Service to generate resmoke tasks.
     /// * `config_extraction_service` - Service to extraction configuration from evergreen project data.
-    /// * `multiversion_service` - Service to get multiversion configuration.
     /// * `evg_config_utils` - Utilities to work with evergreen project configuration.
     pub fn new(
         burn_in_discovery: Arc<dyn BurnInDiscovery>,
         gen_resmoke_task_service: Arc<dyn GenResmokeTaskService>,
         config_extraction_service: Arc<dyn ConfigExtractionService>,
-        multiversion_service: Arc<dyn MultiversionService>,
         evg_config_utils: Arc<dyn EvgConfigUtils>,
     ) -> Self {
         BurnInServiceImpl {
             burn_in_discovery,
             gen_resmoke_task_service,
             config_extraction_service,
-            multiversion_service,
             evg_config_utils,
         }
     }
@@ -210,25 +203,15 @@ impl BurnInServiceImpl {
                 .task_def_to_resmoke_params(task_def, false, None)?;
             update_resmoke_params_for_burn_in(&mut params, test);
 
-            if params.generate_multiversion_combos {
-                for (old_version, version_combination) in self
-                    .multiversion_service
-                    .multiversion_iter(&params.suite_name)?
-                {
-                    let multiversion_name = self.multiversion_service.name_multiversion_suite(
-                        &params.suite_name,
-                        &old_version,
-                        &version_combination,
-                    );
-                    let multiversion_tags = Some(old_version.clone());
-
+            if params.require_multiversion_generate_tasks {
+                for multiversion_task in params.multiversion_generate_tasks.as_ref().unwrap() {
                     let burn_in_suite_info = BurnInSuiteInfo {
                         build_variant: run_build_variant,
                         total_tests: discovered_task.test_list.len(),
                         task_name: &discovered_task.task_name,
                         burn_in_label: BURN_IN_LABEL,
-                        multiversion_name: Some(&multiversion_name),
-                        multiversion_tags,
+                        multiversion_name: Some(&multiversion_task.suite_name),
+                        multiversion_tags: Some(multiversion_task.old_version.clone()),
                     };
 
                     sub_suites.push(self.create_task(&params, index, &burn_in_suite_info));
@@ -270,25 +253,15 @@ impl BurnInServiceImpl {
                 .config_extraction_service
                 .task_def_to_resmoke_params(task_def, false, None)?;
 
-            if params.generate_multiversion_combos {
-                for (old_version, version_combination) in self
-                    .multiversion_service
-                    .multiversion_iter(&params.suite_name)?
-                {
-                    let multiversion_name = self.multiversion_service.name_multiversion_suite(
-                        &params.suite_name,
-                        &old_version,
-                        &version_combination,
-                    );
-                    let multiversion_tags = Some(old_version.clone());
-
+            if params.require_multiversion_generate_tasks {
+                for multiversion_task in params.multiversion_generate_tasks.as_ref().unwrap() {
                     let burn_in_suite_info = BurnInSuiteInfo {
                         build_variant: &build_variant.name,
                         total_tests: BURN_IN_REPEAT_TASK_NUM,
                         task_name: &task_def.name,
                         burn_in_label: BURN_IN_TASK_LABEL,
-                        multiversion_name: Some(&multiversion_name),
-                        multiversion_tags,
+                        multiversion_name: Some(&multiversion_task.suite_name),
+                        multiversion_tags: Some(multiversion_task.old_version.clone()),
                     };
 
                     sub_suites.push(self.create_task(&params, index, &burn_in_suite_info));
@@ -543,10 +516,17 @@ mod tests {
     use async_trait::async_trait;
     use maplit::{btreemap, hashmap};
     use rstest::rstest;
-    use shrub_rs::models::variant::BuildVariant;
+    use shrub_rs::models::{
+        commands::{fn_call, fn_call_with_params},
+        params::ParamValue,
+        variant::BuildVariant,
+    };
 
-    use crate::task_types::{
-        fuzzer_tasks::FuzzerGenTaskParams, multiversion::MultiversionIterator,
+    use crate::{
+        evergreen::evg_config_utils::{EvgConfigUtilsImpl, MultiversionGenerateTaskConfig},
+        evergreen_names::{GENERATE_RESMOKE_TASKS, INITIALIZE_MULTIVERSION_TASKS},
+        services::config_extraction::ConfigExtractionServiceImpl,
+        task_types::{fuzzer_tasks::FuzzerGenTaskParams, multiversion::MultiversionService},
     };
 
     use super::*;
@@ -620,6 +600,16 @@ mod tests {
         assert!(display_name.contains(build_variant));
     }
 
+    fn build_mocked_config_extraction_service() -> ConfigExtractionServiceImpl {
+        ConfigExtractionServiceImpl::new(
+            Arc::new(EvgConfigUtilsImpl::new()),
+            Arc::new(MockMultiversionService {}),
+            "generating_task".to_string(),
+            "config_location".to_string(),
+            None,
+        )
+    }
+
     // Mocks
     struct MockBurnInDiscovery {}
     impl BurnInDiscovery for MockBurnInDiscovery {
@@ -674,7 +664,7 @@ mod tests {
             _platform: Option<String>,
         ) -> Result<ResmokeGenParams> {
             Ok(ResmokeGenParams {
-                generate_multiversion_combos: self.is_multiversion,
+                require_multiversion_generate_tasks: self.is_multiversion,
                 ..Default::default()
             })
         }
@@ -688,33 +678,16 @@ mod tests {
         }
     }
 
-    struct MockMultiversionService {
-        old_version: Vec<String>,
-        version_combos: Vec<String>,
-    }
+    struct MockMultiversionService {}
     impl MultiversionService for MockMultiversionService {
-        fn get_version_combinations(&self, _suite_name: &str) -> Result<Vec<String>> {
-            todo!()
-        }
-
-        fn multiversion_iter(&self, _suite_name: &str) -> Result<MultiversionIterator> {
-            Ok(MultiversionIterator::new(
-                &self.old_version,
-                &self.version_combos,
-            ))
-        }
-
-        fn name_multiversion_suite(
-            &self,
-            base_name: &str,
-            _old_version: &str,
-            _version_combination: &str,
-        ) -> String {
-            base_name.to_string()
-        }
-
         fn exclude_tags_for_task(&self, _task_name: &str, _mv_mode: Option<String>) -> String {
             todo!()
+        }
+        fn filter_multiversion_generate_tasks(
+            &self,
+            multiversion_generate_tasks: Option<Vec<MultiversionGenerateTaskConfig>>,
+        ) -> Option<Vec<MultiversionGenerateTaskConfig>> {
+            return multiversion_generate_tasks;
         }
     }
 
@@ -722,6 +695,13 @@ mod tests {
         burn_in_task_name: Option<String>,
     }
     impl EvgConfigUtils for MockEvgConfigUtils {
+        fn get_multiversion_generate_tasks(
+            &self,
+            _task: &EvgTask,
+        ) -> Option<Vec<MultiversionGenerateTaskConfig>> {
+            todo!()
+        }
+
         fn is_task_generated(&self, _task: &EvgTask) -> bool {
             todo!()
         }
@@ -831,29 +811,15 @@ mod tests {
             Arc::new(MockConfigExtractionService {
                 is_multiversion: false,
             }),
-            Arc::new(MockMultiversionService {
-                old_version: vec![],
-                version_combos: vec![],
-            }),
             Arc::new(MockEvgConfigUtils { burn_in_task_name }),
         )
     }
 
-    fn build_mv_mocked_service(
-        old_version: Vec<String>,
-        version_combos: Vec<String>,
-        burn_in_task_name: Option<String>,
-    ) -> BurnInServiceImpl {
+    fn build_mv_mocked_service(burn_in_task_name: Option<String>) -> BurnInServiceImpl {
         BurnInServiceImpl::new(
             Arc::new(MockBurnInDiscovery {}),
             Arc::new(MockGenResmokeTasksService {}),
-            Arc::new(MockConfigExtractionService {
-                is_multiversion: true,
-            }),
-            Arc::new(MockMultiversionService {
-                old_version,
-                version_combos,
-            }),
+            Arc::new(build_mocked_config_extraction_service()),
             Arc::new(MockEvgConfigUtils { burn_in_task_name }),
         )
     }
@@ -884,23 +850,30 @@ mod tests {
             task_name: "my task".to_string(),
             test_list: vec!["test_0.js".to_string(), "test_1.js".to_string()],
         };
+        let vars = hashmap! {
+                        "mv_suite1_last_continuous_new_old_new".to_string() => ParamValue::from("last-continuous"),
+                        "mv_suite1_last_lts_new_old_new".to_string() => ParamValue::from("last-lts"),
+                        "mv_suite1_last_continuous_old_new_old".to_string() => ParamValue::from("last-continuous"),
+                        "mv_suite1_last_lts_old_new_old".to_string() => ParamValue::from("last-lts"),
+        };
         let task_def = EvgTask {
+            commands: Some(vec![
+                fn_call("hello world"),
+                fn_call_with_params(INITIALIZE_MULTIVERSION_TASKS, vars),
+                fn_call(GENERATE_RESMOKE_TASKS),
+                fn_call("run tests"),
+            ]),
+            tags: Some(vec!["multiversion".to_string()]),
             ..Default::default()
         };
         let run_build_variant = "my_build_variant";
-        let old_version = vec!["lts".to_string(), "continuous".to_string()];
-        let version_combos = vec!["new_old_new".to_string(), "old_new_old".to_string()];
-        let burn_in_service =
-            build_mv_mocked_service(old_version.clone(), version_combos.clone(), None);
+        let burn_in_service = build_mv_mocked_service(None);
 
         let tasks = burn_in_service
             .build_tests_for_task(&discovered_task, &task_def, run_build_variant)
             .unwrap();
 
-        assert_eq!(
-            tasks.len(),
-            discovered_task.test_list.len() * old_version.len() * version_combos.len()
-        );
+        assert_eq!(tasks.len(), 8);
     }
 
     // build_burn_in_tasks_for_task tests.
@@ -923,25 +896,32 @@ mod tests {
 
     #[test]
     fn test_build_burn_in_tasks_for_task_creates_tasks_for_each_multiversion_iteration() {
+        let vars = hashmap! {
+                        "mv_suite1_last_continuous_new_old_new".to_string() => ParamValue::from("last-continuous"),
+                        "mv_suite1_last_lts_new_old_new".to_string() => ParamValue::from("last-lts"),
+                        "mv_suite1_last_continuous_old_new_old".to_string() => ParamValue::from("last-continuous"),
+                        "mv_suite1_last_lts_old_new_old".to_string() => ParamValue::from("last-lts"),
+        };
         let task_def = EvgTask {
+            commands: Some(vec![
+                fn_call("hello world"),
+                fn_call_with_params(INITIALIZE_MULTIVERSION_TASKS, vars),
+                fn_call(GENERATE_RESMOKE_TASKS),
+                fn_call("run tests"),
+            ]),
+            tags: Some(vec!["multiversion".to_string()]),
             ..Default::default()
         };
         let build_variant = BuildVariant {
             ..Default::default()
         };
-        let old_version = vec!["lts".to_string(), "continuous".to_string()];
-        let version_combos = vec!["new_old_new".to_string(), "old_new_old".to_string()];
-        let burn_in_service =
-            build_mv_mocked_service(old_version.clone(), version_combos.clone(), None);
+        let burn_in_service = build_mv_mocked_service(None);
 
         let tasks = burn_in_service
             .build_burn_in_tasks_for_task(&task_def, &build_variant)
             .unwrap();
 
-        assert_eq!(
-            tasks.len(),
-            BURN_IN_REPEAT_TASK_NUM * old_version.len() * version_combos.len()
-        );
+        assert_eq!(tasks.len(), BURN_IN_REPEAT_TASK_NUM * 4);
     }
 
     // generate_burn_in_tags_build_variant tests.

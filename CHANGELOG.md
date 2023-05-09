@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.7.7 - 2022-05-08
+* Make generated multiversion tasks explicit.
+
 ## 0.7.6 - 2022-05-02
 * Pass suite description and matrix_suite to subsuites
 
