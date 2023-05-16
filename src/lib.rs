@@ -56,6 +56,7 @@ mod utils;
 
 const BURN_IN_TESTS_PREFIX: &str = "burn_in_tests";
 const BURN_IN_TASKS_PREFIX: &str = "burn_in_tasks";
+const BURN_IN_BV_SUFFIX: &str = "generated-by-burn-in-tags";
 const MAX_SUB_TASKS_PER_TASK: usize = 5;
 
 type GenTaskCollection = HashMap<String, Box<dyn GeneratedSuite>>;
@@ -468,7 +469,7 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                         {
                             let base_build_variant = build_variant_map.get(&base_bv_name).unwrap();
                             let run_build_variant_name =
-                                format!("{}-required", base_build_variant.name);
+                                format!("{}-{}", base_build_variant.name, BURN_IN_BV_SUFFIX);
                             thread_handles.push(create_burn_in_worker(
                                 deps,
                                 task_map.clone(),
@@ -730,7 +731,8 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
         for (base_bv_name, bv_info) in burn_in_tag_build_variant_info {
             let generated_tasks = generated_tasks.lock().unwrap();
             let base_build_variant = build_variant_map.get(&base_bv_name).unwrap();
-            let run_build_variant_name = format!("{}-required", base_build_variant.name);
+            let run_build_variant_name =
+                format!("{}-{}", base_build_variant.name, BURN_IN_BV_SUFFIX);
             let task_name = format!("{}-{}", BURN_IN_TESTS_PREFIX, run_build_variant_name);
 
             if let Some(generated_task) = generated_tasks.get(&task_name) {

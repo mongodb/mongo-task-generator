@@ -411,7 +411,7 @@ impl BurnInService for BurnInServiceImpl {
         gen_config.build_variant_display_name = base_build_variant
             .display_name
             .as_ref()
-            .map(|s| format!("! {}", s));
+            .map(|s| format!("! ! ! JSTESTS_AFFECTED {}", s));
 
         gen_config.expansions = base_build_variant.expansions.clone().unwrap_or_default();
         gen_config.expansions.insert(
@@ -967,7 +967,7 @@ mod tests {
 
         assert_eq!(
             burn_in_tags_build_variant.display_name,
-            Some("! base build variant display name".to_string())
+            Some("! ! ! JSTESTS_AFFECTED base build variant display name".to_string())
         );
         assert_eq!(
             burn_in_tags_build_variant.run_on,
