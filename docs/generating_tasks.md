@@ -315,7 +315,7 @@ if the default value does not apply.
   generated.
 * **burn-in-tests-command**: How to invoke the burn_in_tests command. The burn_in_tests command is
   used to discover modified or added tests and the tasks they being run on. It defaults to
-  `python buildscripts/burn_in_tests.py`.
+  `python buildscripts/burn_in_tests.py run`.
 
 ## Usage help
 
@@ -330,7 +330,7 @@ OPTIONS:
         --burn-in
             Generate burn_in related tasks
         --burn-in-tests-command <BURN_IN_TESTS_COMMAND>
-            Command to invoke burn_in_tests [default: "python buildscripts/burn_in_tests.py"]
+            Command to invoke burn_in_tests [default: "python buildscripts/burn_in_tests.py run"]
         --evg-auth-file <EVG_AUTH_FILE>
             File with information on how to authenticate against the evergreen API [default:
             ~/.evergreen.yml]

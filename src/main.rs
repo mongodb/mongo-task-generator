@@ -16,7 +16,7 @@ use tracing_subscriber::fmt::format;
 const DEFAULT_EVG_AUTH_FILE: &str = "~/.evergreen.yml";
 const DEFAULT_EVG_PROJECT_FILE: &str = "etc/evergreen.yml";
 const DEFAULT_RESMOKE_COMMAND: &str = "python buildscripts/resmoke.py";
-const DEFAULT_BURN_IN_TESTS_COMMAND: &str = "python buildscripts/burn_in_tests.py";
+const DEFAULT_BURN_IN_TESTS_COMMAND: &str = "python buildscripts/burn_in_tests.py run";
 const DEFAULT_TARGET_DIRECTORY: &str = "generated_resmoke_config";
 const DEFAULT_S3_TEST_STATS_ENDPOINT: &str = "https://mongo-test-stats.s3.amazonaws.com";
 

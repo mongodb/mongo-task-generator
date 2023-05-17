@@ -55,7 +55,7 @@ fn test_end2end_burn_in_execution() {
         "tests/data/sample_generate_subtasks_config.yml",
         "--burn-in",
         "--burn-in-tests-command",
-        "python3 tests/mocks/burn_in_tests.py",
+        "python3 tests/mocks/burn_in_tests.py run",
     ])
     .assert()
     .success();
@@ -101,7 +101,7 @@ fn test_end2end_burn_in_with_no_distro(#[case] config_location: String) {
         "tests/data/sample_generate_subtasks_config.yml",
         "--burn-in",
         "--burn-in-tests-command",
-        "python3 tests/mocks/burn_in_tests.py",
+        "python3 tests/mocks/burn_in_tests.py run",
     ])
     .unwrap();
 }
@@ -136,7 +136,7 @@ fn test_end2end_burn_in_tasks(#[case] config_location: String, #[case] expected_
         "tests/data/sample_generate_subtasks_config.yml",
         "--burn-in",
         "--burn-in-tests-command",
-        "python3 tests/mocks/burn_in_tests.py",
+        "python3 tests/mocks/burn_in_tests.py run",
     ])
     .assert()
     .success();
