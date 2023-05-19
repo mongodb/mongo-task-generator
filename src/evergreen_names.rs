@@ -93,8 +93,13 @@ pub const MULTIVERSION_EXCLUDE_TAGS: &str = "multiversion_exclude_tags_version";
 // Build Variant expansions.
 /// Name of large distro for build variant.
 pub const LARGE_DISTRO_EXPANSION: &str = "large_distro_name";
-/// List of build variant names delimited by spaces to generate burn_in_tags for.
-pub const BURN_IN_TAG_BUILD_VARIANTS: &str = "burn_in_tag_buildvariants";
+/// List of build variant names delimited by spaces to generate burn_in_tests for.
+pub const BURN_IN_TAG_INCLUDE_BUILD_VARIANTS: &str = "burn_in_tag_include_build_variants";
+/// Generate burn_in_tests for all required and suggested build variants.
+pub const BURN_IN_TAG_REQUIRED_AND_SUGGESTED_BUILD_VARIANTS: &str =
+    "burn_in_tag_required_and_suggested_build_variants";
+/// Build variants to exclude when burn_in_required_and_suggested_build_variants is set.
+pub const BURN_IN_TAG_EXCLUDE_BUILD_VARIANTS: &str = "burn_in_tag_exclude_build_variants";
 /// Compile task name generated build variant should depend on.
 pub const BURN_IN_TAG_COMPILE_TASK_DEPENDENCY: &str = "burn_in_tag_compile_task_dependency";
 /// Name of build variant to determine the timeouts for.

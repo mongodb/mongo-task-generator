@@ -21,8 +21,8 @@ use evergreen::{
     evg_task_history::{build_retryable_client, TaskHistoryServiceImpl},
 };
 use evergreen_names::{
-    BURN_IN_TAGS, BURN_IN_TAG_BUILD_VARIANTS, BURN_IN_TAG_COMPILE_TASK_DEPENDENCY, BURN_IN_TASKS,
-    BURN_IN_TESTS, ENTERPRISE_MODULE, GENERATOR_TASKS,
+    BURN_IN_TAGS, BURN_IN_TAG_COMPILE_TASK_DEPENDENCY, BURN_IN_TAG_INCLUDE_BUILD_VARIANTS,
+    BURN_IN_TASKS, BURN_IN_TESTS, ENTERPRISE_MODULE, GENERATOR_TASKS,
 };
 use generate_sub_tasks_config::GenerateSubTasksConfig;
 use resmoke::{
@@ -462,10 +462,7 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                     if task.name == BURN_IN_TAGS {
                         for base_bv_name in self
                             .evg_config_utils
-                            .lookup_and_split_by_whitespace_build_variant_expansion(
-                                BURN_IN_TAG_BUILD_VARIANTS,
-                                build_variant,
-                            )
+                            .resolve_burn_in_tag_build_variants(build_variant, &build_variant_map)
                         {
                             let base_build_variant = build_variant_map.get(&base_bv_name).unwrap();
                             let run_build_variant_name =
@@ -598,14 +595,11 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
     ) {
         let burn_in_tag_build_variants = self
             .evg_config_utils
-            .lookup_and_split_by_whitespace_build_variant_expansion(
-                BURN_IN_TAG_BUILD_VARIANTS,
-                build_variant,
-            );
+            .resolve_burn_in_tag_build_variants(build_variant, build_variant_map);
         if burn_in_tag_build_variants.is_empty() {
             panic!(
             "`{}` build variant is either missing or has an empty list for the `{}` expansion. Set the expansion in your project's config to run {}.",
-            build_variant.name, BURN_IN_TAG_BUILD_VARIANTS, BURN_IN_TAGS
+            build_variant.name, BURN_IN_TAG_INCLUDE_BUILD_VARIANTS, BURN_IN_TAGS
         )
         }
 
@@ -624,7 +618,7 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
         for variant in burn_in_tag_build_variants {
             if !build_variant_map.contains_key(&variant) {
                 panic!("`{}` is trying to create a build variant that does not exist: {}. Check the {} expansion in this variant.",
-                build_variant.name, variant, BURN_IN_TAG_BUILD_VARIANTS)
+                build_variant.name, variant, BURN_IN_TAG_INCLUDE_BUILD_VARIANTS)
             }
             let bv_info = burn_in_tag_build_variant_info
                 .entry(variant.clone())
@@ -1050,6 +1044,14 @@ mod tests {
             &self,
             _name: &str,
             _build_variant: &BuildVariant,
+        ) -> Vec<String> {
+            todo!()
+        }
+
+        fn resolve_burn_in_tag_build_variants(
+            &self,
+            _build_variant: &BuildVariant,
+            _build_variant_map: &HashMap<String, &BuildVariant>,
         ) -> Vec<String> {
             todo!()
         }

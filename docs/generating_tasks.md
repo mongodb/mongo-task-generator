@@ -213,12 +213,12 @@ of task configuration:
   - func: "generate resmoke tasks"
 ```
 
-`burn_in_tag_buildvariants` buildvariant expansion is used to configure base buildvariant names.
+`burn_in_tag_include_build_variants` buildvariant expansion is used to configure base buildvariant names.
 Base buildvariant names should be delimited by spaces. The [example](https://github.com/mongodb/mongo/blob/81c41bdfdc56f05973fae70e80e80919f18f50c9/etc/evergreen.yml#L1257)
-of `burn_in_tag_buildvariants` buildvariant expansion:
+of `burn_in_tag_include_build_variants` buildvariant expansion:
 
 ```yaml
-burn_in_tag_buildvariants: enterprise-rhel-80-64-bit-inmem enterprise-rhel-80-64-bit-multiversion
+burn_in_tag_include_build_variants: enterprise-rhel-80-64-bit-inmem enterprise-rhel-80-64-bit-multiversion
 burn_in_tag_compile_task_dependency: archive_dist_test_debug
 ```
 
