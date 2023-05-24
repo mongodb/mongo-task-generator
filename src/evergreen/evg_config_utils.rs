@@ -9,8 +9,8 @@ use shrub_rs::models::params::ParamValue;
 use shrub_rs::models::{commands::FunctionCall, task::EvgTask, variant::BuildVariant};
 
 use crate::evergreen_names::{
-    BURN_IN_TAG_EXCLUDE_BUILD_VARIANTS, BURN_IN_TAG_INCLUDE_BUILD_VARIANTS,
-    BURN_IN_TAG_REQUIRED_AND_SUGGESTED_BUILD_VARIANTS, ENTERPRISE_MODULE, GENERATE_RESMOKE_TASKS,
+    BURN_IN_TAG_EXCLUDE_BUILD_VARIANTS, BURN_IN_TAG_INCLUDE_ALL_REQUIRED_AND_SUGGESTED,
+    BURN_IN_TAG_INCLUDE_BUILD_VARIANTS, ENTERPRISE_MODULE, GENERATE_RESMOKE_TASKS,
     INITIALIZE_MULTIVERSION_TASKS, IS_FUZZER, LINUX, MACOS, RUN_RESMOKE_TESTS, WINDOWS,
 };
 use crate::utils::task_name::remove_gen_suffix;
@@ -556,11 +556,12 @@ impl EvgConfigUtils for EvgConfigUtilsImpl {
             );
         if self
             .lookup_build_variant_expansion(
-                BURN_IN_TAG_REQUIRED_AND_SUGGESTED_BUILD_VARIANTS,
+                BURN_IN_TAG_INCLUDE_ALL_REQUIRED_AND_SUGGESTED,
                 build_variant,
             )
-            .unwrap_or_default()
-            == "true"
+            .unwrap_or_else(|| "false".to_string())
+            .parse::<bool>()
+            .unwrap()
         {
             burn_in_build_variants.extend(
                 build_variant_map
@@ -919,7 +920,7 @@ mod tests {
                     "bv2".to_string(),
                 ),
                 (
-                    BURN_IN_TAG_REQUIRED_AND_SUGGESTED_BUILD_VARIANTS.to_string(),
+                    BURN_IN_TAG_INCLUDE_ALL_REQUIRED_AND_SUGGESTED.to_string(),
                     "true".to_string(),
                 ),
             ])),
@@ -951,7 +952,7 @@ mod tests {
                     "bv2".to_string(),
                 ),
                 (
-                    BURN_IN_TAG_REQUIRED_AND_SUGGESTED_BUILD_VARIANTS.to_string(),
+                    BURN_IN_TAG_INCLUDE_ALL_REQUIRED_AND_SUGGESTED.to_string(),
                     "true".to_string(),
                 ),
             ])),

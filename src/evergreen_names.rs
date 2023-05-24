@@ -96,8 +96,8 @@ pub const LARGE_DISTRO_EXPANSION: &str = "large_distro_name";
 /// List of build variant names delimited by spaces to generate burn_in_tests for.
 pub const BURN_IN_TAG_INCLUDE_BUILD_VARIANTS: &str = "burn_in_tag_include_build_variants";
 /// Generate burn_in_tests for all required and suggested build variants.
-pub const BURN_IN_TAG_REQUIRED_AND_SUGGESTED_BUILD_VARIANTS: &str =
-    "burn_in_tag_required_and_suggested_build_variants";
+pub const BURN_IN_TAG_INCLUDE_ALL_REQUIRED_AND_SUGGESTED: &str =
+    "burn_in_tag_include_all_required_and_suggested";
 /// Build variants to exclude when burn_in_required_and_suggested_build_variants is set.
 pub const BURN_IN_TAG_EXCLUDE_BUILD_VARIANTS: &str = "burn_in_tag_exclude_build_variants";
 /// Compile task name generated build variant should depend on.
