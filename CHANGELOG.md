@@ -1,7 +1,7 @@
 # Changelog
 
 ## 0.7.8 - 2022-05-25
-* Update burn in tags API to accommodate all required and suggested build variants.
+* Update burn in tags API to accommodate all required and suggested buildvariants.
 
 ## 0.7.7 - 2022-05-08
 * Make generated multiversion tasks explicit.
