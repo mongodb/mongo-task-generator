@@ -222,6 +222,18 @@ burn_in_tag_include_build_variants: enterprise-rhel-80-64-bit-inmem enterprise-r
 burn_in_tag_compile_task_dependency: archive_dist_test_debug
 ```
 
+You can also use `burn_in_tag_include_all_required_and_suggested` to bulk add all `!` or `*` prefixed build variants.
+And use `burn_in_tag_exclude_build_variants` to exclude build variants.
+
+```yaml
+burn_in_tag_include_all_required_and_suggested: true
+burn_in_tag_exclude_build_variants: >-
+  macos-debug-suggested
+burn_in_tag_include_build_variants: >-
+  enterprise-rhel-80-64-bit-inmem
+  enterprise-rhel-80-64-bit-multiversio
+```
+
 #### Burn in tasks
 
 `burn_in_tasks_gen` task is used to generate several copies of the task. The example of task
