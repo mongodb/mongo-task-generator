@@ -213,13 +213,25 @@ of task configuration:
   - func: "generate resmoke tasks"
 ```
 
-`burn_in_tag_buildvariants` buildvariant expansion is used to configure base buildvariant names.
+`burn_in_tag_include_build_variants` buildvariant expansion is used to configure base buildvariant names.
 Base buildvariant names should be delimited by spaces. The [example](https://github.com/mongodb/mongo/blob/81c41bdfdc56f05973fae70e80e80919f18f50c9/etc/evergreen.yml#L1257)
-of `burn_in_tag_buildvariants` buildvariant expansion:
+of `burn_in_tag_include_build_variants` buildvariant expansion:
 
 ```yaml
-burn_in_tag_buildvariants: enterprise-rhel-80-64-bit-inmem enterprise-rhel-80-64-bit-multiversion
+burn_in_tag_include_build_variants: enterprise-rhel-80-64-bit-inmem enterprise-rhel-80-64-bit-multiversion
 burn_in_tag_compile_task_dependency: archive_dist_test_debug
+```
+
+You can also use `burn_in_tag_include_all_required_and_suggested` to bulk add all `!` or `*` prefixed build variants.
+And use `burn_in_tag_exclude_build_variants` to exclude build variants.
+
+```yaml
+burn_in_tag_include_all_required_and_suggested: true
+burn_in_tag_exclude_build_variants: >-
+  macos-debug-suggested
+burn_in_tag_include_build_variants: >-
+  enterprise-rhel-80-64-bit-inmem
+  enterprise-rhel-80-64-bit-multiversio
 ```
 
 #### Burn in tasks
@@ -315,7 +327,7 @@ if the default value does not apply.
   generated.
 * **burn-in-tests-command**: How to invoke the burn_in_tests command. The burn_in_tests command is
   used to discover modified or added tests and the tasks they being run on. It defaults to
-  `python buildscripts/burn_in_tests.py`.
+  `python buildscripts/burn_in_tests.py run`.
 
 ## Usage help
 
@@ -330,7 +342,7 @@ OPTIONS:
         --burn-in
             Generate burn_in related tasks
         --burn-in-tests-command <BURN_IN_TESTS_COMMAND>
-            Command to invoke burn_in_tests [default: "python buildscripts/burn_in_tests.py"]
+            Command to invoke burn_in_tests [default: "python buildscripts/burn_in_tests.py run"]
         --evg-auth-file <EVG_AUTH_FILE>
             File with information on how to authenticate against the evergreen API [default:
             ~/.evergreen.yml]

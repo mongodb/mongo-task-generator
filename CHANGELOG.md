@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.7.8 - 2022-05-16
+* Make generated burn_in_tag build variant display names more clear.
+
 ## 0.7.7 - 2022-05-08
 * Make generated multiversion tasks explicit.
 

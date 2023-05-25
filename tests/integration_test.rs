@@ -55,7 +55,7 @@ fn test_end2end_burn_in_execution() {
         "tests/data/sample_generate_subtasks_config.yml",
         "--burn-in",
         "--burn-in-tests-command",
-        "python3 tests/mocks/burn_in_tests.py",
+        "python3 tests/mocks/burn_in_tests.py run",
     ])
     .assert()
     .success();
@@ -75,11 +75,11 @@ fn test_end2end_burn_in_execution() {
 )]
 #[case::panic_with_message("tests/data/burn_in/evergreen_with_no_burn_in_task_group.yml")]
 #[should_panic(
-    expected = "`enterprise-rhel-80-64-bit-dynamic-required` build variant is either missing or has an empty list for the `burn_in_tag_buildvariants` expansion. Set the expansion in your project\\'s config to run burn_in_tags_gen.\\"
+    expected = "`enterprise-rhel-80-64-bit-dynamic-required` build variant is either missing or has an empty list for the `burn_in_tag_include_build_variants` expansion. Set the expansion in your project\\'s config to run burn_in_tags_gen.\\"
 )]
 #[case::panic_with_message("tests/data/burn_in/evergreen_with_no_burn_in_variants.yml")]
 #[should_panic(
-    expected = "`enterprise-rhel-80-64-bit-dynamic-required` build variant is either missing or has an empty list for the `burn_in_tag_buildvariants` expansion. Set the expansion in your project\\'s config to run burn_in_tags_gen.\\"
+    expected = "`enterprise-rhel-80-64-bit-dynamic-required` build variant is either missing or has an empty list for the `burn_in_tag_include_build_variants` expansion. Set the expansion in your project\\'s config to run burn_in_tags_gen.\\"
 )]
 #[case::panic_with_message("tests/data/burn_in/evergreen_with_empty_burn_in_variants.yml")]
 fn test_end2end_burn_in_with_no_distro(#[case] config_location: String) {
@@ -101,7 +101,7 @@ fn test_end2end_burn_in_with_no_distro(#[case] config_location: String) {
         "tests/data/sample_generate_subtasks_config.yml",
         "--burn-in",
         "--burn-in-tests-command",
-        "python3 tests/mocks/burn_in_tests.py",
+        "python3 tests/mocks/burn_in_tests.py run",
     ])
     .unwrap();
 }
@@ -136,7 +136,7 @@ fn test_end2end_burn_in_tasks(#[case] config_location: String, #[case] expected_
         "tests/data/sample_generate_subtasks_config.yml",
         "--burn-in",
         "--burn-in-tests-command",
-        "python3 tests/mocks/burn_in_tests.py",
+        "python3 tests/mocks/burn_in_tests.py run",
     ])
     .assert()
     .success();

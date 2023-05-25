@@ -36,6 +36,8 @@ const BURN_IN_LABEL: &str = "burn_in";
 const BURN_IN_TASK_LABEL: &str = "burn_in_task";
 /// Number of tasks to generate for burn_in_tasks.
 const BURN_IN_REPEAT_TASK_NUM: usize = 10;
+/// Burn in display name prefix
+const BURN_IN_DISPLAY_NAME_PREFIX: &str = "[jstests_affected]";
 
 /// A service for generating burn_in tasks.
 pub trait BurnInService: Sync + Send {
@@ -411,7 +413,7 @@ impl BurnInService for BurnInServiceImpl {
         gen_config.build_variant_display_name = base_build_variant
             .display_name
             .as_ref()
-            .map(|s| format!("! {}", s));
+            .map(|s| format!("{} {}", BURN_IN_DISPLAY_NAME_PREFIX, s));
 
         gen_config.expansions = base_build_variant.expansions.clone().unwrap_or_default();
         gen_config.expansions.insert(
@@ -757,6 +759,14 @@ mod tests {
             todo!()
         }
 
+        fn resolve_burn_in_tag_build_variants(
+            &self,
+            _build_variant: &BuildVariant,
+            _build_variant_map: &HashMap<String, &BuildVariant>,
+        ) -> Vec<String> {
+            todo!()
+        }
+
         fn lookup_required_param_str(&self, _task_def: &EvgTask, _run_var: &str) -> Result<String> {
             todo!()
         }
@@ -967,7 +977,7 @@ mod tests {
 
         assert_eq!(
             burn_in_tags_build_variant.display_name,
-            Some("! base build variant display name".to_string())
+            Some("[jstests_affected] base build variant display name".to_string())
         );
         assert_eq!(
             burn_in_tags_build_variant.run_on,

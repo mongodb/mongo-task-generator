@@ -9,8 +9,9 @@ use shrub_rs::models::params::ParamValue;
 use shrub_rs::models::{commands::FunctionCall, task::EvgTask, variant::BuildVariant};
 
 use crate::evergreen_names::{
-    ENTERPRISE_MODULE, GENERATE_RESMOKE_TASKS, INITIALIZE_MULTIVERSION_TASKS, IS_FUZZER, LINUX,
-    MACOS, RUN_RESMOKE_TESTS, WINDOWS,
+    BURN_IN_TAG_EXCLUDE_BUILD_VARIANTS, BURN_IN_TAG_INCLUDE_ALL_REQUIRED_AND_SUGGESTED,
+    BURN_IN_TAG_INCLUDE_BUILD_VARIANTS, ENTERPRISE_MODULE, GENERATE_RESMOKE_TASKS,
+    INITIALIZE_MULTIVERSION_TASKS, IS_FUZZER, LINUX, MACOS, RUN_RESMOKE_TESTS, WINDOWS,
 };
 use crate::utils::task_name::remove_gen_suffix;
 
@@ -165,6 +166,22 @@ pub trait EvgConfigUtils: Sync + Send {
         &self,
         name: &str,
         build_variant: &BuildVariant,
+    ) -> Vec<String>;
+
+    /// Determine corresponding burn in tag build variants for the given build variant.
+    ///
+    /// # Arguments
+    ///
+    /// * `build_variant` - Build Variant to query.
+    /// * `build_variant_map` - A map of build variant names to their definitions.
+    ///
+    /// # Returns
+    ///
+    /// List of build variant names to use for burn in tags
+    fn resolve_burn_in_tag_build_variants(
+        &self,
+        build_variant: &BuildVariant,
+        build_variant_map: &HashMap<String, &BuildVariant>,
     ) -> Vec<String>;
 
     /// Lookup the given variable in the task definition.
@@ -517,6 +534,62 @@ impl EvgConfigUtils for EvgConfigUtilsImpl {
             .collect()
     }
 
+    /// Determine burn in tag build variants for the given build variant.
+    ///
+    /// # Arguments
+    ///
+    /// * `build_variant` - Build Variant to query.
+    /// * `build_variant_map` - A map of build variant names to their definitions.
+    ///
+    /// # Returns
+    ///
+    /// List of build variant names to use for burn in tags.
+    fn resolve_burn_in_tag_build_variants(
+        &self,
+        build_variant: &BuildVariant,
+        build_variant_map: &HashMap<String, &BuildVariant>,
+    ) -> Vec<String> {
+        let mut burn_in_build_variants = self
+            .lookup_and_split_by_whitespace_build_variant_expansion(
+                BURN_IN_TAG_INCLUDE_BUILD_VARIANTS,
+                build_variant,
+            );
+        if self
+            .lookup_build_variant_expansion(
+                BURN_IN_TAG_INCLUDE_ALL_REQUIRED_AND_SUGGESTED,
+                build_variant,
+            )
+            .unwrap_or_else(|| "false".to_string())
+            .parse::<bool>()
+            .unwrap()
+        {
+            burn_in_build_variants.extend(
+                build_variant_map
+                    .iter()
+                    .filter_map(|(name, build_variant)| {
+                        let display_name = build_variant.display_name.as_ref().unwrap();
+                        if display_name.starts_with('!') || display_name.starts_with('*') {
+                            Some(name.to_string())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<String>>(),
+            );
+        }
+        let exclude_burn_in_build_variants = self
+            .lookup_and_split_by_whitespace_build_variant_expansion(
+                BURN_IN_TAG_EXCLUDE_BUILD_VARIANTS,
+                build_variant,
+            );
+        burn_in_build_variants
+            .into_iter()
+            .collect::<HashSet<String>>()
+            .into_iter()
+            .filter(|name| !exclude_burn_in_build_variants.contains(name))
+            .collect::<Vec<String>>()
+    }
+
     /// Lookup the given variable in the task definition.
     ///
     /// # Arguments
@@ -748,14 +821,155 @@ fn get_resmoke_vars(task: &EvgTask) -> Option<&HashMap<String, ParamValue>> {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
     use maplit::btreemap;
     use maplit::hashmap;
     use rstest::rstest;
     use shrub_rs::models::commands::{fn_call, fn_call_with_params};
     use shrub_rs::models::params::ParamValue;
+    use shrub_rs::models::project::EvgProject;
     use shrub_rs::models::task::TaskDependency;
 
     use super::*;
+
+    // test burn in variant resolver
+
+    fn get_evg_project() -> EvgProject {
+        EvgProject {
+            buildvariants: vec![
+                BuildVariant {
+                    name: "bv1".to_string(),
+                    display_name: Some("! required".to_string()),
+                    ..Default::default()
+                },
+                BuildVariant {
+                    name: "bv2".to_string(),
+                    display_name: Some("* suggested".to_string()),
+                    ..Default::default()
+                },
+                BuildVariant {
+                    name: "bv3".to_string(),
+                    display_name: Some("other bv asdf".to_string()),
+                    ..Default::default()
+                },
+                BuildVariant {
+                    name: "bv4".to_string(),
+                    display_name: Some("other bv xyz".to_string()),
+                    ..Default::default()
+                },
+                BuildVariant {
+                    name: "bv5".to_string(),
+                    display_name: Some("other bv 123".to_string()),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }
+    }
+    #[test]
+    fn test_resolve_burn_in_tag_bv_none() {
+        let build_variant = BuildVariant {
+            ..Default::default()
+        };
+        let evg_config_utils = EvgConfigUtilsImpl::new();
+
+        let lookup = evg_config_utils.resolve_burn_in_tag_build_variants(
+            &build_variant,
+            &get_evg_project().build_variant_map(),
+        );
+
+        assert_eq!(lookup.len(), 0);
+    }
+    #[test]
+    fn test_resolve_burn_in_tag_bv_includes() {
+        let build_variant = BuildVariant {
+            expansions: Some(BTreeMap::from([
+                (
+                    BURN_IN_TAG_INCLUDE_BUILD_VARIANTS.to_string(),
+                    "bv1 bv3 bv5".to_string(),
+                ),
+                (
+                    BURN_IN_TAG_EXCLUDE_BUILD_VARIANTS.to_string(),
+                    "bv5".to_string(),
+                ),
+            ])),
+            ..Default::default()
+        };
+        let evg_config_utils = EvgConfigUtilsImpl::new();
+
+        let lookup = evg_config_utils.resolve_burn_in_tag_build_variants(
+            &build_variant,
+            &get_evg_project().build_variant_map(),
+        );
+
+        assert_eq!(lookup.len(), 2);
+        assert_eq!(lookup.contains(&"bv1".to_string()), true);
+        assert_eq!(lookup.contains(&"bv3".to_string()), true);
+    }
+    #[test]
+    fn test_resolve_burn_in_tag_bv_suggested_and_required() {
+        let build_variant = BuildVariant {
+            expansions: Some(BTreeMap::from([
+                (
+                    BURN_IN_TAG_INCLUDE_BUILD_VARIANTS.to_string(),
+                    "bv3 bv5".to_string(),
+                ),
+                (
+                    BURN_IN_TAG_EXCLUDE_BUILD_VARIANTS.to_string(),
+                    "bv2".to_string(),
+                ),
+                (
+                    BURN_IN_TAG_INCLUDE_ALL_REQUIRED_AND_SUGGESTED.to_string(),
+                    "true".to_string(),
+                ),
+            ])),
+            ..Default::default()
+        };
+        let evg_config_utils = EvgConfigUtilsImpl::new();
+
+        let lookup = evg_config_utils.resolve_burn_in_tag_build_variants(
+            &build_variant,
+            &get_evg_project().build_variant_map(),
+        );
+
+        assert_eq!(lookup.len(), 3);
+        assert_eq!(lookup.contains(&"bv1".to_string()), true);
+        assert_eq!(lookup.contains(&"bv3".to_string()), true);
+        assert_eq!(lookup.contains(&"bv5".to_string()), true);
+    }
+
+    #[test]
+    fn test_resolve_burn_in_tag_bv_suggested_and_required_duplicates() {
+        let build_variant = BuildVariant {
+            expansions: Some(BTreeMap::from([
+                (
+                    BURN_IN_TAG_INCLUDE_BUILD_VARIANTS.to_string(),
+                    "bv1 bv2 bv3 bv5".to_string(),
+                ),
+                (
+                    BURN_IN_TAG_EXCLUDE_BUILD_VARIANTS.to_string(),
+                    "bv2".to_string(),
+                ),
+                (
+                    BURN_IN_TAG_INCLUDE_ALL_REQUIRED_AND_SUGGESTED.to_string(),
+                    "true".to_string(),
+                ),
+            ])),
+            ..Default::default()
+        };
+        let evg_config_utils = EvgConfigUtilsImpl::new();
+
+        let lookup = evg_config_utils.resolve_burn_in_tag_build_variants(
+            &build_variant,
+            &get_evg_project().build_variant_map(),
+        );
+
+        assert_eq!(lookup.len(), 3);
+        assert_eq!(lookup.contains(&"bv1".to_string()), true);
+        assert_eq!(lookup.contains(&"bv3".to_string()), true);
+        assert_eq!(lookup.contains(&"bv5".to_string()), true);
+    }
 
     // is_task_generated tests.
 

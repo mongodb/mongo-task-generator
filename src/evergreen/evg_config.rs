@@ -4,7 +4,7 @@ use std::{collections::HashMap, path::Path, process::Command};
 
 use shrub_rs::models::{project::EvgProject, task::EvgTask, variant::BuildVariant};
 
-const REQUIRED_PREFIX: &str = "-required";
+const REQUIRED_PREFIX: &str = "!";
 
 pub trait EvgConfigService: Sync + Send {
     /// Get a map of build variant names to build variant definitions.
@@ -57,10 +57,11 @@ impl EvgConfigService for EvgProjectConfig {
     fn sort_build_variants_by_required(&self) -> Vec<String> {
         let build_variant_map = self.get_build_variant_map();
         let mut build_variants: Vec<String> = build_variant_map
-            .keys()
-            .filter_map(|bv| {
-                if bv.ends_with(REQUIRED_PREFIX) {
-                    Some(bv.to_string())
+            .iter()
+            .filter_map(|(name, build_variant)| {
+                let display_name = build_variant.display_name.as_ref().unwrap();
+                if display_name.starts_with(REQUIRED_PREFIX) {
+                    Some(name.to_string())
                 } else {
                     None
                 }
@@ -69,10 +70,11 @@ impl EvgConfigService for EvgProjectConfig {
 
         build_variants.extend::<Vec<String>>(
             build_variant_map
-                .keys()
-                .filter_map(|bv| {
-                    if !bv.ends_with(REQUIRED_PREFIX) {
-                        Some(bv.to_string())
+                .iter()
+                .filter_map(|(name, build_variant)| {
+                    let display_name = build_variant.display_name.as_ref().unwrap();
+                    if !display_name.starts_with(REQUIRED_PREFIX) {
+                        Some(name.to_string())
                     } else {
                         None
                     }
