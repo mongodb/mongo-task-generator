@@ -24,6 +24,8 @@ pub struct S3TestStats {
     pub num_fail: u64,
     /// Average duration of passed tests.
     pub avg_duration_pass: f64,
+    /// Max duration of test, in seconds
+    pub max_duration_pass: f64,
 }
 
 /// Runtime information of hooks that ran in evergreen.
@@ -35,6 +37,8 @@ pub struct HookRuntimeHistory {
     pub hook_name: String,
     /// Average runtime of hook.
     pub average_runtime: f64,
+    /// Max duration of test, in seconds
+    pub max_duration_pass: f64,
 }
 
 impl Display for HookRuntimeHistory {
@@ -271,6 +275,7 @@ fn gather_hook_stats(stat_list: &[S3TestStats]) -> HashMap<String, Vec<HookRunti
                     test_name: test_name.to_string(),
                     hook_name: hook_name.to_string(),
                     average_runtime: stat.avg_duration_pass,
+                    max_duration_pass: stat.max_duration_pass,
                 });
             } else {
                 hook_map.insert(
@@ -279,6 +284,7 @@ fn gather_hook_stats(stat_list: &[S3TestStats]) -> HashMap<String, Vec<HookRunti
                         test_name: test_name.to_string(),
                         hook_name: hook_name.to_string(),
                         average_runtime: stat.avg_duration_pass,
+                        max_duration_pass: stat.max_duration_pass,
                     }],
                 );
             }
