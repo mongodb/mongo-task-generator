@@ -410,7 +410,8 @@ impl GenResmokeTaskServiceImpl {
         preferred_stat: PreferredStatForSplitTask,
     ) -> Result<Vec<SubSuite>> {
         fn select_stat(average_runtime: f64, max_duration: f64, preferred_stat_: &PreferredStatForSplitTask) -> f64 {
-            if matches!(preferred_stat_, PreferredStatForSplitTask::AverageRuntime) {
+            // Note that max_duration can be 0 (if the test never ran, or never passed); in that case, we fall back to average runtime:
+            if matches!(preferred_stat_, PreferredStatForSplitTask::MaxDuration) && max_duration > 0.0) {
                 return average_runtime;
             } else {
                 return max_duration;
