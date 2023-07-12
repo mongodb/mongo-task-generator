@@ -377,6 +377,11 @@ impl GenResmokeTaskServiceImpl {
     }
 }
 
+enum PreferredStatForSplitTask {
+    AverageRuntime,
+    MaxDuration,
+}
+
 impl GenResmokeTaskServiceImpl {
     /// Split the given task into a number of sub-tasks for parallel execution.
     ///
@@ -386,7 +391,7 @@ impl GenResmokeTaskServiceImpl {
     /// * `task_stats` - Statistics on the historic runtimes of tests in the task.
     /// * `multiversion_name` - Name of task if performing multiversion generation.
     /// * `multiversion_tags` - Tag to include when performing multiversion generation.
-    /// * `consider_max_duration` - Incorporate max_duration value when deciding how to split up a task
+    /// * `preferred_stat` - Which statistic to use when deciding how to split up a task
     ///
     /// # Returns
     ///
@@ -397,14 +402,22 @@ impl GenResmokeTaskServiceImpl {
         task_stats: &TaskRuntimeHistory,
         multiversion_name: Option<&str>,
         multiversion_tags: Option<String>,
-        _consider_max_duration: bool,
+        preferred_stat: PreferredStatForSplitTask,
     ) -> Result<Vec<SubSuite>> {
+        fn select_stat(average_runtime: f64, max_duration: f64, preferred_stat_: &PreferredStatForSplitTask) -> f64 {
+            if matches!(preferred_stat_, PreferredStatForSplitTask::AverageRuntime) {
+                return average_runtime;
+            } else {
+                return max_duration;
+            }
+        }
+
         let origin_suite = multiversion_name.unwrap_or(&params.suite_name);
         let test_list = self.get_test_list(params, multiversion_name)?;
         let total_runtime = task_stats
             .test_map
             .iter()
-            .fold(0.0, |init, (_, item)| init + item.average_runtime);
+            .fold(0.0, |init, (_, item)| init + select_stat(item.average_runtime, item.max_duration_pass, &preferred_stat));
 
         let max_tasks = min(self.config.n_suites, test_list.len());
         let runtime_per_subtask = total_runtime / max_tasks as f64;
@@ -425,7 +438,7 @@ impl GenResmokeTaskServiceImpl {
             let min_idx = get_min_index(&running_runtimes);
             let test_name = get_test_name(&test);
             if let Some(test_stats) = task_stats.test_map.get(&test_name) {
-                running_runtimes[min_idx] += test_stats.average_runtime;
+                running_runtimes[min_idx] += select_stat(test_stats.average_runtime, test_stats.max_duration_pass, &preferred_stat);
                 running_tests[min_idx].push(test.clone());
             } else {
                 left_tests.push(test.clone());
@@ -572,7 +585,7 @@ impl GenResmokeTaskServiceImpl {
                     build_variant,
                     Some(&multiversion_task.suite_name.clone()),
                     Some(multiversion_task.old_version.clone()),
-                    false /* consider_max_duration */,
+                    PreferredStatForSplitTask::AverageRuntime,
                 )
                 .await?;
             mv_sub_suites.extend_from_slice(&suites);
@@ -589,7 +602,7 @@ impl GenResmokeTaskServiceImpl {
     /// * `build_variant` - Name of build variant to base generation off.
     /// * `multiversion_name` - Name of task if performing multiversion generation.
     /// * `multiversion_tags` - Tag to include when performing multiversion generation.
-    /// * `consider_max_duration` - Incorporate max_duration value when deciding how to split up a task
+    /// * `preferred_stat` - Which statistic to use when deciding how to split up a task
     ///
     /// # Returns
     ///
@@ -600,7 +613,7 @@ impl GenResmokeTaskServiceImpl {
         build_variant: &str,
         multiversion_name: Option<&str>,
         multiversion_tags: Option<String>,
-        consider_max_duration: bool,
+        preferred_stat: PreferredStatForSplitTask,
     ) -> Result<Vec<SubSuite>> {
         let sub_suites = if self.config.use_task_split_fallback {
             self.split_task_fallback(params, multiversion_name, multiversion_tags.clone())?
@@ -616,7 +629,7 @@ impl GenResmokeTaskServiceImpl {
                     &task_history,
                     multiversion_name,
                     multiversion_tags.clone(),
-                    consider_max_duration,
+                    preferred_stat,
                 )?,
                 Err(err) => {
                     warn!(
@@ -718,7 +731,7 @@ impl GenResmokeTaskService for GenResmokeTaskServiceImpl {
             self.create_multiversion_tasks(params, build_variant)
                 .await?
         } else {
-            self.create_tasks(params, build_variant, None, None, false /* consider_max_duration */).await?
+            self.create_tasks(params, build_variant, None, None, PreferredStatForSplitTask::AverageRuntime).await?
         };
 
         let sub_task_total = sub_suites.len();
@@ -1173,7 +1186,7 @@ mod tests {
         };
 
         let sub_suites = gen_resmoke_service
-            .split_task(&params, &task_history, None, None, false /* consider_max_duration */)
+            .split_task(&params, &task_history, None, None, PreferredStatForSplitTask::AverageRuntime)
             .unwrap();
 
         assert_eq!(sub_suites.len(), n_suites);
@@ -1210,7 +1223,7 @@ mod tests {
         };
 
         let sub_suites = gen_resmoke_service
-            .split_task(&params, &task_history, None, None, false /* consider_max_duration */)
+            .split_task(&params, &task_history, None, None, PreferredStatForSplitTask::AverageRuntime)
             .unwrap();
 
         assert_eq!(sub_suites.len(), n_suites);
@@ -1249,7 +1262,7 @@ mod tests {
                 &task_history,
                 Some("multiversion_test"),
                 Some("multiversion_tag".to_string()),
-                false /* consider_max_duration */,
+                PreferredStatForSplitTask::AverageRuntime,
             )
             .unwrap();
 
