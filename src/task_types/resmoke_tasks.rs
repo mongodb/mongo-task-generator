@@ -386,6 +386,7 @@ impl GenResmokeTaskServiceImpl {
     /// * `task_stats` - Statistics on the historic runtimes of tests in the task.
     /// * `multiversion_name` - Name of task if performing multiversion generation.
     /// * `multiversion_tags` - Tag to include when performing multiversion generation.
+    /// * `consider_max_duration` - Incorporate max_duration value when deciding how to split up a task
     ///
     /// # Returns
     ///
@@ -396,6 +397,7 @@ impl GenResmokeTaskServiceImpl {
         task_stats: &TaskRuntimeHistory,
         multiversion_name: Option<&str>,
         multiversion_tags: Option<String>,
+        _consider_max_duration: bool,
     ) -> Result<Vec<SubSuite>> {
         let origin_suite = multiversion_name.unwrap_or(&params.suite_name);
         let test_list = self.get_test_list(params, multiversion_name)?;
@@ -570,6 +572,7 @@ impl GenResmokeTaskServiceImpl {
                     build_variant,
                     Some(&multiversion_task.suite_name.clone()),
                     Some(multiversion_task.old_version.clone()),
+                    false /* consider_max_duration */,
                 )
                 .await?;
             mv_sub_suites.extend_from_slice(&suites);
@@ -586,6 +589,7 @@ impl GenResmokeTaskServiceImpl {
     /// * `build_variant` - Name of build variant to base generation off.
     /// * `multiversion_name` - Name of task if performing multiversion generation.
     /// * `multiversion_tags` - Tag to include when performing multiversion generation.
+    /// * `consider_max_duration` - Incorporate max_duration value when deciding how to split up a task
     ///
     /// # Returns
     ///
@@ -596,6 +600,7 @@ impl GenResmokeTaskServiceImpl {
         build_variant: &str,
         multiversion_name: Option<&str>,
         multiversion_tags: Option<String>,
+        consider_max_duration: bool,
     ) -> Result<Vec<SubSuite>> {
         let sub_suites = if self.config.use_task_split_fallback {
             self.split_task_fallback(params, multiversion_name, multiversion_tags.clone())?
@@ -611,6 +616,7 @@ impl GenResmokeTaskServiceImpl {
                     &task_history,
                     multiversion_name,
                     multiversion_tags.clone(),
+                    consider_max_duration,
                 )?,
                 Err(err) => {
                     warn!(
@@ -712,7 +718,7 @@ impl GenResmokeTaskService for GenResmokeTaskServiceImpl {
             self.create_multiversion_tasks(params, build_variant)
                 .await?
         } else {
-            self.create_tasks(params, build_variant, None, None).await?
+            self.create_tasks(params, build_variant, None, None, false /* consider_max_duration */).await?
         };
 
         let sub_task_total = sub_suites.len();
@@ -1167,7 +1173,7 @@ mod tests {
         };
 
         let sub_suites = gen_resmoke_service
-            .split_task(&params, &task_history, None, None)
+            .split_task(&params, &task_history, None, None, false /* consider_max_duration */)
             .unwrap();
 
         assert_eq!(sub_suites.len(), n_suites);
@@ -1204,7 +1210,7 @@ mod tests {
         };
 
         let sub_suites = gen_resmoke_service
-            .split_task(&params, &task_history, None, None)
+            .split_task(&params, &task_history, None, None, false /* consider_max_duration */)
             .unwrap();
 
         assert_eq!(sub_suites.len(), n_suites);
@@ -1243,6 +1249,7 @@ mod tests {
                 &task_history,
                 Some("multiversion_test"),
                 Some("multiversion_tag".to_string()),
+                false /* consider_max_duration */,
             )
             .unwrap();
 
