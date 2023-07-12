@@ -1135,11 +1135,11 @@ mod tests {
         )
     }
 
-    fn build_mock_test_runtime(test_name: &str, runtime: f64) -> TestRuntimeHistory {
+    fn build_mock_test_runtime(test_name: &str, runtime: f64, max_duration: f64) -> TestRuntimeHistory {
         TestRuntimeHistory {
             test_name: test_name.to_string(),
             average_runtime: runtime,
-            max_duration_pass: 0.0,
+            max_duration_pass: max_duration,
             hooks: vec![],
         }
     }
@@ -1157,12 +1157,12 @@ mod tests {
         let task_history = TaskRuntimeHistory {
             task_name: "my task".to_string(),
             test_map: hashmap! {
-                "test_0".to_string() => build_mock_test_runtime("test_0.js", 100.0),
-                "test_1".to_string() => build_mock_test_runtime("test_1.js", 56.0),
-                "test_2".to_string() => build_mock_test_runtime("test_2.js", 50.0),
-                "test_3".to_string() => build_mock_test_runtime("test_3.js", 35.0),
-                "test_4".to_string() => build_mock_test_runtime("test_4.js", 34.0),
-                "test_5".to_string() => build_mock_test_runtime("test_5.js", 30.0),
+                "test_0".to_string() => build_mock_test_runtime("test_0.js", 100.0, 0.0),
+                "test_1".to_string() => build_mock_test_runtime("test_1.js", 56.0, 0.0),
+                "test_2".to_string() => build_mock_test_runtime("test_2.js", 50.0, 0.0),
+                "test_3".to_string() => build_mock_test_runtime("test_3.js", 35.0, 0.0),
+                "test_4".to_string() => build_mock_test_runtime("test_4.js", 34.0, 0.0),
+                "test_5".to_string() => build_mock_test_runtime("test_5.js", 30.0, 0.0),
             },
         };
         let gen_resmoke_service =
@@ -1198,9 +1198,9 @@ mod tests {
         let task_history = TaskRuntimeHistory {
             task_name: "my task".to_string(),
             test_map: hashmap! {
-                "test_0".to_string() => build_mock_test_runtime("test_0.js", 100.0),
-                "test_1".to_string() => build_mock_test_runtime("test_1.js", 50.0),
-                "test_2".to_string() => build_mock_test_runtime("test_2.js", 50.0),
+                "test_0".to_string() => build_mock_test_runtime("test_0.js", 100.0, 0.0),
+                "test_1".to_string() => build_mock_test_runtime("test_1.js", 50.0, 0.0),
+                "test_2".to_string() => build_mock_test_runtime("test_2.js", 50.0, 0.0),
             },
         };
         let gen_resmoke_service = build_mocked_service(test_list, task_history.clone(), n_suites);
@@ -1232,9 +1232,9 @@ mod tests {
         let task_history = TaskRuntimeHistory {
             task_name: "my task".to_string(),
             test_map: hashmap! {
-                "test_0".to_string() => build_mock_test_runtime("test_0.js", 100.0),
-                "test_1".to_string() => build_mock_test_runtime("test_1.js", 50.0),
-                "test_2".to_string() => build_mock_test_runtime("test_2.js", 50.0),
+                "test_0".to_string() => build_mock_test_runtime("test_0.js", 100.0, 0.0),
+                "test_1".to_string() => build_mock_test_runtime("test_1.js", 50.0, 0.0),
+                "test_2".to_string() => build_mock_test_runtime("test_2.js", 50.0, 0.0),
             },
         };
         let gen_resmoke_service = build_mocked_service(test_list, task_history.clone(), n_suites);
@@ -1448,12 +1448,12 @@ mod tests {
         let task_history = TaskRuntimeHistory {
             task_name: "my_task".to_string(),
             test_map: hashmap! {
-                "test_0".to_string() => build_mock_test_runtime("test_0.js", 100.0),
-                "test_1".to_string() => build_mock_test_runtime("test_1.js", 50.0),
-                "test_2".to_string() => build_mock_test_runtime("test_2.js", 50.0),
-                "test_3".to_string() => build_mock_test_runtime("test_3.js", 34.0),
-                "test_4".to_string() => build_mock_test_runtime("test_4.js", 34.0),
-                "test_5".to_string() => build_mock_test_runtime("test_5.js", 34.0),
+                "test_0".to_string() => build_mock_test_runtime("test_0.js", 100.0, 0.0),
+                "test_1".to_string() => build_mock_test_runtime("test_1.js", 50.0, 0.0),
+                "test_2".to_string() => build_mock_test_runtime("test_2.js", 50.0, 0.0),
+                "test_3".to_string() => build_mock_test_runtime("test_3.js", 34.0, 0.0),
+                "test_4".to_string() => build_mock_test_runtime("test_4.js", 34.0, 0.0),
+                "test_5".to_string() => build_mock_test_runtime("test_5.js", 34.0, 0.0),
             },
         };
         let gen_resmoke_service = build_mocked_service(test_list, task_history.clone(), n_suites);
@@ -1598,6 +1598,7 @@ mod tests {
                         build_mock_test_runtime(
                             format!("test_{}.js", i).as_ref(),
                             historic_runtimes[i],
+                            0.0,
                         ),
                     )
                 })
