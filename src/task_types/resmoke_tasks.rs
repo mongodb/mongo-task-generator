@@ -653,6 +653,7 @@ fn sort_tests_by_runtime(
         let default_runtime = TestRuntimeHistory {
             test_name: "default".to_string(),
             average_runtime: 0.0,
+            max_duration_pass: 0.0,
             hooks: vec![],
         };
         let runtime_history_a = task_stats
@@ -1132,6 +1133,7 @@ mod tests {
         TestRuntimeHistory {
             test_name: test_name.to_string(),
             average_runtime: runtime,
+            max_duration_pass: 0.0,
             hooks: vec![],
         }
     }

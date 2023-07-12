@@ -54,6 +54,8 @@ pub struct TestRuntimeHistory {
     pub test_name: String,
     /// Average runtime of test.
     pub average_runtime: f64,
+    /// Max duration of test, in seconds
+    pub max_duration_pass: f64,
     /// Hooks runtime information of hooks that ran with the test.
     pub hooks: Vec<HookRuntimeHistory>,
 }
@@ -234,6 +236,7 @@ fn gather_test_stats(
                     TestRuntimeHistory {
                         test_name: normalized_test_file,
                         average_runtime: stat.avg_duration_pass,
+                        max_duration_pass: 0.0,
                         hooks: hook_map
                             .get(&test_name.to_string())
                             .unwrap_or(&vec![])
