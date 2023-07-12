@@ -382,6 +382,11 @@ enum PreferredStatForSplitTask {
     MaxDuration,
 }
 
+fn select_preferred_stat() -> PreferredStatForSplitTask {
+    // TODO: Figure out the selection logic
+    return PreferredStatForSplitTask::AverageRuntime;
+}
+
 impl GenResmokeTaskServiceImpl {
     /// Split the given task into a number of sub-tasks for parallel execution.
     ///
@@ -579,13 +584,14 @@ impl GenResmokeTaskServiceImpl {
     ) -> Result<Vec<SubSuite>> {
         let mut mv_sub_suites = vec![];
         for multiversion_task in params.multiversion_generate_tasks.as_ref().unwrap() {
+            let preferred_stat = select_preferred_stat();
             let suites = self
                 .create_tasks(
                     params,
                     build_variant,
                     Some(&multiversion_task.suite_name.clone()),
                     Some(multiversion_task.old_version.clone()),
-                    PreferredStatForSplitTask::AverageRuntime,
+                    preferred_stat,
                 )
                 .await?;
             mv_sub_suites.extend_from_slice(&suites);
@@ -731,7 +737,8 @@ impl GenResmokeTaskService for GenResmokeTaskServiceImpl {
             self.create_multiversion_tasks(params, build_variant)
                 .await?
         } else {
-            self.create_tasks(params, build_variant, None, None, PreferredStatForSplitTask::AverageRuntime).await?
+            let preferred_stat = select_preferred_stat();
+            self.create_tasks(params, build_variant, None, None, preferred_stat).await?
         };
 
         let sub_task_total = sub_suites.len();
