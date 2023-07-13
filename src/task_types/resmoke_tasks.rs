@@ -423,7 +423,7 @@ impl GenResmokeTaskServiceImpl {
         let total_runtime = task_stats
             .test_map
             .iter()
-            .fold(0.0, |init, (_, item)| init + select_stat(item.average_runtime, item.max_duration_pass, &preferred_stat));
+            .fold(0.0, |init, (_, item)| init + select_stat(item.average_runtime, item.max_duration, &preferred_stat));
 
         let max_tasks = min(self.config.n_suites, test_list.len());
         let runtime_per_subtask = total_runtime / max_tasks as f64;
@@ -444,7 +444,7 @@ impl GenResmokeTaskServiceImpl {
             let min_idx = get_min_index(&running_runtimes);
             let test_name = get_test_name(&test);
             if let Some(test_stats) = task_stats.test_map.get(&test_name) {
-                running_runtimes[min_idx] += select_stat(test_stats.average_runtime, test_stats.max_duration_pass, &preferred_stat);
+                running_runtimes[min_idx] += select_stat(test_stats.average_runtime, test_stats.max_duration, &preferred_stat);
                 running_tests[min_idx].push(test.clone());
             } else {
                 left_tests.push(test.clone());
@@ -679,7 +679,7 @@ fn sort_tests_by_runtime(
         let default_runtime = TestRuntimeHistory {
             test_name: "default".to_string(),
             average_runtime: 0.0,
-            max_duration_pass: 0.0,
+            max_duration: 0.0,
             hooks: vec![],
         };
         let runtime_history_a = task_stats
@@ -1160,7 +1160,7 @@ mod tests {
         TestRuntimeHistory {
             test_name: test_name.to_string(),
             average_runtime: runtime,
-            max_duration_pass: max_duration,
+            max_duration: max_duration,
             hooks: vec![],
         }
     }
