@@ -4,7 +4,9 @@ use anyhow::{bail, Result};
 use shrub_rs::models::{task::EvgTask, variant::BuildVariant};
 
 use crate::{
-    evergreen::evg_config_utils::EvgConfigUtils,
+    evergreen::evg_config_utils::{
+        EvgConfigUtils, PreferredStatForSplitTask,
+    },
     evergreen_names::{
         CONTINUE_ON_FAILURE, FUZZER_PARAMETERS, IDLE_TIMEOUT, LARGE_DISTRO_EXPANSION, MULTIVERSION,
         NO_MULTIVERSION_GENERATE_TASKS, NPM_COMMAND, NUM_FUZZER_FILES, NUM_FUZZER_TASKS,
@@ -201,6 +203,8 @@ impl ConfigExtractionService for ConfigExtractionServiceImpl {
             dependencies: self.determine_task_dependencies(task_def),
             is_enterprise,
             platform: Some(evg_config_utils.infer_build_variant_platform(build_variant)),
+            /// Figure out how to get this value from the tags
+            preferred_stat_for_split_task: PreferredStatForSplitTask::AverageRuntime,
         })
     }
 
@@ -260,6 +264,8 @@ impl ConfigExtractionService for ConfigExtractionServiceImpl {
             is_enterprise,
             pass_through_vars: self.evg_config_utils.get_gen_task_vars(task_def),
             platform,
+            /// Figure out how to get this value from the tags
+            preferred_stat_for_split_task: PreferredStatForSplitTask::AverageRuntime,
         })
     }
 

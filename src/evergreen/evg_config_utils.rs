@@ -31,6 +31,12 @@ pub struct MultiversionGenerateTaskConfig {
     pub old_version: String,
 }
 
+/// Used for determining how a split_task() operation should work
+pub enum PreferredStatForSplitTask {
+    AverageRuntime,
+    MaxDuration,
+}
+
 pub trait EvgConfigUtils: Sync + Send {
     /// Determine if the given evergreen task is a generated task.
     ///

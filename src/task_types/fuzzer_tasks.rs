@@ -10,7 +10,10 @@ use shrub_rs::models::{
 use tracing::{event, Level};
 
 use crate::{
-    evergreen::evg_config_utils::MultiversionGenerateTaskConfig,
+    evergreen::evg_config_utils::{
+        MultiversionGenerateTaskConfig,
+        PreferredStatForSplitTask
+    },
     evergreen_names::{
         ADD_GIT_TAG, CONFIGURE_EVG_API_CREDS, CONTINUE_ON_FAILURE, DO_MULTIVERSION_SETUP, DO_SETUP,
         FUZZER_PARAMETERS, GEN_TASK_CONFIG_LOCATION, GET_PROJECT_WITH_NO_MODULES, IDLE_TIMEOUT,
@@ -62,6 +65,8 @@ pub struct FuzzerGenTaskParams {
     pub is_enterprise: bool,
     /// Name of platform the task will run on.
     pub platform: Option<String>,
+    /// Preferred mechanism for splitting tasks
+    pub preferred_stat_for_split_task: PreferredStatForSplitTask,    
 }
 
 impl FuzzerGenTaskParams {
