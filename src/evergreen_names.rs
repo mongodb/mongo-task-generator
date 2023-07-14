@@ -112,6 +112,8 @@ pub const BURN_IN_TASK_NAME: &str = "burn_in_task_name";
 pub const MULTIVERSION: &str = "multiversion";
 /// Tag to indicate multiversion combination should not be created.
 pub const NO_MULTIVERSION_GENERATE_TASKS: &str = "no_multiversion_generate_tasks";
+/// Tag to indicate that task splitting should consider max duration (instead of average runtime)
+pub const MAX_DURATION_FOR_SPLIT_TASKS: &str = "max_duration_for_split_tasks";
 
 // Multiversion values
 /// Tag to include required backport.
