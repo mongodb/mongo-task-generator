@@ -32,7 +32,9 @@ pub struct MultiversionGenerateTaskConfig {
 }
 
 /// Used for determining how a split_task() operation should work
+#[derive(Debug, Default, Clone)]
 pub enum PreferredStatForSplitTask {
+    #[default]
     AverageRuntime,
     MaxDuration,
 }

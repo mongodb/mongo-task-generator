@@ -66,7 +66,7 @@ pub struct FuzzerGenTaskParams {
     /// Name of platform the task will run on.
     pub platform: Option<String>,
     /// Preferred mechanism for splitting tasks
-    pub preferred_stat_for_split_task: PreferredStatForSplitTask,    
+    pub preferred_stat_for_split_task: PreferredStatForSplitTask,
 }
 
 impl FuzzerGenTaskParams {
