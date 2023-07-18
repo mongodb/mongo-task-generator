@@ -234,6 +234,7 @@ fn gather_test_stats(
             if let Some(v) = test_map.get_mut(&test_name) {
                 v.test_name = normalized_test_file;
                 v.average_runtime += stat.avg_duration_pass;
+                v.max_duration += stat.max_duration_pass;
             } else {
                 test_map.insert(
                     test_name.clone(),
@@ -394,6 +395,26 @@ mod tests {
         assert_eq!("test", history.hook_name);
         assert_eq!(10.0, history.average_runtime);
         assert_eq!(20.0, history.max_duration);
+    }
+
+    #[test]
+    fn test_gather_test_stats() {
+        let stat_list: Vec<S3TestStats> = vec![S3TestStats {
+            avg_duration_pass: 10.0,
+            max_duration_pass: 20.0,
+            num_fail: 0,
+            num_pass: 100,
+            test_name: "simple_test".to_string(),
+        }];
+        let hook_map = gather_hook_stats(&stat_list);
+        let test_stats = gather_test_stats(&stat_list, &hook_map);
+        assert_eq!(test_stats.keys().len(), 1);
+        assert!(test_stats.contains_key("simple_test"));
+        let history = &test_stats.get("simple_test").unwrap();
+        assert_eq!("simple_test", history.test_name);
+        assert_eq!(10.0, history.average_runtime);
+        assert_eq!(20.0, history.max_duration);
+        // Note: No further testing of history.hooks; I suspect that hooks is never actually used, and so we can get rid of it.
     }
 
     #[test]
