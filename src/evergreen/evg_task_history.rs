@@ -377,6 +377,26 @@ mod tests {
     }
 
     #[test]
+    fn test_gather_hook_stats() {
+        let stat_list: Vec<S3TestStats> = vec![S3TestStats {
+            avg_duration_pass: 10.0,
+            max_duration_pass: 20.0,
+            num_fail: 0,
+            num_pass: 100,
+            test_name: "simple:test".to_string(),
+        }];
+        let hook_stats = gather_hook_stats(&stat_list);
+        assert_eq!(hook_stats.keys().len(), 1);
+        assert!(hook_stats.contains_key("simple"));
+        assert_eq!(1, hook_stats.get("simple").unwrap().len());
+        let history = &hook_stats.get("simple").unwrap()[0];
+        assert_eq!("simple", history.test_name);
+        assert_eq!("test", history.hook_name);
+        assert_eq!(10.0, history.average_runtime);
+        assert_eq!(20.0, history.max_duration);
+    }
+
+    #[test]
     fn test_hook_test_name() {
         assert_eq!(hook_test_name("my_test:my_hook"), "my_test");
     }

@@ -20,9 +20,7 @@ use tracing::{event, warn, Level};
 
 use crate::{
     evergreen::{
-        evg_config_utils::{
-            MultiversionGenerateTaskConfig, PreferredStatForSplitTask,
-        },
+        evg_config_utils::{MultiversionGenerateTaskConfig, PreferredStatForSplitTask},
         evg_task_history::{
             get_test_name, TaskHistoryService, TaskRuntimeHistory, TestRuntimeHistory,
         },
@@ -75,7 +73,7 @@ pub struct ResmokeGenParams {
     /// Name of platform the task will run on.
     pub platform: Option<String>,
     /// Preferred mechanism for splitting tasks
-    pub preferred_stat_for_split_task: PreferredStatForSplitTask,    
+    pub preferred_stat_for_split_task: PreferredStatForSplitTask,
 }
 
 impl ResmokeGenParams {
@@ -401,9 +399,14 @@ impl GenResmokeTaskServiceImpl {
         multiversion_name: Option<&str>,
         multiversion_tags: Option<String>,
     ) -> Result<Vec<SubSuite>> {
-        fn select_stat(item: &TestRuntimeHistory, preferred_stat_: &PreferredStatForSplitTask) -> f64 {
+        fn select_stat(
+            item: &TestRuntimeHistory,
+            preferred_stat_: &PreferredStatForSplitTask,
+        ) -> f64 {
             // Note that max_duration can be 0 (if the test never ran, or never passed); in that case, we fall back to average runtime:
-            if matches!(preferred_stat_, PreferredStatForSplitTask::AverageRuntime) || item.max_duration == 0.0 {
+            if matches!(preferred_stat_, PreferredStatForSplitTask::AverageRuntime)
+                || item.max_duration == 0.0
+            {
                 return item.average_runtime;
             } else {
                 return item.max_duration;
@@ -412,10 +415,9 @@ impl GenResmokeTaskServiceImpl {
 
         let origin_suite = multiversion_name.unwrap_or(&params.suite_name);
         let test_list = self.get_test_list(params, multiversion_name)?;
-        let total_runtime = task_stats
-            .test_map
-            .iter()
-            .fold(0.0, |init, (_, item)| init + select_stat(&item, &params.preferred_stat_for_split_task));
+        let total_runtime = task_stats.test_map.iter().fold(0.0, |init, (_, item)| {
+            init + select_stat(&item, &params.preferred_stat_for_split_task)
+        });
 
         let max_tasks = min(self.config.n_suites, test_list.len());
         let runtime_per_subtask = total_runtime / max_tasks as f64;
@@ -436,7 +438,8 @@ impl GenResmokeTaskServiceImpl {
             let min_idx = get_min_index(&running_runtimes);
             let test_name = get_test_name(&test);
             if let Some(test_stats) = task_stats.test_map.get(&test_name) {
-                running_runtimes[min_idx] += select_stat(&test_stats, &params.preferred_stat_for_split_task);
+                running_runtimes[min_idx] +=
+                    select_stat(&test_stats, &params.preferred_stat_for_split_task);
                 running_tests[min_idx].push(test.clone());
             } else {
                 left_tests.push(test.clone());
@@ -1142,7 +1145,11 @@ mod tests {
         )
     }
 
-    fn build_mock_test_runtime(test_name: &str, runtime: f64, max_duration: f64) -> TestRuntimeHistory {
+    fn build_mock_test_runtime(
+        test_name: &str,
+        runtime: f64,
+        max_duration: f64,
+    ) -> TestRuntimeHistory {
         TestRuntimeHistory {
             test_name: test_name.to_string(),
             average_runtime: runtime,

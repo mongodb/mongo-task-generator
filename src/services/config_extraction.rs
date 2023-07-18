@@ -1,17 +1,16 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use anyhow::{bail, Result};
 use shrub_rs::models::{task::EvgTask, variant::BuildVariant};
 
 use crate::{
-    evergreen::evg_config_utils::{
-        EvgConfigUtils, PreferredStatForSplitTask,
-    },
+    evergreen::evg_config_utils::{EvgConfigUtils, PreferredStatForSplitTask},
     evergreen_names::{
-        CONTINUE_ON_FAILURE, FUZZER_PARAMETERS, IDLE_TIMEOUT, LARGE_DISTRO_EXPANSION, MAX_DURATION_FOR_SPLIT_TASKS, MULTIVERSION,
-        NO_MULTIVERSION_GENERATE_TASKS, NPM_COMMAND, NUM_FUZZER_FILES, NUM_FUZZER_TASKS,
-        REPEAT_SUITES, RESMOKE_ARGS, RESMOKE_JOBS_MAX, SHOULD_SHUFFLE_TESTS, USE_LARGE_DISTRO,
+        CONTINUE_ON_FAILURE, FUZZER_PARAMETERS, IDLE_TIMEOUT, LARGE_DISTRO_EXPANSION,
+        MAX_DURATION_FOR_SPLIT_TASKS, MULTIVERSION, NO_MULTIVERSION_GENERATE_TASKS, NPM_COMMAND,
+        NUM_FUZZER_FILES, NUM_FUZZER_TASKS, REPEAT_SUITES, RESMOKE_ARGS, RESMOKE_JOBS_MAX,
+        SHOULD_SHUFFLE_TESTS, USE_LARGE_DISTRO,
     },
     generate_sub_tasks_config::GenerateSubTasksConfig,
     task_types::{
@@ -212,7 +211,9 @@ impl ConfigExtractionService for ConfigExtractionServiceImpl {
             dependencies: self.determine_task_dependencies(task_def),
             is_enterprise,
             platform: Some(evg_config_utils.infer_build_variant_platform(build_variant)),
-            preferred_stat_for_split_task: preferred_stat_from_tags(evg_config_utils.get_task_tags(task_def)),
+            preferred_stat_for_split_task: preferred_stat_from_tags(
+                evg_config_utils.get_task_tags(task_def),
+            ),
         })
     }
 
@@ -272,7 +273,9 @@ impl ConfigExtractionService for ConfigExtractionServiceImpl {
             is_enterprise,
             pass_through_vars: self.evg_config_utils.get_gen_task_vars(task_def),
             platform,
-            preferred_stat_for_split_task: preferred_stat_from_tags(self.evg_config_utils.get_task_tags(task_def)),
+            preferred_stat_for_split_task: preferred_stat_from_tags(
+                self.evg_config_utils.get_task_tags(task_def),
+            ),
         })
     }
 
