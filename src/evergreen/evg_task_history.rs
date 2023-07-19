@@ -66,7 +66,7 @@ pub struct TestRuntimeHistory {
 
 impl Display for TestRuntimeHistory {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "{}: {}", self.test_name, self.average_runtime)?;
+        writeln!(f, "{}: {}, {}", self.test_name, self.average_runtime, self.max_duration)?;
         for hook in &self.hooks {
             writeln!(f, "- {}", hook)?;
         }
