@@ -404,12 +404,16 @@ impl GenResmokeTaskServiceImpl {
             preferred_stat_: &PreferredStatForSplitTask,
         ) -> f64 {
             // Note that max_duration can be 0 (if the test never ran, or never passed); in that case, we fall back to average runtime:
-            if matches!(preferred_stat_, PreferredStatForSplitTask::AverageRuntime)
-                || item.max_duration == 0.0
-            {
+            if matches!(preferred_stat_, PreferredStatForSplitTask::AverageRuntime) {
                 return item.average_runtime;
+            } else if matches!(preferred_stat_, PreferredStatForSplitTask::MaxDuration) {
+                if item.max_duration == 0.0 {
+                    return item.average_runtime;
+                } else {
+                    return item.max_duration;
+                }
             } else {
-                return item.max_duration;
+                panic!("this should never happen");
             }
         }
 
@@ -429,7 +433,7 @@ impl GenResmokeTaskServiceImpl {
             test_list.len()
         );
 
-        let sorted_test_list = sort_tests_by_runtime(test_list, task_stats);
+        let sorted_test_list = sort_tests(&params.preferred_stat_for_split_task, test_list, task_stats);
         let mut running_tests = vec![vec![]; max_tasks];
         let mut running_runtimes = vec![0.0; max_tasks];
         let mut left_tests = vec![];
@@ -646,7 +650,7 @@ impl GenResmokeTaskServiceImpl {
     }
 }
 
-/// Sort tests by historic runtime descending.
+/// Sort tests by preferred stat, descending.
 ///
 /// Tests without historic runtime data will be placed at the end of the list.
 ///
@@ -658,7 +662,8 @@ impl GenResmokeTaskServiceImpl {
 /// # Returns
 ///
 /// List of sorted tests by historic runtime.
-fn sort_tests_by_runtime(
+fn sort_tests(
+    preferred_stat: &PreferredStatForSplitTask,
     test_list: Vec<String>,
     task_stats: &TaskRuntimeHistory,
 ) -> Vec<std::string::String> {
@@ -680,10 +685,17 @@ fn sort_tests_by_runtime(
             .test_map
             .get(&test_name_b)
             .unwrap_or(&default_runtime);
-        runtime_history_b
-            .average_runtime
-            .partial_cmp(&runtime_history_a.average_runtime)
-            .unwrap()
+        if matches!(preferred_stat, PreferredStatForSplitTask::MaxDuration) {
+            runtime_history_b
+                .average_runtime
+                .partial_cmp(&runtime_history_a.max_duration)
+                .unwrap()
+        } else {
+            runtime_history_b
+                .average_runtime
+                .partial_cmp(&runtime_history_a.average_runtime)
+                .unwrap()
+        }
     });
     sorted_test_list
 }
@@ -1203,6 +1215,53 @@ mod tests {
     }
 
     #[test]
+    fn test_split_task_should_split_tasks_by_max_duration() {
+        // In this test we will create 3 subtasks with 6 tests. The first sub task should contain
+        // a single test. The second 2 tests and the third 3 tests. We will set the test runtimes
+        // to make this happen.
+        let n_suites = 3;
+        let test_list: Vec<String> = (0..6)
+            .into_iter()
+            .map(|i| format!("test_{}.js", i))
+            .collect();
+        let task_history = TaskRuntimeHistory {
+            task_name: "my task".to_string(),
+            test_map: hashmap! {
+                "test_0".to_string() => build_mock_test_runtime("test_0.js", 0.0, 100.0),
+                "test_1".to_string() => build_mock_test_runtime("test_1.js", 0.0, 56.0),
+                "test_2".to_string() => build_mock_test_runtime("test_2.js", 0.0, 50.0),
+                "test_3".to_string() => build_mock_test_runtime("test_3.js", 0.0, 35.0),
+                "test_4".to_string() => build_mock_test_runtime("test_4.js", 0.0, 34.0),
+                "test_5".to_string() => build_mock_test_runtime("test_5.js", 0.0, 30.0),
+            },
+        };
+        let gen_resmoke_service =
+            build_mocked_service(test_list.clone(), task_history.clone(), n_suites);
+
+        let mut params = ResmokeGenParams {
+            ..Default::default()
+        };
+        params.preferred_stat_for_split_task = PreferredStatForSplitTask::MaxDuration;
+
+        let sub_suites = gen_resmoke_service
+            .split_task(&params, &task_history, None, None)
+            .unwrap();
+
+        assert_eq!(sub_suites.len(), n_suites);
+        let suite_0 = &sub_suites[0];
+        assert_eq!(suite_0.test_list.len(), 2);
+        assert!(suite_0.test_list.contains(&"test_1.js".to_string()));
+        assert!(suite_0.test_list.contains(&"test_3.js".to_string()));
+        let suite_1 = &sub_suites[1];
+        assert!(suite_1.test_list.contains(&"test_1.js".to_string()));
+        assert!(suite_1.test_list.contains(&"test_4.js".to_string()));
+        let suite_2 = &sub_suites[2];
+        assert!(suite_2.test_list.contains(&"test_2.js".to_string()));
+        assert!(suite_2.test_list.contains(&"test_3.js".to_string()));
+        assert!(suite_2.test_list.contains(&"test_5.js".to_string()));
+    }
+
+    #[test]
     fn test_split_task_with_missing_history_should_split_tasks_equally() {
         let n_suites = 3;
         let test_list: Vec<String> = (0..12)
@@ -1584,7 +1643,7 @@ mod tests {
         assert_eq!(get_evg_fn_name(&commands[5]), Some("run test"));
     }
 
-    // sort_tests_by_runtime tests.
+    // sort_tests tests.
     #[rstest]
     #[case(vec![100.0, 50.0, 30.0, 25.0, 20.0, 15.0], vec![0, 1, 2, 3, 4, 5])]
     #[case(vec![15.0, 20.0, 25.0, 30.0, 50.0, 100.0], vec![5, 4, 3, 2, 1, 0])]
@@ -1593,7 +1652,7 @@ mod tests {
     #[case(vec![30.0, 50.0, 100.0], vec![2, 1, 0, 3, 4, 5])]
     #[case(vec![30.0, 100.0, 50.0], vec![1, 2, 0, 3, 4, 5])]
     #[case(vec![], vec![0, 1, 2, 3, 4, 5])]
-    fn test_sort_tests_by_runtime(
+    fn test_sort_tests(
         #[case] historic_runtimes: Vec<f64>,
         #[case] sorted_indexes: Vec<i32>,
     ) {
@@ -1622,7 +1681,7 @@ mod tests {
             .map(|i| format!("test_{}.js", sorted_indexes[i]))
             .collect();
 
-        let result = sort_tests_by_runtime(test_list, &task_stats);
+        let result = sort_tests(&PreferredStatForSplitTask::AverageRuntime, test_list, &task_stats);
 
         assert_eq!(result, expected_result);
     }
