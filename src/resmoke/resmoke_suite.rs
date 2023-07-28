@@ -5,6 +5,7 @@ use std::{collections::HashSet, str::FromStr};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_yaml::{Error, Value};
+use tracing::error;
 
 #[derive(Serialize, Debug, Clone, Deserialize)]
 #[serde(untagged)]
@@ -79,7 +80,11 @@ impl FromStr for ResmokeSuiteConfig {
 
     /// Read Resmoke suite configuration from the given string.
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        serde_yaml::from_str(s)
+        let resmoke_suite_config: Result<Self, serde_yaml::Error> = serde_yaml::from_str(s);
+        if resmoke_suite_config.is_err() {
+            error!(yaml = s, "Failed to parse yaml for ResmokeSuiteConfig",);
+        }
+        resmoke_suite_config
     }
 }
 

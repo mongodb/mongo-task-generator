@@ -1,4 +1,5 @@
 use std::{collections::HashSet, path::Path};
+use tracing::error;
 
 use anyhow::Result;
 use serde::Deserialize;
@@ -10,9 +11,18 @@ pub struct GenerateSubTasksConfig {
 
 impl GenerateSubTasksConfig {
     pub fn from_yaml_file<P: AsRef<Path>>(location: P) -> Result<Self> {
-        let contents = std::fs::read_to_string(location)?;
+        let contents = std::fs::read_to_string(&location)?;
 
-        Ok(serde_yaml::from_str(&contents)?)
+        let subtasks: Result<Self, serde_yaml::Error> = serde_yaml::from_str(&contents);
+        if subtasks.is_err() {
+            error!(
+                file = location.as_ref().display().to_string(),
+                contents = &contents,
+                "Failed to parse yaml for GenerateSubTasksConfig from file",
+            );
+        }
+
+        Ok(subtasks?)
     }
 
     pub fn ignore_missing_large_distro(&self, build_variant_name: &str) -> bool {
