@@ -2,7 +2,7 @@ use std::{path::Path, time::Instant};
 
 use anyhow::Result;
 use serde::Deserialize;
-use tracing::{event, Level};
+use tracing::{error, event, Level};
 
 use crate::resmoke::external_cmd::run_command;
 
@@ -100,7 +100,16 @@ impl BurnInDiscovery for BurnInProxy {
             "Burn In Discovery Finished"
         );
 
-        let output: DiscoveredTaskList = serde_yaml::from_str(&cmd_output)?;
-        Ok(output.discovered_tasks)
+        let output: Result<DiscoveredTaskList, serde_yaml::Error> =
+            serde_yaml::from_str(&cmd_output);
+        if output.is_err() {
+            error!(
+                command = cmd.join(" "),
+                command_output = &cmd_output,
+                "Failed to parse yaml from discover tasks command output",
+            );
+        }
+
+        Ok(output?.discovered_tasks)
     }
 }

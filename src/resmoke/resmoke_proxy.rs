@@ -2,7 +2,7 @@ use std::{path::Path, str::FromStr, time::Instant};
 
 use anyhow::Result;
 use serde::Deserialize;
-use tracing::{event, Level};
+use tracing::{error, event, Level};
 
 use super::{external_cmd::run_command, resmoke_suite::ResmokeSuiteConfig};
 
@@ -95,8 +95,17 @@ impl TestDiscovery for ResmokeProxy {
             "Resmoke test discovery finished"
         );
 
-        let output: TestDiscoveryOutput = serde_yaml::from_str(&cmd_output)?;
-        Ok(output
+        let output: Result<TestDiscoveryOutput, serde_yaml::Error> =
+            serde_yaml::from_str(&cmd_output);
+        if output.is_err() {
+            error!(
+                command = cmd.join(" "),
+                command_output = &cmd_output,
+                "Failed to parse yaml from discover tests command output",
+            );
+        }
+
+        Ok(output?
             .tests
             .into_iter()
             .filter(|f| Path::new(f).exists())
@@ -150,7 +159,16 @@ impl MultiversionConfig {
         cmd.append(&mut script.iter().map(|s| s.as_str()).collect());
         cmd.append(&mut vec!["multiversion-config"]);
         let cmd_output = run_command(&cmd).unwrap();
-        Ok(serde_yaml::from_str(&cmd_output)?)
+        let multiversion_config: Result<MultiversionConfig, serde_yaml::Error> =
+            serde_yaml::from_str(&cmd_output);
+        if multiversion_config.is_err() {
+            error!(
+                command = cmd.join(" "),
+                command_output = &cmd_output,
+                "Failed to parse yaml from multiversion config command output",
+            );
+        }
+        Ok(multiversion_config?)
     }
 
     /// Get the required FCV tag for the lts version.

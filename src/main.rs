@@ -10,7 +10,7 @@ use mongo_task_generator::{
     generate_configuration, Dependencies, ExecutionConfiguration, ProjectInfo,
 };
 use serde::Deserialize;
-use tracing::{event, Level};
+use tracing::{error, event, Level};
 use tracing_subscriber::fmt::format;
 
 const DEFAULT_EVG_AUTH_FILE: &str = "~/.evergreen.yml";
@@ -41,7 +41,17 @@ impl EvgExpansions {
     /// * `path` - Path to YAML file to read.
     pub fn from_yaml_file(path: &Path) -> Result<Self> {
         let contents = std::fs::read_to_string(path)?;
-        Ok(serde_yaml::from_str(&contents)?)
+
+        let evg_expansions: Result<Self, serde_yaml::Error> = serde_yaml::from_str(&contents);
+        if evg_expansions.is_err() {
+            error!(
+                file = path.display().to_string(),
+                contents = &contents,
+                "Failed to parse yaml for EvgExpansions from file",
+            );
+        }
+
+        Ok(evg_expansions?)
     }
 
     /// File to store generated configuration under.
