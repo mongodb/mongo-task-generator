@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.7.9 - 2022-07-31
+* DAG-2777: Added better logging around yaml failures
+
 ## 0.7.8 - 2022-05-25
 * Update burn in tags API to accommodate all required and suggested buildvariants.
 
