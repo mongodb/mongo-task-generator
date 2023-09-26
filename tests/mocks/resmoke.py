@@ -1,14 +1,19 @@
 """Mock of resmoke.py for testing task generation."""
 import sys
+import os
 
 
 def multiversion_config():
-    print("""
+    file_contents =  """
 last_versions:
 - last_lts
 - last_continuous
 requires_fcv_tag: requires_fcv_51,requires_fcv_52,requires_fcv_53,requires_fcv_60
-    """)
+    """
+    file_name = "multiversion-config.yml"
+    if not os.path.exists(file_name):
+        with open(file_name, "w") as file:
+            file.write(file_contents)
 
 
 def suiteconfig():

@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.7.10 - 2022-09-25
+* SERVER-81436 Read multiversion config from file instead of resmoke output
+
 ## 0.7.9 - 2022-07-31
 * DAG-2777: Added better logging around yaml failures
 

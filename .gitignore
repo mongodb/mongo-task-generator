@@ -1,3 +1,4 @@
 target/
 .emm-local.yml
 .vscode
+multiversion-config.yml

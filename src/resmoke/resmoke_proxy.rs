@@ -156,15 +156,20 @@ impl MultiversionConfig {
     /// Query the multiversion configuration from resmoke.
     pub fn from_resmoke(cmd: &str, script: &[String]) -> Result<MultiversionConfig> {
         let mut cmd = vec![cmd];
+        let file_name = "multiversion-config.yml";
         cmd.append(&mut script.iter().map(|s| s.as_str()).collect());
         cmd.append(&mut vec!["multiversion-config"]);
-        let cmd_output = run_command(&cmd).unwrap();
+        let file_arg = format!("--config-file-output={}", file_name);
+        cmd.append(&mut vec![&file_arg]);
+        run_command(&cmd).unwrap();
+        let multiversion_config_output =
+            std::fs::read_to_string(file_name).expect("Multiversion config file not found.");
         let multiversion_config: Result<MultiversionConfig, serde_yaml::Error> =
-            serde_yaml::from_str(&cmd_output);
+            serde_yaml::from_str(&multiversion_config_output);
         if multiversion_config.is_err() {
             error!(
                 command = cmd.join(" "),
-                command_output = &cmd_output,
+                command_output = &multiversion_config_output,
                 "Failed to parse yaml from multiversion config command output",
             );
         }
