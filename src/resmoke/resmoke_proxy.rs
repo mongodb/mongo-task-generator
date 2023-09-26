@@ -159,7 +159,7 @@ impl MultiversionConfig {
         let file_name = "multiversion-config.yml";
         cmd.append(&mut script.iter().map(|s| s.as_str()).collect());
         cmd.append(&mut vec!["multiversion-config"]);
-        let file_arg = format!("--file={}", file_name);
+        let file_arg = format!("--config-file-output={}", file_name);
         cmd.append(&mut vec![&file_arg]);
         run_command(&cmd).unwrap();
         let multiversion_config_output =
