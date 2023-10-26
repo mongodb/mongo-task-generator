@@ -103,13 +103,9 @@ impl BurnInDiscovery for BurnInProxy {
         let output: Result<DiscoveredTaskList, serde_yaml::Error> =
             serde_yaml::from_str(&cmd_output);
         if output.is_err() {
-            error!(
-                command = cmd.join(" "),
-                command_output = &cmd_output,
-                "Failed to parse yaml from discover tasks command output",
-            );
+            Ok(Vec::new())
+        } else {
+            Ok(output?.discovered_tasks)
         }
-
-        Ok(output?.discovered_tasks)
     }
 }
