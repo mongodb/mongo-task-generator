@@ -101,7 +101,7 @@ Looking at a [sample resmoke-based](https://github.com/mongodb/mongo/blob/852c5d
 ```
 
 Like fuzzer tasks, task generation is indicated by including the `"generate resmoke tasks"` function.
-Additionally, the 2 parameters here will impact how the task is generated.
+Additionally, the 3 parameters here will impact how the task is generated.
 
 * **suite**: By default, the name of the task (with the `_gen` suffix stripped off) will be used
   to determine which resmoke suite to base the generated sub-tasks on. This can be overwritten with
@@ -110,6 +110,10 @@ Additionally, the 2 parameters here will impact how the task is generated.
   successfully. When generated sub-tasks are run on build_variants with a `large_distro_name`
   expansion defined, they will run on that large distro instead of the default distro by setting
   the `use_large_distro` variable to `"true"`.
+* **use_xlarge_distro**: For when `use_large_distro` is not enough. When the `use_xlarge_distro`
+  variable is set to `"true"`, certain tasks will use an even larger distro that can be defined with
+  the `xlarge_distro_name` expansion in the build variant. When the `xlarge_distro_name` expansion
+  is not defined, it will fallback to the defined `large_distro_name` expansion in the build variant
 
 **Note**: If a task has the `use_large_distro` value defined, but is added to a build variant
 without a `large_distro_name`, it will trigger a failure. This can be supported by using the

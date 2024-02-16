@@ -9,6 +9,7 @@ use crate::{
         CONTINUE_ON_FAILURE, FUZZER_PARAMETERS, IDLE_TIMEOUT, LARGE_DISTRO_EXPANSION, MULTIVERSION,
         NO_MULTIVERSION_GENERATE_TASKS, NPM_COMMAND, NUM_FUZZER_FILES, NUM_FUZZER_TASKS,
         REPEAT_SUITES, RESMOKE_ARGS, RESMOKE_JOBS_MAX, SHOULD_SHUFFLE_TESTS, USE_LARGE_DISTRO,
+        USE_XLARGE_DISTRO, XLARGE_DISTRO_EXPANSION,
     },
     generate_sub_tasks_config::GenerateSubTasksConfig,
     task_types::{
@@ -235,6 +236,11 @@ impl ConfigExtractionService for ConfigExtractionServiceImpl {
                 USE_LARGE_DISTRO,
                 false,
             )?,
+            use_xlarge_distro: self.evg_config_utils.lookup_default_param_bool(
+                task_def,
+                USE_XLARGE_DISTRO,
+                false,
+            )?,
             require_multiversion_setup,
             require_multiversion_generate_tasks: require_multiversion_setup
                 && !no_multiversion_generate_tasks,
@@ -286,9 +292,16 @@ impl ConfigExtractionService for ConfigExtractionServiceImpl {
         let large_distro_name = self
             .evg_config_utils
             .lookup_build_variant_expansion(LARGE_DISTRO_EXPANSION, build_variant);
+        let xlarge_distro_name = self
+            .evg_config_utils
+            .lookup_build_variant_expansion(XLARGE_DISTRO_EXPANSION, build_variant);
         let build_variant_name = build_variant.name.as_str();
 
-        if generated_task.use_large_distro() {
+        if generated_task.use_xlarge_distro() && xlarge_distro_name.is_some() {
+            return Ok(xlarge_distro_name);
+        }
+
+        if generated_task.use_large_distro() || generated_task.use_xlarge_distro() {
             if large_distro_name.is_some() {
                 return Ok(large_distro_name);
             }
@@ -414,6 +427,7 @@ mod tests {
                         ..Default::default()
                     },
                     use_large_distro: *value,
+                    use_xlarge_distro: false,
                 })
                 .collect(),
         };
@@ -444,6 +458,7 @@ mod tests {
                     ..Default::default()
                 },
                 use_large_distro: true,
+                use_xlarge_distro: false,
             }],
         };
         let build_variant = BuildVariant {
@@ -474,6 +489,7 @@ mod tests {
                     ..Default::default()
                 },
                 use_large_distro: true,
+                use_xlarge_distro: false,
             }],
         };
         let build_variant = BuildVariant {

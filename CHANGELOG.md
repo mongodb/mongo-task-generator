@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.7.11 - 2024-02-16
+* DEVPROD-4926 add use_xlarge_distro option to mongo-task-generator
+
 ## 0.7.10 - 2022-09-25
 * SERVER-81436 Read multiversion config from file instead of resmoke output.
 

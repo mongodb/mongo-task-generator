@@ -50,6 +50,8 @@ pub const BURN_IN_TASKS: &str = "burn_in_tasks_gen";
 pub const IS_FUZZER: &str = "is_jstestfuzz";
 /// If true, generate sub-tasks to run on large distros.
 pub const USE_LARGE_DISTRO: &str = "use_large_distro";
+/// If true, generate sub-tasks to run on large distros.
+pub const USE_XLARGE_DISTRO: &str = "use_xlarge_distro";
 /// Number of files that each fuzzer sub-task should generate.
 pub const NUM_FUZZER_FILES: &str = "num_files";
 /// Number of sub-tasks that should be generated for a fuzzer.
@@ -93,6 +95,8 @@ pub const MULTIVERSION_EXCLUDE_TAGS: &str = "multiversion_exclude_tags_version";
 // Build Variant expansions.
 /// Name of large distro for build variant.
 pub const LARGE_DISTRO_EXPANSION: &str = "large_distro_name";
+/// Name of xlarge distro for build variant.
+pub const XLARGE_DISTRO_EXPANSION: &str = "xlarge_distro_name";
 /// List of build variant names delimited by spaces to generate burn_in_tests for.
 pub const BURN_IN_TAG_INCLUDE_BUILD_VARIANTS: &str = "burn_in_tag_include_build_variants";
 /// Generate burn_in_tests for all required and suggested build variants.
