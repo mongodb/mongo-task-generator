@@ -10,6 +10,8 @@ pub struct GeneratedSubTask {
     pub evg_task: EvgTask,
     /// Whether to run generated task on a large distro.
     pub use_large_distro: bool,
+    /// Whether to run generated task on a xlarge distro.
+    pub use_xlarge_distro: bool,
 }
 
 /// Interface for representing a generated task.
@@ -25,6 +27,13 @@ pub trait GeneratedSuite: Sync + Send {
         self.sub_tasks()
             .iter()
             .any(|sub_task| sub_task.use_large_distro)
+    }
+
+    /// Check whether any sub task requires xlarge distro.
+    fn use_xlarge_distro(&self) -> bool {
+        self.sub_tasks()
+            .iter()
+            .any(|sub_task| sub_task.use_xlarge_distro)
     }
 
     /// Build a shrub display task for this generated task.
@@ -45,7 +54,7 @@ pub trait GeneratedSuite: Sync + Send {
             .iter()
             .map(|sub_task| {
                 let mut large_distro = None;
-                if sub_task.use_large_distro {
+                if sub_task.use_large_distro || sub_task.use_xlarge_distro {
                     large_distro = distro.clone();
                 }
                 sub_task

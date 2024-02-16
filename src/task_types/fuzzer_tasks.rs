@@ -168,6 +168,7 @@ impl GeneratedSuite for FuzzerTask {
             .map(|sub_task| GeneratedSubTask {
                 evg_task: sub_task,
                 use_large_distro: false,
+                use_xlarge_distro: false,
             })
             .collect()
     }

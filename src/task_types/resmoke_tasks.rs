@@ -52,6 +52,8 @@ pub struct ResmokeGenParams {
     pub suite_name: String,
     /// Should the generated tasks run on a 'large' distro.
     pub use_large_distro: bool,
+    /// Should the generated tasks run on a 'xlarge' distro.
+    pub use_xlarge_distro: bool,
     /// Does this task require multiversion setup.
     pub require_multiversion_setup: bool,
     /// Should multiversion generate tasks exist for this.
@@ -776,6 +778,7 @@ impl GenResmokeTaskService for GenResmokeTaskServiceImpl {
                 ..Default::default()
             },
             use_large_distro: params.use_large_distro,
+            use_xlarge_distro: params.use_xlarge_distro,
         }
     }
 }
@@ -1014,6 +1017,7 @@ mod tests {
                         ..Default::default()
                     },
                     use_large_distro: *value,
+                    use_xlarge_distro: false,
                 })
                 .collect(),
         };
