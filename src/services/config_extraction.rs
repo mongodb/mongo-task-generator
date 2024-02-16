@@ -427,6 +427,7 @@ mod tests {
                         ..Default::default()
                     },
                     use_large_distro: *value,
+                    use_xlarge_distro: false,
                 })
                 .collect(),
         };
