@@ -126,7 +126,7 @@ impl MultiversionService for MultiversionServiceImpl {
         last_versions_expansion: Option<String>,
     ) -> Option<Vec<MultiversionGenerateTaskConfig>> {
         let last_versions: Vec<String> = last_versions_expansion
-            .unwrap_or(self.multiversion_config.last_versions.join(","))
+            .unwrap_or_else(|| self.multiversion_config.last_versions.join(","))
             .split(',')
             .map(|s| s.to_string())
             .collect();

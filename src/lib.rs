@@ -787,14 +787,14 @@ fn lookup_task_name(
             task_name,
             platform,
             ENTERPRISE_MODULE,
-            unique_gen_suffix.unwrap_or("".to_string())
+            unique_gen_suffix.as_deref().unwrap_or("")
         )
     } else {
         format!(
             "{}-{}{}",
             task_name,
             platform,
-            unique_gen_suffix.unwrap_or("".to_string())
+            unique_gen_suffix.as_deref().unwrap_or("")
         )
     }
 }
