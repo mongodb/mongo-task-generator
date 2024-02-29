@@ -110,6 +110,10 @@ pub const BURN_IN_TAG_COMPILE_TASK_DEPENDENCY: &str = "burn_in_tag_compile_task_
 pub const BURN_IN_BYPASS: &str = "burn_in_bypass";
 /// List of tasks to burn in.
 pub const BURN_IN_TASK_NAME: &str = "burn_in_task_name";
+/// Variant specific override of last_versions in the multiversion-config
+pub const LAST_VERSIONS_EXPANSION: &str = "last_versions";
+/// Unique identifier for generated tasks to use that override last_versions
+pub const UNIQUE_GEN_SUFFIX_EXPANSION: &str = "unique_gen_suffix";
 
 // Task Tags
 /// Tag to include multiversion setup is required.

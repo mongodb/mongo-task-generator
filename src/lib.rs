@@ -22,7 +22,7 @@ use evergreen::{
 };
 use evergreen_names::{
     BURN_IN_TAGS, BURN_IN_TAG_COMPILE_TASK_DEPENDENCY, BURN_IN_TAG_INCLUDE_BUILD_VARIANTS,
-    BURN_IN_TASKS, BURN_IN_TESTS, ENTERPRISE_MODULE, GENERATOR_TASKS,
+    BURN_IN_TASKS, BURN_IN_TESTS, ENTERPRISE_MODULE, GENERATOR_TASKS, UNIQUE_GEN_SUFFIX_EXPANSION,
 };
 use generate_sub_tasks_config::GenerateSubTasksConfig;
 use resmoke::{
@@ -495,9 +495,16 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                 {
                     continue;
                 }
-
+                let last_versions_expansion = self
+                    .evg_config_utils
+                    .lookup_build_variant_expansion(UNIQUE_GEN_SUFFIX_EXPANSION, build_variant);
                 // Skip tasks that have already been seen.
-                let task_name = lookup_task_name(is_enterprise, &task.name, &platform);
+                let task_name = lookup_task_name(
+                    is_enterprise,
+                    &task.name,
+                    &platform,
+                    last_versions_expansion,
+                );
                 if seen_tasks.contains(&task_name) {
                     continue;
                 }
@@ -564,6 +571,7 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
             let params = self.config_extraction_service.task_def_to_resmoke_params(
                 task_def,
                 is_enterprise,
+                Some(build_variant),
                 Some(platform),
             )?;
             Some(
@@ -683,7 +691,15 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                 } else if task.name == BURN_IN_TASKS {
                     format!("{}-{}", BURN_IN_TASKS_PREFIX, bv_name)
                 } else {
-                    lookup_task_name(is_enterprise, &task.name, &platform)
+                    let last_versions_expansion = self
+                        .evg_config_utils
+                        .lookup_build_variant_expansion(UNIQUE_GEN_SUFFIX_EXPANSION, build_variant);
+                    lookup_task_name(
+                        is_enterprise,
+                        &task.name,
+                        &platform,
+                        last_versions_expansion,
+                    )
                 };
 
                 if let Some(generated_task) = generated_tasks.get(&task_name) {
@@ -759,11 +775,27 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
 /// # Returns
 ///
 /// Name to use for task.
-fn lookup_task_name(is_enterprise: bool, task_name: &str, platform: &str) -> String {
+fn lookup_task_name(
+    is_enterprise: bool,
+    task_name: &str,
+    platform: &str,
+    unique_gen_suffix: Option<String>,
+) -> String {
     if is_enterprise {
-        format!("{}-{}-{}", task_name, platform, ENTERPRISE_MODULE)
+        format!(
+            "{}-{}-{}{}",
+            task_name,
+            platform,
+            ENTERPRISE_MODULE,
+            unique_gen_suffix.unwrap_or("".to_string())
+        )
     } else {
-        format!("{}-{}", task_name, platform)
+        format!(
+            "{}-{}{}",
+            task_name,
+            platform,
+            unique_gen_suffix.unwrap_or("".to_string())
+        )
     }
 }
 
@@ -799,7 +831,14 @@ fn create_task_worker(
 
         let is_enterprise = evg_config_utils.is_enterprise_build_variant(&build_variant);
         let platform = evg_config_utils.infer_build_variant_platform(&build_variant);
-        let task_name = lookup_task_name(is_enterprise, &task_def.name, &platform);
+        let last_versions_expansion = evg_config_utils
+            .lookup_build_variant_expansion(UNIQUE_GEN_SUFFIX_EXPANSION, &build_variant);
+        let task_name = lookup_task_name(
+            is_enterprise,
+            &task_def.name,
+            &platform,
+            last_versions_expansion,
+        );
 
         if let Some(generated_task) = generated_task {
             let mut generated_tasks = generated_tasks.lock().unwrap();
@@ -980,7 +1019,7 @@ mod tests {
         #[case] expected_task_name: &str,
     ) {
         assert_eq!(
-            lookup_task_name(is_enterprise, task_name, platform),
+            lookup_task_name(is_enterprise, task_name, platform, None),
             expected_task_name.to_string()
         );
     }
@@ -1140,6 +1179,7 @@ mod tests {
             &self,
             _task_def: &EvgTask,
             _is_enterprise: bool,
+            _build_variant: Option<&BuildVariant>,
             _platform: Option<String>,
         ) -> Result<ResmokeGenParams> {
             todo!()
@@ -1162,6 +1202,7 @@ mod tests {
         fn filter_multiversion_generate_tasks(
             &self,
             multiversion_generate_tasks: Option<Vec<MultiversionGenerateTaskConfig>>,
+            _last_versions_expansion: Option<String>,
         ) -> Option<Vec<MultiversionGenerateTaskConfig>> {
             return multiversion_generate_tasks;
         }

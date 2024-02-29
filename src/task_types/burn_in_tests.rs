@@ -202,7 +202,7 @@ impl BurnInServiceImpl {
         for (index, test) in discovered_task.test_list.iter().enumerate() {
             let mut params = self
                 .config_extraction_service
-                .task_def_to_resmoke_params(task_def, false, None)?;
+                .task_def_to_resmoke_params(task_def, false, None, None)?;
             update_resmoke_params_for_burn_in(&mut params, test);
 
             if params.require_multiversion_generate_tasks {
@@ -253,7 +253,7 @@ impl BurnInServiceImpl {
         for index in 0..BURN_IN_REPEAT_TASK_NUM {
             let params = self
                 .config_extraction_service
-                .task_def_to_resmoke_params(task_def, false, None)?;
+                .task_def_to_resmoke_params(task_def, false, None, None)?;
 
             if params.require_multiversion_generate_tasks {
                 for multiversion_task in params.multiversion_generate_tasks.as_ref().unwrap() {
@@ -663,6 +663,7 @@ mod tests {
             &self,
             _task_def: &EvgTask,
             _is_enterprise: bool,
+            _build_variant: Option<&BuildVariant>,
             _platform: Option<String>,
         ) -> Result<ResmokeGenParams> {
             Ok(ResmokeGenParams {
@@ -688,6 +689,7 @@ mod tests {
         fn filter_multiversion_generate_tasks(
             &self,
             multiversion_generate_tasks: Option<Vec<MultiversionGenerateTaskConfig>>,
+            _last_versions_expansion: Option<String>,
         ) -> Option<Vec<MultiversionGenerateTaskConfig>> {
             return multiversion_generate_tasks;
         }

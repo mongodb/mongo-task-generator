@@ -54,6 +54,7 @@ pub trait MultiversionService: Sync + Send {
     fn filter_multiversion_generate_tasks(
         &self,
         multiversion_generate_tasks: Option<Vec<MultiversionGenerateTaskConfig>>,
+        last_versions_expansion: Option<String>,
     ) -> Option<Vec<MultiversionGenerateTaskConfig>>;
 }
 
@@ -122,15 +123,17 @@ impl MultiversionService for MultiversionServiceImpl {
     fn filter_multiversion_generate_tasks(
         &self,
         multiversion_generate_tasks: Option<Vec<MultiversionGenerateTaskConfig>>,
+        last_versions_expansion: Option<String>,
     ) -> Option<Vec<MultiversionGenerateTaskConfig>> {
+        let last_versions: Vec<String> = last_versions_expansion
+            .unwrap_or(self.multiversion_config.last_versions.join(","))
+            .split(',')
+            .map(|s| s.to_string())
+            .collect();
         Some(
             multiversion_generate_tasks?
                 .into_iter()
-                .filter(|task_config| {
-                    self.multiversion_config
-                        .last_versions
-                        .contains(&task_config.old_version)
-                })
+                .filter(|task_config| last_versions.contains(&task_config.old_version))
                 .collect(),
         )
     }
@@ -167,7 +170,7 @@ mod tests {
         };
         assert_eq!(
             multiversion_service
-                .filter_multiversion_generate_tasks(Some(multiversion_generate_tasks.clone()))
+                .filter_multiversion_generate_tasks(Some(multiversion_generate_tasks.clone()), None)
                 .unwrap(),
             multiversion_generate_tasks
         );
@@ -193,7 +196,7 @@ mod tests {
             },
         };
         let filtered_multiversion_generate_tasks = multiversion_service
-            .filter_multiversion_generate_tasks(Some(multiversion_generate_tasks.clone()))
+            .filter_multiversion_generate_tasks(Some(multiversion_generate_tasks.clone()), None)
             .unwrap();
         assert_eq!(filtered_multiversion_generate_tasks.len(), 1);
         assert_eq!(
@@ -213,7 +216,7 @@ mod tests {
         };
         assert_eq!(
             multiversion_service
-                .filter_multiversion_generate_tasks(None)
+                .filter_multiversion_generate_tasks(None, None)
                 .is_none(),
             true
         );
