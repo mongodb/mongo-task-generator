@@ -503,7 +503,7 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                     is_enterprise,
                     &task.name,
                     &platform,
-                    last_versions_expansion,
+                    last_versions_expansion.as_deref(),
                 );
                 if seen_tasks.contains(&task_name) {
                     continue;
@@ -698,7 +698,7 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                         is_enterprise,
                         &task.name,
                         &platform,
-                        last_versions_expansion,
+                        last_versions_expansion.as_deref(),
                     )
                 };
 
@@ -779,7 +779,7 @@ fn lookup_task_name(
     is_enterprise: bool,
     task_name: &str,
     platform: &str,
-    unique_gen_suffix: Option<String>,
+    unique_gen_suffix: Option<&str>,
 ) -> String {
     if is_enterprise {
         format!(
@@ -787,14 +787,14 @@ fn lookup_task_name(
             task_name,
             platform,
             ENTERPRISE_MODULE,
-            unique_gen_suffix.as_deref().unwrap_or("")
+            unique_gen_suffix.unwrap_or("")
         )
     } else {
         format!(
             "{}-{}{}",
             task_name,
             platform,
-            unique_gen_suffix.as_deref().unwrap_or("")
+            unique_gen_suffix.unwrap_or("")
         )
     }
 }
@@ -837,7 +837,7 @@ fn create_task_worker(
             is_enterprise,
             &task_def.name,
             &platform,
-            last_versions_expansion,
+            last_versions_expansion.as_deref(),
         );
 
         if let Some(generated_task) = generated_task {
