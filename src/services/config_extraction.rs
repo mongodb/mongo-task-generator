@@ -6,10 +6,11 @@ use shrub_rs::models::{task::EvgTask, variant::BuildVariant};
 use crate::{
     evergreen::evg_config_utils::EvgConfigUtils,
     evergreen_names::{
-        CONTINUE_ON_FAILURE, FUZZER_PARAMETERS, IDLE_TIMEOUT, LARGE_DISTRO_EXPANSION, MULTIVERSION,
-        NO_MULTIVERSION_GENERATE_TASKS, NPM_COMMAND, NUM_FUZZER_FILES, NUM_FUZZER_TASKS,
-        REPEAT_SUITES, RESMOKE_ARGS, RESMOKE_JOBS_MAX, SHOULD_SHUFFLE_TESTS, USE_LARGE_DISTRO,
-        USE_XLARGE_DISTRO, XLARGE_DISTRO_EXPANSION,
+        CONTINUE_ON_FAILURE, FUZZER_PARAMETERS, IDLE_TIMEOUT, LARGE_DISTRO_EXPANSION,
+        LAST_VERSIONS_EXPANSION, MULTIVERSION, NO_MULTIVERSION_GENERATE_TASKS, NPM_COMMAND,
+        NUM_FUZZER_FILES, NUM_FUZZER_TASKS, REPEAT_SUITES, RESMOKE_ARGS, RESMOKE_JOBS_MAX,
+        SHOULD_SHUFFLE_TESTS, UNIQUE_GEN_SUFFIX_EXPANSION, USE_LARGE_DISTRO, USE_XLARGE_DISTRO,
+        XLARGE_DISTRO_EXPANSION,
     },
     generate_sub_tasks_config::GenerateSubTasksConfig,
     task_types::{
@@ -52,6 +53,7 @@ pub trait ConfigExtractionService: Sync + Send {
         &self,
         task_def: &EvgTask,
         is_enterprise: bool,
+        build_variant: Option<&BuildVariant>,
         platform: Option<String>,
     ) -> Result<ResmokeGenParams>;
 
@@ -166,6 +168,12 @@ impl ConfigExtractionService for ConfigExtractionServiceImpl {
                 build_variant,
             )
             .unwrap();
+        let last_versions_expansion = self
+            .evg_config_utils
+            .lookup_build_variant_expansion(LAST_VERSIONS_EXPANSION, build_variant);
+        let gen_task_suffix = self
+            .evg_config_utils
+            .lookup_build_variant_expansion(UNIQUE_GEN_SUFFIX_EXPANSION, build_variant);
 
         let suite = evg_config_utils.find_suite_name(task_def).to_string();
         Ok(FuzzerGenTaskParams {
@@ -197,11 +205,13 @@ impl ConfigExtractionService for ConfigExtractionServiceImpl {
                 .multiversion_service
                 .filter_multiversion_generate_tasks(
                     evg_config_utils.get_multiversion_generate_tasks(task_def),
+                    last_versions_expansion,
                 ),
             config_location: self.config_location.clone(),
             dependencies: self.determine_task_dependencies(task_def),
             is_enterprise,
             platform: Some(evg_config_utils.infer_build_variant_platform(build_variant)),
+            gen_task_suffix,
         })
     }
 
@@ -220,6 +230,7 @@ impl ConfigExtractionService for ConfigExtractionServiceImpl {
         &self,
         task_def: &EvgTask,
         is_enterprise: bool,
+        build_variant: Option<&BuildVariant>,
         platform: Option<String>,
     ) -> Result<ResmokeGenParams> {
         let task_name = remove_gen_suffix(&task_def.name).to_string();
@@ -227,6 +238,16 @@ impl ConfigExtractionService for ConfigExtractionServiceImpl {
         let task_tags = self.evg_config_utils.get_task_tags(task_def);
         let require_multiversion_setup = task_tags.contains(MULTIVERSION);
         let no_multiversion_generate_tasks = task_tags.contains(NO_MULTIVERSION_GENERATE_TASKS);
+        let mut last_versions_expansion = None;
+        let mut gen_task_suffix = None;
+        if let Some(variant) = build_variant {
+            last_versions_expansion = self
+                .evg_config_utils
+                .lookup_build_variant_expansion(LAST_VERSIONS_EXPANSION, variant);
+            gen_task_suffix = self
+                .evg_config_utils
+                .lookup_build_variant_expansion(UNIQUE_GEN_SUFFIX_EXPANSION, variant);
+        }
 
         Ok(ResmokeGenParams {
             task_name,
@@ -260,12 +281,14 @@ impl ConfigExtractionService for ConfigExtractionServiceImpl {
                 .filter_multiversion_generate_tasks(
                     self.evg_config_utils
                         .get_multiversion_generate_tasks(task_def),
+                    last_versions_expansion,
                 ),
             config_location: self.config_location.clone(),
             dependencies: self.determine_task_dependencies(task_def),
             is_enterprise,
             pass_through_vars: self.evg_config_utils.get_gen_task_vars(task_def),
             platform,
+            gen_task_suffix,
         })
     }
 
@@ -353,6 +376,7 @@ mod tests {
         fn filter_multiversion_generate_tasks(
             &self,
             multiversion_generate_tasks: Option<Vec<MultiversionGenerateTaskConfig>>,
+            _last_versions_expansion: Option<String>,
         ) -> Option<Vec<MultiversionGenerateTaskConfig>> {
             return multiversion_generate_tasks;
         }

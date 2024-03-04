@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.7.12 - 2024-02-29
+* DEVPROD-5087 allow variants to override last_versions
+
 ## 0.7.11 - 2024-02-16
 * DEVPROD-4926 add use_xlarge_distro option to mongo-task-generator
 

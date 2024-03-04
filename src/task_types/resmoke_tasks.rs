@@ -74,6 +74,8 @@ pub struct ResmokeGenParams {
     pub pass_through_vars: Option<HashMap<String, ParamValue>>,
     /// Name of platform the task will run on.
     pub platform: Option<String>,
+    /// Name of variant specific suffix to add to tasks
+    pub gen_task_suffix: Option<String>,
 }
 
 impl ResmokeGenParams {
@@ -766,9 +768,14 @@ impl GenResmokeTaskService for GenResmokeTaskServiceImpl {
         let run_test_vars =
             params.build_run_test_vars(&suite_file, sub_suite, &exclude_tags, suite_override);
 
+        let formatted_name = format!(
+            "{}{}",
+            suite_file,
+            params.gen_task_suffix.as_deref().unwrap_or("")
+        );
         GeneratedSubTask {
             evg_task: EvgTask {
-                name: suite_file,
+                name: formatted_name,
                 commands: Some(resmoke_commands(
                     RUN_GENERATED_TESTS,
                     run_test_vars,
@@ -1102,6 +1109,7 @@ mod tests {
         fn filter_multiversion_generate_tasks(
             &self,
             multiversion_generate_tasks: Option<Vec<MultiversionGenerateTaskConfig>>,
+            _last_versions_expansion: Option<String>,
         ) -> Option<Vec<MultiversionGenerateTaskConfig>> {
             return multiversion_generate_tasks;
         }

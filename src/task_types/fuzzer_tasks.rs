@@ -62,6 +62,8 @@ pub struct FuzzerGenTaskParams {
     pub is_enterprise: bool,
     /// Name of platform the task will run on.
     pub platform: Option<String>,
+    /// Name of variant specific suffix to add to tasks
+    pub gen_task_suffix: Option<String>,
 }
 
 impl FuzzerGenTaskParams {
@@ -291,8 +293,14 @@ fn build_fuzzer_sub_task(
         ),
     ]);
 
+    let formatted_name = format!(
+        "{}{}",
+        sub_task_name,
+        params.gen_task_suffix.as_deref().unwrap_or("")
+    );
+
     EvgTask {
-        name: sub_task_name,
+        name: formatted_name,
         commands: Some(commands),
         depends_on: params.get_dependencies(),
         ..Default::default()
