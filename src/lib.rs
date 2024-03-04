@@ -495,7 +495,7 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                 {
                     continue;
                 }
-                let last_versions_expansion = self
+                let gen_task_suffix = self
                     .evg_config_utils
                     .lookup_build_variant_expansion(UNIQUE_GEN_SUFFIX_EXPANSION, build_variant);
                 // Skip tasks that have already been seen.
@@ -503,7 +503,7 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                     is_enterprise,
                     &task.name,
                     &platform,
-                    last_versions_expansion.as_deref(),
+                    gen_task_suffix.as_deref(),
                 );
                 if seen_tasks.contains(&task_name) {
                     continue;
@@ -691,14 +691,14 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                 } else if task.name == BURN_IN_TASKS {
                     format!("{}-{}", BURN_IN_TASKS_PREFIX, bv_name)
                 } else {
-                    let last_versions_expansion = self
+                    let gen_task_suffix = self
                         .evg_config_utils
                         .lookup_build_variant_expansion(UNIQUE_GEN_SUFFIX_EXPANSION, build_variant);
                     lookup_task_name(
                         is_enterprise,
                         &task.name,
                         &platform,
-                        last_versions_expansion.as_deref(),
+                        gen_task_suffix.as_deref(),
                     )
                 };
 
@@ -831,13 +831,13 @@ fn create_task_worker(
 
         let is_enterprise = evg_config_utils.is_enterprise_build_variant(&build_variant);
         let platform = evg_config_utils.infer_build_variant_platform(&build_variant);
-        let last_versions_expansion = evg_config_utils
+        let gen_task_suffix = evg_config_utils
             .lookup_build_variant_expansion(UNIQUE_GEN_SUFFIX_EXPANSION, &build_variant);
         let task_name = lookup_task_name(
             is_enterprise,
             &task_def.name,
             &platform,
-            last_versions_expansion.as_deref(),
+            gen_task_suffix.as_deref(),
         );
 
         if let Some(generated_task) = generated_task {
