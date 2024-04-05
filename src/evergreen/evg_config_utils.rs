@@ -7,10 +7,11 @@ use regex::Regex;
 use shrub_rs::models::commands::EvgCommand::Function;
 use shrub_rs::models::params::ParamValue;
 use shrub_rs::models::{commands::FunctionCall, task::EvgTask, variant::BuildVariant};
+use std::collections::BTreeMap;
 
 use crate::evergreen_names::{
     BURN_IN_TAG_EXCLUDE_BUILD_VARIANTS, BURN_IN_TAG_INCLUDE_ALL_REQUIRED_AND_SUGGESTED,
-    BURN_IN_TAG_INCLUDE_BUILD_VARIANTS, ENTERPRISE_MODULE, GENERATE_RESMOKE_TASKS,
+    BURN_IN_TAG_INCLUDE_BUILD_VARIANTS, GENERATE_RESMOKE_TASKS,
     INITIALIZE_MULTIVERSION_TASKS, IS_FUZZER, LINUX, MACOS, RUN_RESMOKE_TESTS, WINDOWS,
 };
 use crate::utils::task_name::remove_gen_suffix;
@@ -717,11 +718,15 @@ impl EvgConfigUtils for EvgConfigUtilsImpl {
     ///
     /// true if given build variant includes the enterprise module.
     fn is_enterprise_build_variant(&self, build_variant: &BuildVariant) -> bool {
-        if let Some(modules) = &build_variant.modules {
-            modules.contains(&ENTERPRISE_MODULE.to_string())
-        } else {
-            false
+        let pattern = Regex::new(r"--enableEnterpriseTests\s*=?\s*off").unwrap();
+        if let Some(expansions_map) = &build_variant.expansions {
+            for (_key, value) in expansions_map.iter() {
+                if pattern.is_match(value) {
+                    return false;
+                }
+            }
         }
+        return true
     }
 
     /// Infer platform that build variant will run on.
@@ -1719,7 +1724,6 @@ mod tests {
     #[test]
     fn test_build_variant_with_enterprise_module_should_return_true() {
         let build_variant = BuildVariant {
-            modules: Some(vec![ENTERPRISE_MODULE.to_string()]),
             ..Default::default()
         };
         let evg_config_utils = EvgConfigUtilsImpl::new();
@@ -1735,7 +1739,12 @@ mod tests {
         #[case] modules: Option<Vec<String>>,
     ) {
         let build_variant = BuildVariant {
-            modules,
+            expansions: Some(BTreeMap::from([
+                (
+                    "enterprise_test_flag".to_string(),
+                    "--enableEnterpriseTests=off".to_string(),
+                ),
+            ])),
             ..Default::default()
         };
         let evg_config_utils = EvgConfigUtilsImpl::new();

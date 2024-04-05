@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.7.13 - 2024-04-08
+* SERVER-88917 Update method for determining enterprise build variants without using modules in mongo-task-generator
+
 ## 0.7.12 - 2024-02-29
 * DEVPROD-5087 allow variants to override last_versions
 
