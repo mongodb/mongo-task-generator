@@ -7,12 +7,11 @@ use regex::Regex;
 use shrub_rs::models::commands::EvgCommand::Function;
 use shrub_rs::models::params::ParamValue;
 use shrub_rs::models::{commands::FunctionCall, task::EvgTask, variant::BuildVariant};
-use std::collections::BTreeMap;
 
 use crate::evergreen_names::{
     BURN_IN_TAG_EXCLUDE_BUILD_VARIANTS, BURN_IN_TAG_INCLUDE_ALL_REQUIRED_AND_SUGGESTED,
-    BURN_IN_TAG_INCLUDE_BUILD_VARIANTS, GENERATE_RESMOKE_TASKS,
-    INITIALIZE_MULTIVERSION_TASKS, IS_FUZZER, LINUX, MACOS, RUN_RESMOKE_TESTS, WINDOWS,
+    BURN_IN_TAG_INCLUDE_BUILD_VARIANTS, GENERATE_RESMOKE_TASKS, INITIALIZE_MULTIVERSION_TASKS,
+    IS_FUZZER, LINUX, MACOS, RUN_RESMOKE_TESTS, WINDOWS,
 };
 use crate::utils::task_name::remove_gen_suffix;
 
@@ -726,7 +725,7 @@ impl EvgConfigUtils for EvgConfigUtilsImpl {
                 }
             }
         }
-        return true
+        true
     }
 
     /// Infer platform that build variant will run on.
@@ -1739,12 +1738,10 @@ mod tests {
         #[case] modules: Option<Vec<String>>,
     ) {
         let build_variant = BuildVariant {
-            expansions: Some(BTreeMap::from([
-                (
-                    "enterprise_test_flag".to_string(),
-                    "--enableEnterpriseTests=off".to_string(),
-                ),
-            ])),
+            expansions: Some(BTreeMap::from([(
+                "enterprise_test_flag".to_string(),
+                "--enableEnterpriseTests=off".to_string(),
+            )])),
             ..Default::default()
         };
         let evg_config_utils = EvgConfigUtilsImpl::new();
