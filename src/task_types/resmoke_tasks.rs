@@ -76,6 +76,8 @@ pub struct ResmokeGenParams {
     pub platform: Option<String>,
     /// Name of variant specific suffix to add to tasks
     pub gen_task_suffix: Option<String>,
+    /// Tags to use in the generated tasks
+    pub tags: Option<Vec<String>>,
 }
 
 impl ResmokeGenParams {
@@ -782,6 +784,7 @@ impl GenResmokeTaskService for GenResmokeTaskServiceImpl {
                     params.require_multiversion_setup,
                 )),
                 depends_on: params.get_dependencies(),
+                tags: params.tags.clone(),
                 ..Default::default()
             },
             use_large_distro: params.use_large_distro,

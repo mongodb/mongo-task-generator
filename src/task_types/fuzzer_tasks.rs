@@ -64,6 +64,8 @@ pub struct FuzzerGenTaskParams {
     pub platform: Option<String>,
     /// Name of variant specific suffix to add to tasks
     pub gen_task_suffix: Option<String>,
+    /// Tags to use in the generated tasks
+    pub tags: Option<Vec<String>>,
 }
 
 impl FuzzerGenTaskParams {
@@ -303,6 +305,7 @@ fn build_fuzzer_sub_task(
         name: formatted_name,
         commands: Some(commands),
         depends_on: params.get_dependencies(),
+        tags: params.tags.clone(),
         ..Default::default()
     }
 }
