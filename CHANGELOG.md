@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.7.14 - 2024-05-08
+* DEVPROD-7218 Update shrub-rs dependency that includes downstream_expansions.set command
+
 ## 0.7.13 - 2024-04-08
 * SERVER-88917 Update method for determining enterprise build variants without using modules in mongo-task-generator
 
