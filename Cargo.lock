@@ -1199,8 +1199,8 @@ dependencies = [
  "clap",
  "cmd_lib",
  "futures",
- "lazy_static",
  "maplit",
+ "once_cell",
  "rand 0.8.5",
  "regex",
  "reqwest",
@@ -1454,9 +1454,9 @@ dependencies = [
 
 [[package]]
 name = "once_cell"
-version = "1.12.0"
+version = "1.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7709cef83f0c1f58f666e746a08b21e0085f7440fa6a29cc194d68aac97a4225"
+checksum = "3fdb12b2476b595f9358c5161aa467c2438859caa136dec86c26fdd2efe17b92"
 
 [[package]]
 name = "openssl"
