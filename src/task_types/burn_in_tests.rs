@@ -199,9 +199,8 @@ impl BurnInServiceImpl {
         run_build_variant: &str,
     ) -> Result<Vec<GeneratedSubTask>> {
         let mut sub_suites = vec![];
-        let mut index = 0;
         for suite in discovered_task.suites.iter() {
-            for test in suite.test_list.iter() {
+            for (index, test) in suite.test_list.iter().enumerate() {
                 let mut params = self
                     .config_extraction_service
                     .task_def_to_resmoke_params(task_def, false, None, None)?;
@@ -232,8 +231,6 @@ impl BurnInServiceImpl {
                     };
                     sub_suites.push(self.create_task(&params, index, &burn_in_suite_info))
                 }
-
-                index += 1;
             }
         }
 
