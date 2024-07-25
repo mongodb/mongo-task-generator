@@ -199,35 +199,41 @@ impl BurnInServiceImpl {
         run_build_variant: &str,
     ) -> Result<Vec<GeneratedSubTask>> {
         let mut sub_suites = vec![];
-        for (index, test) in discovered_task.test_list.iter().enumerate() {
-            let mut params = self
-                .config_extraction_service
-                .task_def_to_resmoke_params(task_def, false, None, None)?;
-            update_resmoke_params_for_burn_in(&mut params, test);
+        let mut index = 0;
+        for suite in discovered_task.suites.iter() {
+            for test in suite.test_list.iter() {
+                let mut params = self
+                    .config_extraction_service
+                    .task_def_to_resmoke_params(task_def, false, None, None)?;
+                update_resmoke_params_for_burn_in(&mut params, test);
 
-            if params.require_multiversion_generate_tasks {
-                for multiversion_task in params.multiversion_generate_tasks.as_ref().unwrap() {
+                if params.require_multiversion_generate_tasks {
+                    for multiversion_task in params.multiversion_generate_tasks.as_ref().unwrap() {
+                        if multiversion_task.suite_name == suite.suite_name {
+                            let burn_in_suite_info = BurnInSuiteInfo {
+                                build_variant: run_build_variant,
+                                total_tests: suite.test_list.len(),
+                                task_name: &discovered_task.task_name,
+                                burn_in_label: BURN_IN_LABEL,
+                                multiversion_name: Some(&multiversion_task.suite_name),
+                                multiversion_tags: Some(multiversion_task.old_version.clone()),
+                            };
+                            sub_suites.push(self.create_task(&params, index, &burn_in_suite_info));
+                        }
+                    }
+                } else {
                     let burn_in_suite_info = BurnInSuiteInfo {
                         build_variant: run_build_variant,
-                        total_tests: discovered_task.test_list.len(),
+                        total_tests: suite.test_list.len(),
                         task_name: &discovered_task.task_name,
                         burn_in_label: BURN_IN_LABEL,
-                        multiversion_name: Some(&multiversion_task.suite_name),
-                        multiversion_tags: Some(multiversion_task.old_version.clone()),
+                        multiversion_name: None,
+                        multiversion_tags: None,
                     };
-
-                    sub_suites.push(self.create_task(&params, index, &burn_in_suite_info));
+                    sub_suites.push(self.create_task(&params, index, &burn_in_suite_info))
                 }
-            } else {
-                let burn_in_suite_info = BurnInSuiteInfo {
-                    build_variant: run_build_variant,
-                    total_tests: discovered_task.test_list.len(),
-                    task_name: &discovered_task.task_name,
-                    burn_in_label: BURN_IN_LABEL,
-                    multiversion_name: None,
-                    multiversion_tags: None,
-                };
-                sub_suites.push(self.create_task(&params, index, &burn_in_suite_info))
+
+                index += 1;
             }
         }
 
@@ -527,6 +533,7 @@ mod tests {
     use crate::{
         evergreen::evg_config_utils::{EvgConfigUtilsImpl, MultiversionGenerateTaskConfig},
         evergreen_names::{GENERATE_RESMOKE_TASKS, INITIALIZE_MULTIVERSION_TASKS},
+        resmoke::burn_in_proxy::DiscoveredSuite,
         services::config_extraction::ConfigExtractionServiceImpl,
         task_types::{fuzzer_tasks::FuzzerGenTaskParams, multiversion::MultiversionService},
     };
@@ -841,7 +848,10 @@ mod tests {
     fn test_build_test_for_tasks_creates_task_for_each_test() {
         let discovered_task = DiscoveredTask {
             task_name: "my task".to_string(),
-            test_list: vec!["test_0.js".to_string(), "test_1.js".to_string()],
+            suites: vec![DiscoveredSuite {
+                suite_name: "my suite".to_string(),
+                test_list: vec!["test_0.js".to_string(), "test_1.js".to_string()],
+            }],
         };
         let task_def = EvgTask {
             ..Default::default()
@@ -853,20 +863,37 @@ mod tests {
             .build_tests_for_task(&discovered_task, &task_def, run_build_variant)
             .unwrap();
 
-        assert_eq!(tasks.len(), discovered_task.test_list.len());
+        assert_eq!(tasks.len(), discovered_task.suites[0].test_list.len());
     }
 
     #[test]
     fn test_build_test_for_tasks_creates_task_for_each_multiversion_iteration_and_test() {
         let discovered_task = DiscoveredTask {
             task_name: "my task".to_string(),
-            test_list: vec!["test_0.js".to_string(), "test_1.js".to_string()],
+            suites: vec![
+                DiscoveredSuite {
+                    suite_name: "mv_suite1_last_continuous_new_old_new".to_string(),
+                    test_list: vec!["test_0.js".to_string(), "test_1.js".to_string()],
+                },
+                DiscoveredSuite {
+                    suite_name: "mv_suite1_last_lts_new_old_new".to_string(),
+                    test_list: vec!["test_0.js".to_string(), "test_1.js".to_string()],
+                },
+                DiscoveredSuite {
+                    suite_name: "mv_suite1_last_continuous_old_new_old".to_string(),
+                    test_list: vec!["test_0.js".to_string(), "test_1.js".to_string()],
+                },
+                DiscoveredSuite {
+                    suite_name: "mv_suite1_last_lts_old_new_old".to_string(),
+                    test_list: vec!["test_0.js".to_string(), "test_1.js".to_string()],
+                },
+            ],
         };
         let vars = hashmap! {
-                        "mv_suite1_last_continuous_new_old_new".to_string() => ParamValue::from("last-continuous"),
-                        "mv_suite1_last_lts_new_old_new".to_string() => ParamValue::from("last-lts"),
-                        "mv_suite1_last_continuous_old_new_old".to_string() => ParamValue::from("last-continuous"),
-                        "mv_suite1_last_lts_old_new_old".to_string() => ParamValue::from("last-lts"),
+            "mv_suite1_last_continuous_new_old_new".to_string() => ParamValue::from("last-continuous"),
+            "mv_suite1_last_lts_new_old_new".to_string() => ParamValue::from("last-lts"),
+            "mv_suite1_last_continuous_old_new_old".to_string() => ParamValue::from("last-continuous"),
+            "mv_suite1_last_lts_old_new_old".to_string() => ParamValue::from("last-lts"),
         };
         let task_def = EvgTask {
             commands: Some(vec![
@@ -886,6 +913,47 @@ mod tests {
             .unwrap();
 
         assert_eq!(tasks.len(), 8);
+    }
+
+    #[test]
+    fn test_build_test_for_tasks_creates_task_for_some_multiversion_iteration_and_test() {
+        let discovered_task = DiscoveredTask {
+            task_name: "my task".to_string(),
+            suites: vec![
+                DiscoveredSuite {
+                    suite_name: "mv_suite1_last_continuous_new_old_new".to_string(),
+                    test_list: vec!["test_0.js".to_string(), "test_1.js".to_string()],
+                },
+                DiscoveredSuite {
+                    suite_name: "mv_suite1_last_continuous_old_new_old".to_string(),
+                    test_list: vec!["test_0.js".to_string(), "test_1.js".to_string()],
+                },
+            ],
+        };
+        let vars = hashmap! {
+            "mv_suite1_last_continuous_new_old_new".to_string() => ParamValue::from("last-continuous"),
+            "mv_suite1_last_lts_new_old_new".to_string() => ParamValue::from("last-lts"),
+            "mv_suite1_last_continuous_old_new_old".to_string() => ParamValue::from("last-continuous"),
+            "mv_suite1_last_lts_old_new_old".to_string() => ParamValue::from("last-lts"),
+        };
+        let task_def = EvgTask {
+            commands: Some(vec![
+                fn_call("hello world"),
+                fn_call_with_params(INITIALIZE_MULTIVERSION_TASKS, vars),
+                fn_call(GENERATE_RESMOKE_TASKS),
+                fn_call("run tests"),
+            ]),
+            tags: Some(vec!["multiversion".to_string()]),
+            ..Default::default()
+        };
+        let run_build_variant = "my_build_variant";
+        let burn_in_service = build_mv_mocked_service(None);
+
+        let tasks = burn_in_service
+            .build_tests_for_task(&discovered_task, &task_def, run_build_variant)
+            .unwrap();
+
+        assert_eq!(tasks.len(), 4);
     }
 
     // build_burn_in_tasks_for_task tests.
@@ -909,10 +977,10 @@ mod tests {
     #[test]
     fn test_build_burn_in_tasks_for_task_creates_tasks_for_each_multiversion_iteration() {
         let vars = hashmap! {
-                        "mv_suite1_last_continuous_new_old_new".to_string() => ParamValue::from("last-continuous"),
-                        "mv_suite1_last_lts_new_old_new".to_string() => ParamValue::from("last-lts"),
-                        "mv_suite1_last_continuous_old_new_old".to_string() => ParamValue::from("last-continuous"),
-                        "mv_suite1_last_lts_old_new_old".to_string() => ParamValue::from("last-lts"),
+            "mv_suite1_last_continuous_new_old_new".to_string() => ParamValue::from("last-continuous"),
+            "mv_suite1_last_lts_new_old_new".to_string() => ParamValue::from("last-lts"),
+            "mv_suite1_last_continuous_old_new_old".to_string() => ParamValue::from("last-continuous"),
+            "mv_suite1_last_lts_old_new_old".to_string() => ParamValue::from("last-lts"),
         };
         let task_def = EvgTask {
             commands: Some(vec![
