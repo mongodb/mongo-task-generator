@@ -1735,7 +1735,7 @@ mod tests {
     #[case(Some(vec!["Another Module".to_string(), "Not Enterprise".to_string()]))]
     #[case(None)]
     fn test_build_variant_with_out_enterprise_module_should_return_false(
-        #[case] modules: Option<Vec<String>>,
+        #[case] _modules: Option<Vec<String>>,
     ) {
         let build_variant = BuildVariant {
             expansions: Some(BTreeMap::from([(

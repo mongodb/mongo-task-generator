@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.7.15 - 2024-06-25
+* DEVPROD-9236 Update burn-in task generation to handle each multiversion sub-suite individually
+
 ## 0.7.14 - 2024-05-08
 * DEVPROD-7218 Update shrub-rs dependency that includes downstream_expansions.set command
 

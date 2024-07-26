@@ -8,11 +8,20 @@ use crate::resmoke::external_cmd::run_command;
 
 /// Task that burn_in discovered should be run.
 #[derive(Debug, Clone, Deserialize)]
+pub struct DiscoveredSuite {
+    /// Name of suite to run.
+    pub suite_name: String,
+    /// List of tests to run as part of task.
+    pub test_list: Vec<String>,
+}
+
+/// Task that burn_in discovered should be run.
+#[derive(Debug, Clone, Deserialize)]
 pub struct DiscoveredTask {
     /// Name of task to run.
     pub task_name: String,
-    /// List of tests to run as part of task.
-    pub test_list: Vec<String>,
+    /// List of suites to run as part of task.
+    pub suites: Vec<DiscoveredSuite>,
 }
 
 /// List of tasks that should be run as part of burn_in.
