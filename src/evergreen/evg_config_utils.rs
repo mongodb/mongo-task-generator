@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::vec;
 
 use anyhow::{bail, Result};
-use lazy_static::lazy_static;
+use std::sync::LazyLock;
 use regex::Regex;
 use shrub_rs::models::commands::EvgCommand::Function;
 use shrub_rs::models::params::ParamValue;
@@ -15,12 +15,11 @@ use crate::evergreen_names::{
 };
 use crate::utils::task_name::remove_gen_suffix;
 
-lazy_static! {
-    /// Regular expression for finding expansions.
-    ///   `${expansion}` or `${expansion|default_value}`
-    static ref EXPANSION_RE: Regex =
-        Regex::new(r"\$\{(?P<id>[a-zA-Z0-9_]+)(\|(?P<default>.*))?}").unwrap();
-}
+/// Regular expression for finding expansions.
+///   `${expansion}` or `${expansion|default_value}`
+static EXPANSION_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"\$\{(?P<id>[a-zA-Z0-9_]+)(\|(?P<default>.*))?}").unwrap()
+});
 
 /// Multiversion task that will be generated.
 #[derive(Default, Debug, Clone, PartialEq)]
