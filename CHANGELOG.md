@@ -1,4 +1,6 @@
 # Changelog
+## 0.7.16 - 2024-08-12
+* SERVER-93485 Upgrade Dependencies
 
 ## 0.7.15 - 2024-06-25
 * DEVPROD-9236 Update burn-in task generation to handle each multiversion sub-suite individually
