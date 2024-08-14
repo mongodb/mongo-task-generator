@@ -66,19 +66,19 @@ impl EvgExpansions {
 #[derive(Parser, Debug)]
 struct Args {
     /// File containing evergreen project configuration.
-    #[clap(long, parse(from_os_str), default_value = DEFAULT_EVG_PROJECT_FILE)]
+    #[clap(long, value_parser, default_value = DEFAULT_EVG_PROJECT_FILE)]
     evg_project_file: PathBuf,
 
     /// File containing expansions that impact task generation.
-    #[clap(long, parse(from_os_str))]
+    #[clap(long, value_parser)]
     expansion_file: PathBuf,
 
     /// File with information on how to authenticate against the evergreen API.
-    #[clap(long, parse(from_os_str), default_value = DEFAULT_EVG_AUTH_FILE)]
+    #[clap(long, value_parser, default_value = DEFAULT_EVG_AUTH_FILE)]
     evg_auth_file: PathBuf,
 
     /// Directory to write generated configuration files.
-    #[clap(long, parse(from_os_str), default_value = DEFAULT_TARGET_DIRECTORY)]
+    #[clap(long, value_parser, default_value = DEFAULT_TARGET_DIRECTORY)]
     target_directory: PathBuf,
 
     /// Disable evergreen task-history queries and use task splitting fallback.
@@ -90,7 +90,7 @@ struct Args {
     resmoke_command: String,
 
     /// File containing configuration for generating sub-tasks.
-    #[clap(long, parse(from_os_str))]
+    #[clap(long, value_parser)]
     generate_sub_tasks_config: Option<PathBuf>,
 
     /// Generate burn_in related tasks.

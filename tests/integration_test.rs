@@ -71,15 +71,15 @@ fn test_end2end_burn_in_execution() {
 
 #[rstest]
 #[should_panic(
-    expected = "`enterprise-rhel-80-64-bit-dynamic-required` build variant is missing the `burn_in_tag_compile_task_dependency` expansion to run `burn_in_tags_gen`. Set the expansion in your project\\'s config to continue.\\"
+    expected = r#"`enterprise-rhel-80-64-bit-dynamic-required` build variant is missing the `burn_in_tag_compile_task_dependency` expansion to run `burn_in_tags_gen`. Set the expansion in your project\'s config to continue."#
 )]
 #[case::panic_with_message("tests/data/burn_in/evergreen_with_no_burn_in_task_group.yml")]
 #[should_panic(
-    expected = "`enterprise-rhel-80-64-bit-dynamic-required` build variant is either missing or has an empty list for the `burn_in_tag_include_build_variants` expansion. Set the expansion in your project\\'s config to run burn_in_tags_gen.\\"
+    expected = r#"`enterprise-rhel-80-64-bit-dynamic-required` build variant is either missing or has an empty list for the `burn_in_tag_include_build_variants` expansion. Set the expansion in your project\'s config to run burn_in_tags_gen."#
 )]
 #[case::panic_with_message("tests/data/burn_in/evergreen_with_no_burn_in_variants.yml")]
 #[should_panic(
-    expected = "`enterprise-rhel-80-64-bit-dynamic-required` build variant is either missing or has an empty list for the `burn_in_tag_include_build_variants` expansion. Set the expansion in your project\\'s config to run burn_in_tags_gen.\\"
+    expected = r#"`enterprise-rhel-80-64-bit-dynamic-required` build variant is either missing or has an empty list for the `burn_in_tag_include_build_variants` expansion. Set the expansion in your project\'s config to run burn_in_tags_gen."#
 )]
 #[case::panic_with_message("tests/data/burn_in/evergreen_with_empty_burn_in_variants.yml")]
 fn test_end2end_burn_in_with_no_distro(#[case] config_location: String) {
