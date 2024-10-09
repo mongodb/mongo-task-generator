@@ -2892,9 +2892,9 @@ checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
 
 [[package]]
 name = "shrub-rs"
-version = "0.5.2"
+version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4c8a1dfaa1ecf6a4ab4ffd327aff7338e4fb96af1690e85e5968d5b7b1f88857"
+checksum = "ed324b842f9f8da788311898351f992739c58c2127b612f8c9ae3858012dc5e7"
 dependencies = [
  "serde",
  "serde_yaml 0.8.26",
