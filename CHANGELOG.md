@@ -1,4 +1,8 @@
 # Changelog
+
+## 0.7.17 - 2024-10-09
+* DEVPROD-11914 Update shrub-rs dependency that includes github.generate_token command
+
 ## 0.7.16 - 2024-08-12
 * SERVER-93485 Upgrade Dependencies
 
