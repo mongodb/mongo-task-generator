@@ -136,6 +136,8 @@ pub struct ExecutionConfiguration<'a> {
     pub config_location: &'a str,
     /// Should burn_in tasks be generated.
     pub gen_burn_in: bool,
+    /// True if this patch is a patch build.
+    pub is_patch: bool,
     /// Command to execute burn_in_tests.
     pub burn_in_tests_command: &'a str,
     /// S3 endpoint to get test stats from.
@@ -163,7 +165,7 @@ impl Dependencies {
     /// A set of dependencies to run against.
     pub fn new(execution_config: ExecutionConfiguration) -> Result<Self> {
         let fs_service = Arc::new(FsServiceImpl::new());
-        let discovery_service = Arc::new(ResmokeProxy::new(execution_config.resmoke_command));
+        let discovery_service = Arc::new(ResmokeProxy::new(execution_config.resmoke_command, execution_config.is_patch));
         let multiversion_service = Arc::new(MultiversionServiceImpl::new(
             discovery_service.get_multiversion_config()?,
         )?);

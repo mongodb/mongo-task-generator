@@ -41,6 +41,8 @@ pub struct ResmokeProxy {
     resmoke_cmd: String,
     /// Script to invoke resmoke.
     resmoke_script: Vec<String>,
+    /// True when the patch being run is a patch build.
+    is_patch: bool,
 }
 
 impl ResmokeProxy {
@@ -49,13 +51,14 @@ impl ResmokeProxy {
     /// # Arguments
     ///
     /// * `resmoke_cmd` - Command to invoke resmoke.
-    pub fn new(resmoke_cmd: &str) -> Self {
+    pub fn new(resmoke_cmd: &str, is_patch: bool) -> Self {
         let cmd_parts: Vec<_> = resmoke_cmd.split(' ').collect();
         let cmd = cmd_parts[0];
         let script = cmd_parts[1..].iter().map(|s| s.to_string()).collect();
         Self {
             resmoke_cmd: cmd.to_string(),
             resmoke_script: script,
+            is_patch: is_patch,
         }
     }
 }
@@ -85,6 +88,14 @@ impl TestDiscovery for ResmokeProxy {
         let mut cmd = vec![&*self.resmoke_cmd];
         cmd.append(&mut self.resmoke_script.iter().map(|s| s.as_str()).collect());
         cmd.append(&mut vec!["test-discovery", "--suite", suite_name]);
+
+        // When running in a patch build, we use the --skipTestsCoveredByMoreComplexSuites
+        // flag to tell Resmoke to exclude any tests in the given suite that will
+        // also be run on a more complex suite.
+        if self.is_patch {
+            cmd.append(&mut vec!["--skipTestsCoveredByMoreComplexSuites"]);
+        }
+
         let start = Instant::now();
         let cmd_output = run_command(&cmd).unwrap();
 

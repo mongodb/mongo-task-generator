@@ -31,6 +31,9 @@ struct EvgExpansions {
     pub task_name: String,
     /// ID of Evergreen version running.
     pub version_id: String,
+    /// True if the patch is a patch build.
+    #[serde(default)]
+    pub is_patch: bool,
 }
 
 impl EvgExpansions {
@@ -136,6 +139,7 @@ async fn main() {
         generating_task: &evg_expansions.task_name,
         config_location: &evg_expansions.config_location(),
         gen_burn_in: args.burn_in,
+        is_patch: evg_expansions.is_patch,
         burn_in_tests_command: &args.burn_in_tests_command,
         s3_test_stats_endpoint: &args.s3_test_stats_endpoint,
     };
