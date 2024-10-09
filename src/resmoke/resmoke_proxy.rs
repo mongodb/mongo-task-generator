@@ -84,7 +84,7 @@ impl TestDiscovery for ResmokeProxy {
     fn discover_tests(&self, suite_name: &str) -> Result<Vec<String>> {
         let mut cmd = vec![&*self.resmoke_cmd];
         cmd.append(&mut self.resmoke_script.iter().map(|s| s.as_str()).collect());
-        cmd.append(&mut vec!["test-discovery", "--suite", suite_name]);
+        cmd.append(&mut vec!["test-discovery", "--suite", suite_name, "--useMinimalTests"]);
         let start = Instant::now();
         let cmd_output = run_command(&cmd).unwrap();
 
