@@ -32,8 +32,19 @@ struct EvgExpansions {
     /// ID of Evergreen version running.
     pub version_id: String,
     /// True if the patch is a patch build.
-    #[serde(default)]
+    #[serde(default, deserialize_with="deserialize_is_patch")]
     pub is_patch: bool,
+}
+
+fn deserialize_is_patch<'de, D>(deserializer: D) -> Result<bool, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let s: &str = serde::Deserialize::deserialize(deserializer)?;
+    match s {
+        "true" => Ok(true),
+        _ => Ok(false),
+    }
 }
 
 impl EvgExpansions {
