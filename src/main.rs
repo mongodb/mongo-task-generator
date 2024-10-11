@@ -32,7 +32,7 @@ struct EvgExpansions {
     /// ID of Evergreen version running.
     pub version_id: String,
     /// True if the patch is a patch build.
-    #[serde(default, deserialize_with="deserialize_is_patch")]
+    #[serde(default, deserialize_with = "deserialize_is_patch")]
     pub is_patch: bool,
 }
 

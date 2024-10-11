@@ -58,7 +58,7 @@ impl ResmokeProxy {
         Self {
             resmoke_cmd: cmd.to_string(),
             resmoke_script: script,
-            is_patch: is_patch,
+            is_patch,
         }
     }
 }
