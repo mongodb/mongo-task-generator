@@ -167,7 +167,7 @@ impl Dependencies {
         let fs_service = Arc::new(FsServiceImpl::new());
         let discovery_service = Arc::new(ResmokeProxy::new(
             execution_config.resmoke_command,
-            execution_config.is_patch
+            execution_config.is_patch,
         ));
         let multiversion_service = Arc::new(MultiversionServiceImpl::new(
             discovery_service.get_multiversion_config()?,
