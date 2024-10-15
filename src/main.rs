@@ -36,6 +36,10 @@ struct EvgExpansions {
     pub is_patch: bool,
 }
 
+// When running in a patch build, the is_patch YAML field is set to the
+// string "true" rather than a boolean `true`. Therefore we need a custom
+// deserializer to convert from the string "true" to the boolean `true`, and
+// in all other cases return `false`.
 fn deserialize_is_patch<'de, D>(deserializer: D) -> Result<bool, D::Error>
 where
     D: serde::Deserializer<'de>,
