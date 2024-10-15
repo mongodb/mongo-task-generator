@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.7.18 - 2024-10-11
+* DEVPROD-11978 use --skipTestsCoveredByMoreComplexSuites when generating tasks in a patch build.
+
 ## 0.7.17 - 2024-10-09
 * DEVPROD-11914 Update shrub-rs dependency that includes github.generate_token command
 
