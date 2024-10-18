@@ -52,7 +52,6 @@ impl ResmokeProxy {
     ///
     /// * `resmoke_cmd` - Command to invoke resmoke.
     /// * `skip_covered_tests` - Whether the generator should skip tests run in more complex suites.
-    /// * 
     pub fn new(resmoke_cmd: &str, skip_covered_tests: bool) -> Self {
         let cmd_parts: Vec<_> = resmoke_cmd.split(' ').collect();
         let cmd = cmd_parts[0];
