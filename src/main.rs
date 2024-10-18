@@ -32,15 +32,18 @@ struct EvgExpansions {
     /// ID of Evergreen version running.
     pub version_id: String,
     /// True if the patch is a patch build.
-    #[serde(default, deserialize_with = "deserialize_is_patch")]
+    #[serde(default, deserialize_with = "deserialize_bool_string")]
     pub is_patch: bool,
+    /// True if we should NOT skip tests covered by more complex suites.
+    #[serde(default, deserialize_with = "deserialize_bool_string")]
+    pub run_covered_tests: bool,
 }
 
-// When running in a patch build, the is_patch YAML field is set to the
+// The boolean YAML fields `is_patch` and `run_covered_tests` are set to the
 // string "true" rather than a boolean `true`. Therefore we need a custom
 // deserializer to convert from the string "true" to the boolean `true`, and
 // in all other cases return `false`.
-fn deserialize_is_patch<'de, D>(deserializer: D) -> Result<bool, D::Error>
+fn deserialize_bool_string<'de, D>(deserializer: D) -> Result<bool, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
@@ -154,7 +157,7 @@ async fn main() {
         generating_task: &evg_expansions.task_name,
         config_location: &evg_expansions.config_location(),
         gen_burn_in: args.burn_in,
-        is_patch: evg_expansions.is_patch,
+        skip_covered_tests: evg_expansions.is_patch && !evg_expansions.run_covered_tests,
         burn_in_tests_command: &args.burn_in_tests_command,
         s3_test_stats_endpoint: &args.s3_test_stats_endpoint,
     };
