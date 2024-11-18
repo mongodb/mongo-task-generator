@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.7.19 - 2024-11-18
+* DEVPROD-11914 Update shrub-rs dependency that includes ec2.assume_role command
+
 ## 0.7.18 - 2024-10-11
 * DEVPROD-11978 use --skipTestsCoveredByMoreComplexSuites when generating tasks in a patch build.
 
