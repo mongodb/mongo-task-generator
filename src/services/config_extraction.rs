@@ -212,6 +212,7 @@ impl ConfigExtractionService for ConfigExtractionServiceImpl {
             is_enterprise,
             platform: Some(evg_config_utils.infer_build_variant_platform(build_variant)),
             gen_task_suffix,
+            tags: task_def.tags.clone(),
         })
     }
 
@@ -289,6 +290,7 @@ impl ConfigExtractionService for ConfigExtractionServiceImpl {
             pass_through_vars: self.evg_config_utils.get_gen_task_vars(task_def),
             platform,
             gen_task_suffix,
+            tags: task_def.tags.clone(),
         })
     }
 
