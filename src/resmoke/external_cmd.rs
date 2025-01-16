@@ -17,7 +17,7 @@ use wait_timeout::ChildExt;
 pub fn run_command(command: &[&str], timeout: Option<Duration>) -> Result<String> {
     let timeout = match timeout {
         Some(timeout) => timeout,
-        None => Duration::from_secs(120),
+        None => Duration::from_secs(600),
     };
 
     let binary = command[0];
@@ -64,16 +64,28 @@ pub fn run_command(command: &[&str], timeout: Option<Duration>) -> Result<String
     Ok(stdout)
 }
 
-pub fn run_command_with_retries(command: &[&str], max_tries: u8, timeout: Option<Duration>) -> Result<String> {
+pub fn run_command_with_retries(
+    command: &[&str],
+    max_tries: u8,
+    timeout: Option<Duration>,
+) -> Result<String> {
+    event!(
+        Level::INFO,
+        binary = command[0],
+        args = command[1..].join(" "),
+        "Running command"
+    );
     let mut result = run_command(command, timeout);
     let mut tries = 1;
-    while result.is_err() && tries < max_tries{
+    while result.is_err() && tries < max_tries {
         tries = tries + 1;
         event!(
             Level::WARN,
             binary = command[0],
             args = command[1..].join(" "),
-            "Command failed, retrying {} / {}", tries, max_tries
+            "Command failed, retrying {}/{}",
+            tries,
+            max_tries
         );
         result = run_command(command, timeout);
     }
