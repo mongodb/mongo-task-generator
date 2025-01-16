@@ -9,7 +9,7 @@ use wait_timeout::ChildExt;
 /// # Arguments
 ///
 /// * `command` - Command with arguments to run.
-/// * `timeout` - A duration before the command times out. If None, defaults to 120s.
+/// * `timeout` - A duration before the command times out. If None, defaults to 600.
 ///
 /// # Return
 ///
@@ -17,7 +17,7 @@ use wait_timeout::ChildExt;
 pub fn run_command(command: &[&str], timeout: Option<Duration>) -> Result<String> {
     let timeout = match timeout {
         Some(timeout) => timeout,
-        None => Duration::from_secs(120),
+        None => Duration::from_secs(600),
     };
 
     let binary = command[0];
