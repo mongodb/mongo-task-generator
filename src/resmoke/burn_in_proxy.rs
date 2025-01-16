@@ -4,7 +4,7 @@ use anyhow::Result;
 use serde::Deserialize;
 use tracing::{error, event, Level};
 
-use crate::resmoke::external_cmd::run_command;
+use crate::resmoke::external_cmd::run_command_with_retries;
 
 /// Task that burn_in discovered should be run.
 #[derive(Debug, Clone, Deserialize)]
@@ -101,7 +101,7 @@ impl BurnInDiscovery for BurnInProxy {
         ]);
         let start = Instant::now();
 
-        let cmd_output = run_command(&cmd, None)?;
+        let cmd_output = run_command_with_retries(&cmd, 3, None)?;
 
         event!(
             Level::INFO,

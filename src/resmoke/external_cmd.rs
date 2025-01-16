@@ -17,7 +17,7 @@ use wait_timeout::ChildExt;
 pub fn run_command(command: &[&str], timeout: Option<Duration>) -> Result<String> {
     let timeout = match timeout {
         Some(timeout) => timeout,
-        None => Duration::from_secs(600),
+        None => Duration::from_secs(120),
     };
 
     let binary = command[0];
@@ -30,7 +30,11 @@ pub fn run_command(command: &[&str], timeout: Option<Duration>) -> Result<String
 
     let timed_out = match cmd.wait_timeout(timeout).unwrap() {
         Some(_) => false,
-        None => true,
+        None => {
+            cmd.kill().unwrap();
+            cmd.wait().unwrap();
+            true
+        }
     };
 
     let output = cmd.wait_with_output()?;
@@ -60,9 +64,25 @@ pub fn run_command(command: &[&str], timeout: Option<Duration>) -> Result<String
     Ok(stdout)
 }
 
+pub fn run_command_with_retries(command: &[&str], max_tries: u8, timeout: Option<Duration>) -> Result<String> {
+    let mut result = run_command(command, timeout);
+    let mut tries = 1;
+    while result.is_err() && tries < max_tries{
+        tries = tries + 1;
+        event!(
+            Level::WARN,
+            binary = command[0],
+            args = command[1..].join(" "),
+            "Command failed, retrying {} / {}", tries, max_tries
+        );
+        result = run_command(command, timeout);
+    }
+    result
+}
+
 #[cfg(test)]
 mod tests {
-    use super::run_command;
+    use super::{run_command, run_command_with_retries};
     use std::time::Duration;
 
     #[test]
@@ -87,6 +107,17 @@ mod tests {
     fn run_command_timeout() {
         let cmd = vec!["sleep", "1"];
         let result = run_command(&cmd, Some(Duration::from_millis(100)));
+        assert!(result.is_err());
+        assert_eq!(
+            result.err().unwrap().to_string(),
+            "Command timed out after 0 seconds."
+        );
+    }
+
+    #[test]
+    fn run_command_retries() {
+        let cmd = vec!["sleep", "1"];
+        let result = run_command_with_retries(&cmd, 2, Some(Duration::from_millis(100)));
         assert!(result.is_err());
         assert_eq!(
             result.err().unwrap().to_string(),
