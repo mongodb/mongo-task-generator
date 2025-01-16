@@ -1,4 +1,6 @@
 # Changelog
+## 0.7.20 - 2025-01-16
+* DEVPROD-14170 Add command timeouts and additional logging
 
 ## 0.7.19 - 2024-11-18
 * DEVPROD-11914 Update shrub-rs dependency that includes ec2.assume_role command

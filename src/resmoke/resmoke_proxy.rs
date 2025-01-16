@@ -98,7 +98,7 @@ impl TestDiscovery for ResmokeProxy {
         }
 
         let start = Instant::now();
-        let cmd_output = run_command(&cmd).unwrap();
+        let cmd_output = run_command(&cmd, None).unwrap();
 
         event!(
             Level::INFO,
@@ -137,7 +137,7 @@ impl TestDiscovery for ResmokeProxy {
         let mut cmd = vec![&*self.resmoke_cmd];
         cmd.append(&mut self.resmoke_script.iter().map(|s| s.as_str()).collect());
         cmd.append(&mut vec!["suiteconfig", "--suite", suite_name]);
-        let cmd_output = run_command(&cmd).unwrap();
+        let cmd_output = run_command(&cmd, None).unwrap();
 
         Ok(ResmokeSuiteConfig::from_str(&cmd_output)?)
     }
@@ -173,7 +173,7 @@ impl MultiversionConfig {
         cmd.append(&mut vec!["multiversion-config"]);
         let file_arg = format!("--config-file-output={}", file_name);
         cmd.append(&mut vec![&file_arg]);
-        run_command(&cmd).unwrap();
+        run_command(&cmd, None).unwrap();
         let multiversion_config_output =
             std::fs::read_to_string(file_name).expect("Multiversion config file not found.");
         let multiversion_config: Result<MultiversionConfig, serde_yaml::Error> =

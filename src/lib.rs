@@ -530,8 +530,15 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
         }
 
         for handle in thread_handles {
+            // let new_handle = handle.inspect(|x| println!("about to resolve: {:?}", x));
+            // event!(Level::INFO, "awaiting {}", handle.inspect(f));
             handle.await.unwrap();
         }
+
+        event!(
+            Level::INFO,
+            "Finished creating task definition for all tasks."
+        );
 
         Ok(generated_tasks)
     }
@@ -762,6 +769,11 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
             }
         }
 
+        event!(
+            Level::INFO,
+            "Finished creating build variants definitions containing all the generated tasks."
+        );
+
         Ok(generated_build_variants)
     }
 }
@@ -849,6 +861,13 @@ fn create_task_worker(
             let mut generated_tasks = generated_tasks.lock().unwrap();
             generated_tasks.insert(task_name, generated_task);
         }
+        event!(
+            Level::INFO,
+            "Finished generating task: {}, is_enterprise: {}, platform: {}",
+            task_def.name,
+            is_enterprise,
+            platform
+        );
     })
 }
 

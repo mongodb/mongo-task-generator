@@ -101,7 +101,7 @@ impl BurnInDiscovery for BurnInProxy {
         ]);
         let start = Instant::now();
 
-        let cmd_output = run_command(&cmd)?;
+        let cmd_output = run_command(&cmd, None)?;
 
         event!(
             Level::INFO,
