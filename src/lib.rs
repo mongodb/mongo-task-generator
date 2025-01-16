@@ -538,7 +538,7 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
 
         event!(
             Level::INFO,
-            "Finished creating task definition for all tasks."
+            "Finished creating task definitions for all tasks."
         );
 
         Ok(generated_tasks)
@@ -772,7 +772,7 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
 
         event!(
             Level::INFO,
-            "Finished creating build variants definitions containing all the generated tasks."
+            "Finished creating build variant definitions containing all the generated tasks."
         );
 
         Ok(generated_build_variants)
