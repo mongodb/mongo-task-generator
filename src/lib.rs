@@ -43,6 +43,7 @@ use task_types::{
     resmoke_config_writer::{ResmokeConfigActor, ResmokeConfigActorService},
     resmoke_tasks::{GenResmokeConfig, GenResmokeTaskService, GenResmokeTaskServiceImpl},
 };
+use tokio::{runtime::Handle, task::JoinHandle, time};
 use tracing::{event, Level};
 use utils::fs_service::FsServiceImpl;
 
@@ -434,6 +435,8 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
         &self,
         deps: &Dependencies,
     ) -> Result<Arc<Mutex<GenTaskCollection>>> {
+        let _monitor = RemainingTaskMonitor::new();
+
         let build_variant_list = self.evg_config_service.sort_build_variants_by_required();
         let build_variant_map = self.evg_config_service.get_build_variant_map();
         let task_map = Arc::new(self.evg_config_service.get_task_def_map());
@@ -532,6 +535,11 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
         for handle in thread_handles {
             handle.await.unwrap();
         }
+
+        event!(
+            Level::INFO,
+            "Finished creating task definitions for all tasks."
+        );
 
         Ok(generated_tasks)
     }
@@ -762,6 +770,11 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
             }
         }
 
+        event!(
+            Level::INFO,
+            "Finished creating build variant definitions containing all the generated tasks."
+        );
+
         Ok(generated_build_variants)
     }
 }
@@ -801,6 +814,35 @@ fn lookup_task_name(
             platform,
             unique_gen_suffix.unwrap_or("")
         )
+    }
+}
+
+/// Runs a task that will periodically report the number of active tasks since the monitor was created.
+struct RemainingTaskMonitor {
+    handle: JoinHandle<()>,
+}
+
+impl RemainingTaskMonitor {
+    pub fn new() -> Self {
+        let metrics = Handle::current().metrics();
+        let offset = metrics.num_alive_tasks() + 1; // + 1 to include the task spawned below.
+        let handle = tokio::spawn(async move {
+            loop {
+                time::sleep(time::Duration::from_secs(60)).await;
+                event!(
+                    Level::INFO,
+                    "Waiting on {} generate tasks to finish...",
+                    Handle::current().metrics().num_alive_tasks() - offset
+                );
+            }
+        });
+
+        Self { handle }
+    }
+}
+impl Drop for RemainingTaskMonitor {
+    fn drop(&mut self) {
+        self.handle.abort();
     }
 }
 

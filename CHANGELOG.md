@@ -1,4 +1,6 @@
 # Changelog
+## 0.7.21 - 2025-01-16
+* Add additional logging for task generation that takes a long time.
 
 ## 0.7.20 - 2025-01-16
 * DEVPROD-14172 Update shrub-rs dependency that includes papertrail.trace command
