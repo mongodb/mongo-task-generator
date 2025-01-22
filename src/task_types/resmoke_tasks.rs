@@ -509,15 +509,14 @@ impl GenResmokeTaskServiceImpl {
         multiversion_name: Option<&str>,
         multiversion_tags: Option<String>,
     ) -> Result<Vec<SubSuite>> {
+        let mut sub_suites = vec![];
+
         let origin_suite = multiversion_name.unwrap_or(&params.suite_name);
         let test_list = self.get_test_list(params, multiversion_name)?;
-        let n_suites = min(test_list.len(), self.config.n_suites);
-
-        let mut sub_suites = vec![];
-        if n_suites == 0 {
+        if test_list.is_empty() {
             return Ok(sub_suites);
         }
-
+        let n_suites = min(test_list.len(), self.config.n_suites);
         let tasks_per_suite = test_list.len() / n_suites;
 
         let mut current_tests = vec![];
