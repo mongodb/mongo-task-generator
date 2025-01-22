@@ -4,7 +4,7 @@
 //! use that information to divide the tests into sub-suites that can be run in parallel.
 //!
 //! Each task will contain the generated sub-suites.
-use std::{cmp::min, collections::HashMap, sync::Arc};
+use std::{cmp::min, collections::HashMap, fmt::Write, sync::Arc};
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -621,11 +621,12 @@ impl GenResmokeTaskServiceImpl {
                     multiversion_tags.clone(),
                 )?,
                 Err(err) => {
+                    
                     warn!(
                         build_variant = build_variant,
                         task_name = params.task_name.as_str(),
                         error = err.to_string().as_str(),
-                        source = err.source(),
+                        report = report(&err),
                         "Could not get task history from S3",
                     );
                     // If we couldn't get the task history, then fallback to splitting the tests evenly
@@ -637,6 +638,12 @@ impl GenResmokeTaskServiceImpl {
 
         Ok(sub_suites)
     }
+}
+
+fn report(err: &anyhow::Error) -> String {
+    let mut s = format!("{}", err);
+    err.chain().for_each(|cause| {let _ = write!(&mut s, "\n\nCaused by: {}", cause);});
+    s
 }
 
 /// Sort tests by historic runtime descending.
