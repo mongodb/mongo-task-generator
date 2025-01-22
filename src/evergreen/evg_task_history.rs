@@ -108,7 +108,7 @@ pub trait TaskHistoryService: Send + Sync {
 /// An implementation of the task history service.
 pub struct TaskHistoryServiceImpl {
     /// Reqwest client.
-    client: ClientWithMiddleware,
+    client: SharedRetryClient,
     /// S3 endpoint to get test stats from.
     s3_test_stats_endpoint: String,
     /// Evergreen project to query.
@@ -128,7 +128,7 @@ impl TaskHistoryServiceImpl {
     ///
     /// New instance of the task history service implementation.
     pub fn new(
-        client: ClientWithMiddleware,
+        client: SharedRetryClient,
         s3_test_stats_endpoint: String,
         evg_project: String,
     ) -> Self {
@@ -171,9 +171,11 @@ impl TaskHistoryService for TaskHistoryServiceImpl {
     /// The runtime history of tests belonging to the given suite on the given build variant.
     async fn get_task_history(&self, task: &str, variant: &str) -> Result<TaskRuntimeHistory> {
         let url = self.build_url(task, variant);
-        let response = self.client.get(url).send().await?;
+        let permit = self.client.semaphore.acquire().await.unwrap();
+        let response = self.client.client.get(url).send().await?;
         let stats: Result<Vec<S3TestStats>, Error> =
             Ok(response.json::<Vec<S3TestStats>>().await?);
+        drop(permit);
 
         if let Ok(stats) = stats {
             // Split the returned stats into stats for hooks and tests. Also attach the hook stats
@@ -191,17 +193,26 @@ impl TaskHistoryService for TaskHistoryServiceImpl {
     }
 }
 
+pub struct SharedRetryClient {
+    client: ClientWithMiddleware,
+    semaphore: std::sync::Arc<tokio::sync::Semaphore>,
+}
+
 /// Build retryable reqwest client.
 ///
 /// # Returns
 ///
 /// Retryable reqwest client.
-pub fn build_retryable_client() -> ClientWithMiddleware {
+pub fn build_retryable_client() -> SharedRetryClient {
     let retry_policy =
         ExponentialBackoff::builder().build_with_max_retries(REQWEST_CLIENT_MAX_RETRY_COUNT);
-    ClientBuilder::new(Client::new())
+    let client = ClientBuilder::new(Client::new())
         .with(RetryTransientMiddleware::new_with_policy(retry_policy))
-        .build()
+        .build();
+    SharedRetryClient {
+        client,
+        semaphore: tokio::sync::Semaphore::new(32).into()
+    }
 }
 
 /// Convert the list of stats into a map of test names to test stats.

@@ -135,7 +135,7 @@ fn configure_logging() {
     tracing::subscriber::set_global_default(subscriber).unwrap();
 }
 
-#[tokio::main(flavor = "current_thread")]
+#[tokio::main]
 async fn main() {
     let args = Args::parse();
     configure_logging();
