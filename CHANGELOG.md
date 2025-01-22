@@ -1,4 +1,7 @@
 # Changelog
+## 0.7.22 - 2025-01-22
+* Avoid a division-by-zero when processing empty suites.
+
 ## 0.7.21 - 2025-01-16
 * Add additional logging for task generation that takes a long time.
 

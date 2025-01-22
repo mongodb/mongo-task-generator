@@ -509,12 +509,16 @@ impl GenResmokeTaskServiceImpl {
         multiversion_name: Option<&str>,
         multiversion_tags: Option<String>,
     ) -> Result<Vec<SubSuite>> {
+        let mut sub_suites = vec![];
+
         let origin_suite = multiversion_name.unwrap_or(&params.suite_name);
         let test_list = self.get_test_list(params, multiversion_name)?;
+        if test_list.is_empty() {
+            return Ok(sub_suites);
+        }
         let n_suites = min(test_list.len(), self.config.n_suites);
         let tasks_per_suite = test_list.len() / n_suites;
 
-        let mut sub_suites = vec![];
         let mut current_tests = vec![];
         let mut i = 0;
         for test in test_list {
@@ -1304,6 +1308,28 @@ mod tests {
         for test_name in test_list {
             assert!(all_tests.contains(&test_name.to_string()));
         }
+    }
+
+    #[test]
+    fn test_split_task_fallback_empty_suite() {
+        let n_suites = 1;
+        let test_list = vec![];
+        let task_history = TaskRuntimeHistory {
+            task_name: "my task".to_string(),
+            test_map: hashmap! {},
+        };
+        let gen_resmoke_service =
+            build_mocked_service(test_list.clone(), task_history.clone(), n_suites);
+
+        let params = ResmokeGenParams {
+            ..Default::default()
+        };
+
+        let sub_suites = gen_resmoke_service
+            .split_task_fallback(&params, None, None)
+            .unwrap();
+
+        assert_eq!(sub_suites.len(), 0);
     }
 
     // tests for get_test_list.
