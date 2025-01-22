@@ -625,6 +625,7 @@ impl GenResmokeTaskServiceImpl {
                         build_variant = build_variant,
                         task_name = params.task_name.as_str(),
                         error = err.to_string().as_str(),
+                        source = err.source(),
                         "Could not get task history from S3",
                     );
                     // If we couldn't get the task history, then fallback to splitting the tests evenly
