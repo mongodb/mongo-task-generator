@@ -211,7 +211,7 @@ pub fn build_retryable_client() -> SharedRetryClient {
         .build();
     SharedRetryClient {
         client,
-        semaphore: tokio::sync::Semaphore::new(32).into()
+        semaphore: tokio::sync::Semaphore::new(320).into()
     }
 }
 
