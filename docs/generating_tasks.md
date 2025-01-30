@@ -1,12 +1,12 @@
 # Generating tasks
 
 Generating tasks is a way to dynamically create tasks in Evergreen builds. This is done via the
-['generate.tasks'](https://github.com/evergreen-ci/evergreen/wiki/Project-Commands#generatetasks)
+['generate.tasks'](https://docs.devprod.prod.corp.mongodb.com/evergreen/Project-Configuration/Project-Commands#generatetasks)
 evergreen command.
 
 ## Use-cases
 
-The `mongo-task-generator` is used by the [mongodb/mongo](https://github.com/mongodb/mongo) project
+The `mongo-task-generator` is used by the [10gen/mongo](https://github.com/10gen/mongo) project
 testing to generate most of the dynamic tasks in an evergreen version.
 
 The following 3 use-cases of dynamic task creation are supported:
@@ -72,16 +72,14 @@ bottleneck in the overall runtime of a build, we can use dynamic task generation
 test suites into sub-suites that can be run in parallel on different hosts.
 
 For tasks appropriately marked, the `mongo-task-generator` will query the
-[runtime stats](https://github.com/evergreen-ci/evergreen/wiki/REST-V2-Usage#teststats)
-for the last 2 weeks and use those to divide up the tests into sub-suite with roughly even
-runtimes. It will then generate "sub-tasks" for each of the "sub-suites" to actually run the
-tests.
+[runtime stats](https://docs.devprod.prod.corp.mongodb.com/evergreen/Project-Configuration/Evergreen-Data-for-Analytics#evergreen-test-statistics)
+endpoint https://mongo-test-stats.s3.amazonaws.com/{evg-project-name}/{variant-name}/{task-name}
+and use those stats to divide up the tests into sub-suite with roughly even runtimes.
+It will then generate "sub-tasks" for each of the "sub-suites" to actually run the tests.
 
-We also generate a sub-suite with the suffix "_misc". Since the generated sub-suites are based
-on the runtime history of tests, there is a chance that a test exists that has no history -- for
-example, a newly added tests. The "_misc" sub-task will try to run all the tests, but exclude any
-tests that were included in the generated sub-tasks. This is used to catch any tasks without test
-runtime history.
+Since the generated sub-suites are based on the runtime history of tests, there is a chance that
+a test exists that has no history -- for example, a newly added tests. Such tests will be
+distributed with a roughly equal number of tests among all sub-tasks.
 
 If for any reason the runtime history cannot be obtained (e.g. errors in querying, a task having no
 runtime history, etc), task splitting will fallback to splitting the tests into sub-tasks that
@@ -180,6 +178,7 @@ the `"no_multiversion_generate_tasks"` tag should also be included. This is typi
       run_no_feature_flag_tests: "true
 ```
 The `"initialize multiversion tasks"` function has all of the related suites to run as sub-tasks of this task as variable names and the "old" version to run against as the values. The absence of the `"no_multiversion_generate_tasks"` tag indicates to the task generator to generate sub-tasks for this task according to the `"initialize multiversion tasks"` function variables. Because the `suite` name is embedded in the `"initialize multiversion tasks"` variables, a `suite` variable passed to `"generate resmoke tasks"` will have no effect. Additionally, the variable/suite names in `"initialize multiversion tasks"` must be globally unique because these are ultimately going to become the sub-task name and evergreen requires task names to be unique.
+
 ### Burn in tests, burn in tags and burn in tasks
 
 Newly added or modified tests might become flaky. In order to avoid that, those tests can be run
@@ -266,7 +265,7 @@ Burn-in related tasks are generated when `--burn-in` is passed.
 ## Working with generated tasks
 
 A generated tasks is typically composed of a number of related sub-tasks. Because evergreen does
-not actually support the concept of sub-tasks, [display tasks](https://github.com/evergreen-ci/evergreen/wiki/Project-Configuration-Files#display-tasks)
+not actually support the concept of sub-tasks, [display tasks](https://docs.devprod.prod.corp.mongodb.com/evergreen/Project-Configuration/Project-Configuration-Files#display-tasks)
 are used to instead.
 
 In evergreen, a display task is a container for a number of "execution tasks". The "execution tasks"
@@ -287,7 +286,7 @@ directory. The generate.tasks configuration will be the "evergreen_config.json" 
 ### expansions-file
 
 In order to execute the command, you must provide an "expansion" file. When running in
-evergreen, the [expansions.write](https://github.com/evergreen-ci/evergreen/wiki/Project-Commands#expansions-write)
+evergreen, the [expansions.write](https://docs.devprod.prod.corp.mongodb.com/evergreen/Project-Configuration/Project-Commands#expansionswrite)
 command will generate this file for you.
 
 This file should be yaml and must contain the following entries:
@@ -312,56 +311,35 @@ You must provide the expansion file when running the `mongo-task-generator` comm
 mongo-task-generator --expansion-file expansions.yml
 ```
 
-### Other options
-
-There are several other details the command needs to run correctly, you may specify them
-if the default value does not apply.
-
-* **evg-auth-file**: A yaml file containing information for how to authenticate with the evergreen
-  API. This should follow the same format used by the [Evergreen CLI tool](https://github.com/evergreen-ci/evergreen/wiki/Using-the-Command-Line-Tool#downloading-the-command-line-tool).
-  This defaults to `~/.evergreen.yml`.
-* **evg-project-file**: The yaml file containing the evergreen project configuration for the
-  project being run against. This defaults to `etc/evergreen.yml`.
-* **resmoke-command**: How to invoke the resmoke command. The resmoke command is used to determine
-  configuration about the tests being run. It defaults to `python buildscripts/resmoke.py`. If you
-  store your resmokeconfig is a different directory, you can adjust this value:
-  `python buildscripts/resmoke.py --configDir=path/to/resmokeconfig`.
-* **target-directory**: Directory to write generated configuration to. This defaults to `generated_resmoke_config`.
-* **burn-in**: Whether to generate burn_in related tasks. If specified only burn_in tasks will be
-  generated.
-* **burn-in-tests-command**: How to invoke the burn_in_tests command. The burn_in_tests command is
-  used to discover modified or added tests and the tasks they being run on. It defaults to
-  `python buildscripts/burn_in_tests.py run`.
-
 ## Usage help
 
 You can run with the `--help` options to get information on the command usage:
 
 ```bash
 $ mongo-task-generator --help
-USAGE:
-    mongo-task-generator [OPTIONS] --expansion-file <EXPANSION_FILE>
+Usage: mongo-task-generator [OPTIONS] --expansion-file <EXPANSION_FILE>
 
-OPTIONS:
-        --burn-in
-            Generate burn_in related tasks
-        --burn-in-tests-command <BURN_IN_TESTS_COMMAND>
-            Command to invoke burn_in_tests [default: "python buildscripts/burn_in_tests.py run"]
-        --evg-auth-file <EVG_AUTH_FILE>
-            File with information on how to authenticate against the evergreen API [default:
-            ~/.evergreen.yml]
-        --evg-project-file <EVG_PROJECT_FILE>
-            File containing evergreen project configuration [default: etc/evergreen.yml]
-        --expansion-file <EXPANSION_FILE>
-            File containing expansions that impact task generation
-        --generate-sub-tasks-config <GENERATE_SUB_TASKS_CONFIG>
-            File containing configuration for generating sub-tasks
-    -h, --help
-            Print help information
-        --resmoke-command <RESMOKE_COMMAND>
-            Command to invoke resmoke [default: "python buildscripts/resmoke.py"]
-        --target-directory <TARGET_DIRECTORY>
-            Directory to write generated configuration files [default: generated_resmoke_config]
-        --use-task-split-fallback
-            Disable evergreen task-history queries and use task splitting fallback
+Options:
+      --evg-project-file <EVG_PROJECT_FILE>
+          File containing evergreen project configuration [default: etc/evergreen.yml]
+      --expansion-file <EXPANSION_FILE>
+          File containing expansions that impact task generation
+      --evg-auth-file <EVG_AUTH_FILE>
+          File with information on how to authenticate against the evergreen API [default: ~/.evergreen.yml]
+      --target-directory <TARGET_DIRECTORY>
+          Directory to write generated configuration files [default: generated_resmoke_config]
+      --use-task-split-fallback
+          Disable evergreen task-history queries and use task splitting fallback
+      --resmoke-command <RESMOKE_COMMAND>
+          Command to invoke resmoke [default: "python buildscripts/resmoke.py"]
+      --generate-sub-tasks-config <GENERATE_SUB_TASKS_CONFIG>
+          File containing configuration for generating sub-tasks
+      --burn-in
+          Generate burn_in related tasks
+      --burn-in-tests-command <BURN_IN_TESTS_COMMAND>
+          Command to invoke burn_in_tests [default: "python buildscripts/burn_in_tests.py run"]
+      --s3-test-stats-endpoint <S3_TEST_STATS_ENDPOINT>
+          S3 endpoint to get test stats from [default: https://mongo-test-stats.s3.amazonaws.com]
+  -h, --help
+          Print help
 ```

@@ -1,10 +1,10 @@
 [package]
 name = "mongo-task-generator"
-description = "Dynamically split evergreen tasks into subtasks for testing the mongodb/mongo project."
+description = "Dynamically split evergreen tasks into subtasks for testing the 10gen/mongo project."
 license = "Apache-2.0"
 version = "0.7.22"
 repository = "https://github.com/mongodb/mongo-task-generator"
-authors = ["Decision Automation Group <dev-prod-dag@mongodb.com>"]
+authors = ["DevProd Correctness Team <devprod-correctness-team@mongodb.com>"]
 edition = "2018"
 
 [dependencies]
