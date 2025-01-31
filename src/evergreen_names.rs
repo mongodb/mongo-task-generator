@@ -1,4 +1,4 @@
-//! Names referencing items in the mongodb/mongo etc/evergreen.yml.
+//! Names referencing items in the 10gen/mongo etc/evergreen.yml.
 
 // Module Names
 /// Name of enterprise module.

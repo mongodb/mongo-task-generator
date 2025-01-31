@@ -1,6 +1,6 @@
 # Mongo Task Generator
 
-Dynamically split evergreen tasks into subtasks for testing the mongodb/mongo project.
+Dynamically split evergreen tasks into subtasks for testing the 10gen/mongo project.
 
 ## Table of contents
 
@@ -27,11 +27,11 @@ Dynamically split evergreen tasks into subtasks for testing the mongodb/mongo pr
 
 ## Description
 
-A tool to dynamically generate and split resmoke tests for the mongodb/mongo project into sub-tasks
+A tool to dynamically generate and split resmoke tests for the 10gen/mongo project into sub-tasks
 that can be run in parallel. For example, a task that runs in 2 hours could be split into 4 sub-tasks
 that can be run in parallel to reduce the wall-clock time of to closer to 30 minutes.
 
-The tool will use [Evergreen Test Stats](https://github.com/evergreen-ci/evergreen/wiki/REST-V2-Usage#teststats)
+The tool will use [Evergreen Test Stats](https://docs.devprod.prod.corp.mongodb.com/evergreen/Project-Configuration/Evergreen-Data-for-Analytics#evergreen-test-statistics)
 to determine how to divide the tests between sub-tasks. If test stats are not available for any
 reason, it will fallback to splitting tests so that each sub-tasks contains an equal number of tests.
 
@@ -46,12 +46,12 @@ For example, if `n_files=3` and `n_tasks=5`, a total of 15 files will be run in 
 
 ### What's the right channel to ask my question?
 
-If you have a question about _Mongo Task Generator_, please reach out on slack in the #server-testing
-channel, or email us at dev-prod-dag@mongodb.com.
+If you have a question about _Mongo Task Generator_, please reach out on slack in #ask-devprod-correctness or #server-testing
+channel, or email us at devprod-correctness-team@mongodb.com.
 
 ### How can I request a change/report a bug in _Mongo Task Generator_?
 
-Create a [DAG ticket](https://jira.mongodb.org/browse/DAG) in Jira.
+Create a [DEVPROD ticket](https://jira.mongodb.org/browse/DEVPROD) in Jira.
 
 ### What should I include in my ticket or question?
 
@@ -67,13 +67,13 @@ Please include the following:
 
 This project is built to run on linux. It is tested on Ubuntu 18.04.
 
-The [evergreen CLI](https://github.com/evergreen-ci/evergreen/wiki/Using-the-Command-Line-Tool) is
+The [evergreen CLI](https://docs.devprod.prod.corp.mongodb.com/evergreen/CLI) is
 required.
 
 ## Installation
 
 The tool can be downloaded from the [github releases](https://github.com/mongodb/mongo-task-generator/releases)
-page. It is currently built on Ubuntu 18.04 and should work on recent x86 linux distributions.
+page. It is currently built on Ubuntu 20.04 and should work on recent x86 linux distributions.
 
 The install can be automated using a tool like `wget` or `curl`:
 
@@ -86,27 +86,36 @@ wget https://github.com/mongodb/mongo-task-generator/releases/download/v0.1.0/mo
 To generate the task information, run the `mongo-task-generator` command at the root of the
 mongodb repository. The generated configuration will be created in the `generated_resmoke_config`
 directory. The `evergreen_config.json` file in that directory should be passed to evergreen as
-part of a [`generate.tasks`](https://github.com/evergreen-ci/evergreen/wiki/Project-Commands#generatetasks)
+part of a [`generate.tasks`](https://docs.devprod.prod.corp.mongodb.com/evergreen/Project-Configuration/Project-Commands#generatetasks)
 command call.
 
 ```bash
-mongo-task-generator
+mongo-task-generator --help
+Usage: mongo-task-generator [OPTIONS] --expansion-file <EXPANSION_FILE>
 
-USAGE:
-    mongo-task-generator --evg-project-file <EVG_PROJECT_FILE> --expansion-file <EXPANSION_FILE> --evg-auth-file <EVG_AUTH_FILE>
-
-OPTIONS:
-        --evg-auth-file <EVG_AUTH_FILE>
-            File with information on how to authenticate against the evergreen API
-
-        --evg-project-file <EVG_PROJECT_FILE>
-            File containing evergreen project configuration
-
-        --expansion-file <EXPANSION_FILE>
-            File containing expansions that impact task generation
-
-    -h, --help
-            Print help information
+Options:
+      --evg-project-file <EVG_PROJECT_FILE>
+          File containing evergreen project configuration [default: etc/evergreen.yml]
+      --expansion-file <EXPANSION_FILE>
+          File containing expansions that impact task generation
+      --evg-auth-file <EVG_AUTH_FILE>
+          File with information on how to authenticate against the evergreen API [default: ~/.evergreen.yml]
+      --target-directory <TARGET_DIRECTORY>
+          Directory to write generated configuration files [default: generated_resmoke_config]
+      --use-task-split-fallback
+          Disable evergreen task-history queries and use task splitting fallback
+      --resmoke-command <RESMOKE_COMMAND>
+          Command to invoke resmoke [default: "python buildscripts/resmoke.py"]
+      --generate-sub-tasks-config <GENERATE_SUB_TASKS_CONFIG>
+          File containing configuration for generating sub-tasks
+      --burn-in
+          Generate burn_in related tasks
+      --burn-in-tests-command <BURN_IN_TESTS_COMMAND>
+          Command to invoke burn_in_tests [default: "python buildscripts/burn_in_tests.py run"]
+      --s3-test-stats-endpoint <S3_TEST_STATS_ENDPOINT>
+          S3 endpoint to get test stats from [default: https://mongo-test-stats.s3.amazonaws.com]
+  -h, --help
+          Print help
 ```
 
 ## Documentation
@@ -190,5 +199,5 @@ for the project.
 
 ## Resources
 
-- [Evergreen generate.tasks documentation](https://github.com/evergreen-ci/evergreen/wiki/Project-Commands#generatetasks)
-- [Evergreen test stats documentation](https://github.com/evergreen-ci/evergreen/wiki/REST-V2-Usage#teststats)
+- [Evergreen generate.tasks documentation](https://docs.devprod.prod.corp.mongodb.com/evergreen/Project-Configuration/Project-Commands#generatetasks)
+- [Evergreen test stats documentation](https://docs.devprod.prod.corp.mongodb.com/evergreen/Project-Configuration/Evergreen-Data-for-Analytics#evergreen-test-statistics)
