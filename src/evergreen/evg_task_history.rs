@@ -9,6 +9,7 @@ use reqwest_retry::RetryTransientMiddleware;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
+use std::time::Duration;
 
 const REQWEST_CLIENT_MAX_RETRY_COUNT: u32 = 3;
 const HOOK_DELIMITER: char = ':';
@@ -199,9 +200,14 @@ impl TaskHistoryService for TaskHistoryServiceImpl {
 pub fn build_retryable_client() -> ClientWithMiddleware {
     let retry_policy =
         ExponentialBackoff::builder().build_with_max_retries(REQWEST_CLIENT_MAX_RETRY_COUNT);
-    ClientBuilder::new(Client::new())
-        .with(RetryTransientMiddleware::new_with_policy(retry_policy))
-        .build()
+    ClientBuilder::new(
+        reqwest::Client::builder()
+            .timeout(Duration::from_secs(30))
+            .build()
+            .unwrap(),
+    )
+    .with(RetryTransientMiddleware::new_with_policy(retry_policy))
+    .build()
 }
 
 /// Convert the list of stats into a map of test names to test stats.
