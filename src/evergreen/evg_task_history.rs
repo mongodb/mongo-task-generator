@@ -2,7 +2,7 @@
 
 use anyhow::{bail, Result};
 use async_trait::async_trait;
-use reqwest::{Client, Error};
+use reqwest::Error;
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
 use reqwest_retry::policies::ExponentialBackoff;
 use reqwest_retry::RetryTransientMiddleware;
@@ -173,6 +173,7 @@ impl TaskHistoryService for TaskHistoryServiceImpl {
     async fn get_task_history(&self, task: &str, variant: &str) -> Result<TaskRuntimeHistory> {
         let url = self.build_url(task, variant);
         let response = self.client.get(url).send().await?;
+        dbg!(&response);
         let stats: Result<Vec<S3TestStats>, Error> =
             Ok(response.json::<Vec<S3TestStats>>().await?);
 
