@@ -173,7 +173,6 @@ impl TaskHistoryService for TaskHistoryServiceImpl {
     async fn get_task_history(&self, task: &str, variant: &str) -> Result<TaskRuntimeHistory> {
         let url = self.build_url(task, variant);
         let response = self.client.get(url).send().await?;
-        dbg!(&response);
         let stats: Result<Vec<S3TestStats>, Error> =
             Ok(response.json::<Vec<S3TestStats>>().await?);
 
