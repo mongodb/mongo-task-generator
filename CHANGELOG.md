@@ -1,4 +1,7 @@
 # Changelog
+## 0.7.23 - 2025-03-17
+* Add a timeout to Evergreen test stats requests
+
 ## 0.7.22 - 2025-01-22
 * Avoid a division-by-zero when processing empty suites.
 
