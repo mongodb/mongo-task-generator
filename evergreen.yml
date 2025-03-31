@@ -1,14 +1,14 @@
 buildvariants:
-  - name: ubuntu1804
+  - name: ubuntu2404
     tasks:
       - name: build
       - name: unit_tests
       - name: lint
       - name: format
       - name: check_version
-    display_name: Ubuntu 18.04
+    display_name: Ubuntu 24.04
     run_on:
-      - ubuntu1804-test
+      - ubuntu2404-small
 
 tasks:
   - name: unit_tests
