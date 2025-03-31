@@ -1,4 +1,7 @@
 # Changelog
+## 1.0.0 - 2025-03-31
+* Build, test, and release on Ubuntu 24.04
+
 ## 0.7.23 - 2025-03-17
 * Add a timeout to Evergreen test stats requests
 
