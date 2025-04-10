@@ -1,4 +1,7 @@
 # Changelog
+## 0.7.24 - 2025-04-10
+* Include fully disabled feature flags when using resmoke's test-discovery
+
 ## 0.7.23 - 2025-03-17
 * Add a timeout to Evergreen test stats requests
 
