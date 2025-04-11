@@ -524,10 +524,9 @@ impl GenResmokeTaskServiceImpl {
         let iter = test_list[..split]
             .chunks(quo + 1)
             .chain(test_list[split..].chunks(quo));
-        let mut index = 0;
-        for tests in iter {
+        for (index, tests) in iter.enumerate() {
             sub_suites.push(SubSuite {
-                index: index,
+                index,
                 name: multiversion_name.unwrap_or(&params.task_name).to_string(),
                 test_list: tests.to_vec(),
                 origin_suite: origin_suite.to_string(),
@@ -536,7 +535,6 @@ impl GenResmokeTaskServiceImpl {
                 is_enterprise: params.is_enterprise,
                 platform: params.platform.clone(),
             });
-            index += 1;
         }
         Ok(sub_suites)
     }
