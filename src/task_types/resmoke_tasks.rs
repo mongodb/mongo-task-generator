@@ -619,7 +619,7 @@ impl GenResmokeTaskServiceImpl {
                 }
             }
         };
-        assert!(sub_suites.len() <= 5, "bad!");
+
         Ok(sub_suites)
     }
 }
