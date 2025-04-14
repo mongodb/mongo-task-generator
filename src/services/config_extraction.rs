@@ -127,7 +127,15 @@ impl ConfigExtractionServiceImpl {
     ///
     /// List of tasks that should be included as dependencies.
     fn determine_task_dependencies(&self, task_def: &EvgTask) -> Vec<String> {
-        let depends_on = self.evg_config_utils.get_task_dependencies(task_def);
+        let mut depends_on = self.evg_config_utils.get_task_dependencies(task_def);
+
+        if self
+            .evg_config_utils
+            .get_task_tags(task_def)
+            .contains(MULTIVERSION)
+        {
+            depends_on.push("multiversion_binary_search".to_string());
+        }
 
         depends_on
             .into_iter()
