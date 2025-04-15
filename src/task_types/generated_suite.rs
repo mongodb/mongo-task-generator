@@ -59,7 +59,7 @@ pub trait GeneratedSuite: Sync + Send {
                 }
                 sub_task
                     .evg_task
-                    .get_reference(large_distro.map(|d| vec![d]), Some(false))
+                    .get_reference(sub_task.evg_task.depends_on.clone(), large_distro.map(|d| vec![d]), Some(false))
             })
             .collect()
     }

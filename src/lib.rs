@@ -744,6 +744,7 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                             name: "multiversion_binary_search".to_string(),
                             distros: None,
                             activate: Some(false),
+                            depends_on: None,
                         });
                     }
                 }
