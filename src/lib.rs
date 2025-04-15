@@ -730,6 +730,22 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                     gen_config
                         .gen_task_specs
                         .extend(generated_task.build_task_ref(large_distro));
+
+                    // If any generated task depends on multiversion_binary_search, add multiversion_binary_search to the build variant.
+                    if generated_task.sub_tasks().iter().any(|task| {
+                        match &task.evg_task.depends_on {
+                            Some(deps) => deps
+                                .iter()
+                                .any(|dep| dep.name == "multiversion_binary_search"),
+                            _ => false,
+                        }
+                    }) {
+                        gen_config.gen_task_specs.push(TaskRef {
+                            name: "multiversion_binary_search".to_string(),
+                            distros: None,
+                            activate: Some(false),
+                        });
+                    }
                 }
             }
 
