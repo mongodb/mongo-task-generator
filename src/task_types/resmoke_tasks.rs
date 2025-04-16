@@ -516,42 +516,26 @@ impl GenResmokeTaskServiceImpl {
         if test_list.is_empty() {
             return Ok(sub_suites);
         }
-        let n_suites = min(test_list.len(), self.config.n_suites);
-        let tasks_per_suite = test_list.len() / n_suites;
 
-        let mut current_tests = vec![];
-        let mut i = 0;
-        for test in test_list {
-            current_tests.push(test);
-            if current_tests.len() >= tasks_per_suite {
-                sub_suites.push(SubSuite {
-                    index: i,
-                    name: multiversion_name.unwrap_or(&params.task_name).to_string(),
-                    test_list: current_tests,
-                    origin_suite: origin_suite.to_string(),
-                    exclude_test_list: None,
-                    mv_exclude_tags: multiversion_tags.clone(),
-                    is_enterprise: params.is_enterprise,
-                    platform: params.platform.clone(),
-                });
-                current_tests = vec![];
-                i += 1;
-            }
-        }
-
-        if !current_tests.is_empty() {
+        let n = min(test_list.len(), self.config.n_suites);
+        let len = test_list.len();
+        let (quo, rem) = (len / n, len % n);
+        let split = (quo + 1) * rem;
+        let iter = test_list[..split]
+            .chunks(quo + 1)
+            .chain(test_list[split..].chunks(quo));
+        for (index, tests) in iter.enumerate() {
             sub_suites.push(SubSuite {
-                index: i,
+                index,
                 name: multiversion_name.unwrap_or(&params.task_name).to_string(),
-                test_list: current_tests,
+                test_list: tests.to_vec(),
                 origin_suite: origin_suite.to_string(),
                 exclude_test_list: None,
-                mv_exclude_tags: multiversion_tags,
+                mv_exclude_tags: multiversion_tags.clone(),
                 is_enterprise: params.is_enterprise,
                 platform: params.platform.clone(),
             });
         }
-
         Ok(sub_suites)
     }
 
@@ -1300,6 +1284,40 @@ mod tests {
             assert_eq!(sub_suite.test_list.len(), n_tests / n_suites);
         }
 
+        let all_tests: Vec<String> = sub_suites
+            .iter()
+            .flat_map(|s| s.test_list.clone())
+            .collect();
+        assert_eq!(all_tests.len(), n_tests);
+        for test_name in test_list {
+            assert!(all_tests.contains(&test_name.to_string()));
+        }
+    }
+
+    #[test]
+    fn test_split_task_fallback_has_remainder() {
+        let n_suites = 3;
+        let n_tests = 4;
+        let test_list: Vec<String> = (0..n_tests)
+            .into_iter()
+            .map(|i| format!("test_{}.js", i))
+            .collect();
+        let task_history = TaskRuntimeHistory {
+            task_name: "my task".to_string(),
+            test_map: hashmap! {},
+        };
+        let gen_resmoke_service =
+            build_mocked_service(test_list.clone(), task_history.clone(), n_suites);
+
+        let params = ResmokeGenParams {
+            ..Default::default()
+        };
+
+        let sub_suites = gen_resmoke_service
+            .split_task_fallback(&params, None, None)
+            .unwrap();
+
+        assert_eq!(sub_suites.len(), n_suites);
         let all_tests: Vec<String> = sub_suites
             .iter()
             .flat_map(|s| s.test_list.clone())
