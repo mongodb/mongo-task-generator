@@ -2,7 +2,7 @@
 name = "mongo-task-generator"
 description = "Dynamically split evergreen tasks into subtasks for testing the 10gen/mongo project."
 license = "Apache-2.0"
-version = "0.7.25"
+version = "1.0.0"
 repository = "https://github.com/mongodb/mongo-task-generator"
 authors = ["DevProd Correctness Team <devprod-correctness-team@mongodb.com>"]
 edition = "2018"
