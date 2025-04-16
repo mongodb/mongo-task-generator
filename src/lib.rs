@@ -139,6 +139,8 @@ pub struct ExecutionConfiguration<'a> {
     pub gen_burn_in: bool,
     /// True if the generator should skip tests covered by more complex suites.
     pub skip_covered_tests: bool,
+    /// True if test discovery should include tests that are tagged with fully disabled features.
+    pub include_fully_disabled_feature_tests: bool,
     /// Command to execute burn_in_tests.
     pub burn_in_tests_command: &'a str,
     /// S3 endpoint to get test stats from.
@@ -169,6 +171,7 @@ impl Dependencies {
         let discovery_service = Arc::new(ResmokeProxy::new(
             execution_config.resmoke_command,
             execution_config.skip_covered_tests,
+            execution_config.include_fully_disabled_feature_tests,
         ));
         let multiversion_service = Arc::new(MultiversionServiceImpl::new(
             discovery_service.get_multiversion_config()?,

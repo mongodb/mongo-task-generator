@@ -43,6 +43,8 @@ pub struct ResmokeProxy {
     resmoke_script: Vec<String>,
     /// True if the generator should skip tests already run in more complex suites.
     skip_covered_tests: bool,
+    /// True if test discovery should include tests that are tagged with fully disabled features.
+    include_fully_disabled_feature_tests: bool,
 }
 
 impl ResmokeProxy {
@@ -52,7 +54,12 @@ impl ResmokeProxy {
     ///
     /// * `resmoke_cmd` - Command to invoke resmoke.
     /// * `skip_covered_tests` - Whether the generator should skip tests run in more complex suites.
-    pub fn new(resmoke_cmd: &str, skip_covered_tests: bool) -> Self {
+    /// * `include_fully_disabled_feature_tests` - If the generator should include tests that are tagged with fully disabled features.
+    pub fn new(
+        resmoke_cmd: &str,
+        skip_covered_tests: bool,
+        include_fully_disabled_feature_tests: bool,
+    ) -> Self {
         let cmd_parts: Vec<_> = resmoke_cmd.split(' ').collect();
         let cmd = cmd_parts[0];
         let script = cmd_parts[1..].iter().map(|s| s.to_string()).collect();
@@ -60,6 +67,7 @@ impl ResmokeProxy {
             resmoke_cmd: cmd.to_string(),
             resmoke_script: script,
             skip_covered_tests,
+            include_fully_disabled_feature_tests,
         }
     }
 }
@@ -95,6 +103,10 @@ impl TestDiscovery for ResmokeProxy {
         // also be run on a more complex suite.
         if self.skip_covered_tests {
             cmd.append(&mut vec!["--skipTestsCoveredByMoreComplexSuites"]);
+        }
+
+        if self.include_fully_disabled_feature_tests {
+            cmd.append(&mut vec!["--includeFullyDisabledFeatureTests"]);
         }
 
         let start = Instant::now();

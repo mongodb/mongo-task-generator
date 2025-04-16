@@ -110,6 +110,10 @@ struct Args {
     #[clap(long, default_value = DEFAULT_RESMOKE_COMMAND)]
     resmoke_command: String,
 
+    /// If the generator should include tests that are tagged with fully disabled features.
+    #[clap(long)]
+    include_fully_disabled_feature_tests: bool,
+
     /// File containing configuration for generating sub-tasks.
     #[clap(long, value_parser)]
     generate_sub_tasks_config: Option<PathBuf>,
@@ -158,6 +162,7 @@ async fn main() {
         config_location: &evg_expansions.config_location(),
         gen_burn_in: args.burn_in,
         skip_covered_tests: evg_expansions.is_patch && !evg_expansions.run_covered_tests,
+        include_fully_disabled_feature_tests: args.include_fully_disabled_feature_tests,
         burn_in_tests_command: &args.burn_in_tests_command,
         s3_test_stats_endpoint: &args.s3_test_stats_endpoint,
     };
