@@ -1365,7 +1365,7 @@ mod tests {
 
         let sub_suites = gen_resmoke_service
             .split_task_fallback(&params, None, None)
-            .unwrap();n
+            .unwrap();
 
         assert_eq!(sub_suites.len(), 0);
     }
