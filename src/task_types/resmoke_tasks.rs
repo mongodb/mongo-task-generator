@@ -77,7 +77,7 @@ pub struct ResmokeGenParams {
     pub platform: Option<String>,
     /// Name of variant specific suffix to add to tasks
     pub gen_task_suffix: Option<String>,
-    /// Number of sub-tasks fuzzer should generate.
+    /// Number of sub-tasks to generate.
     pub num_tasks: usize,
 }
 
@@ -1365,7 +1365,7 @@ mod tests {
 
         let sub_suites = gen_resmoke_service
             .split_task_fallback(&params, None, None)
-            .unwrap();
+            .unwrap();n
 
         assert_eq!(sub_suites.len(), 0);
     }
