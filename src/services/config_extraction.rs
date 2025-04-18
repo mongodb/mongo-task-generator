@@ -18,6 +18,7 @@ use crate::{
         multiversion::MultiversionService, resmoke_tasks::ResmokeGenParams,
     },
     utils::task_name::remove_gen_suffix,
+    DEFAULT_SUB_TASKS_PER_TASK,
 };
 
 /// Interface for performing extractions of evergreen project configuration.
@@ -248,6 +249,13 @@ impl ConfigExtractionService for ConfigExtractionServiceImpl {
                 .evg_config_utils
                 .lookup_build_variant_expansion(UNIQUE_GEN_SUFFIX_EXPANSION, variant);
         }
+        let num_tasks = match self
+            .evg_config_utils
+            .get_gen_task_var(task_def, "num_tasks")
+        {
+            Some(str) => str.parse().unwrap(),
+            _ => DEFAULT_SUB_TASKS_PER_TASK,
+        };
 
         Ok(ResmokeGenParams {
             task_name,
@@ -289,6 +297,7 @@ impl ConfigExtractionService for ConfigExtractionServiceImpl {
             pass_through_vars: self.evg_config_utils.get_gen_task_vars(task_def),
             platform,
             gen_task_suffix,
+            num_tasks,
         })
     }
 

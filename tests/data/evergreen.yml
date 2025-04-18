@@ -4211,6 +4211,7 @@ tasks:
       use_large_distro: "true"
       resmoke_jobs_max: 1
       resmoke_repeat_suites: 5
+      num_tasks: 10
 
 - <<: *task_template
   name: aggregation_sharded_collections_passthrough
@@ -4242,6 +4243,8 @@ tasks:
   tags: ["auth"]
   commands:
   - func: "generate resmoke tasks"
+    vars:
+      num_tasks: 2
 
 - name: burn_in_tags_gen
   tags: []

@@ -58,7 +58,7 @@ mod utils;
 const BURN_IN_TESTS_PREFIX: &str = "burn_in_tests";
 const BURN_IN_TASKS_PREFIX: &str = "burn_in_tasks";
 const BURN_IN_BV_SUFFIX: &str = "generated-by-burn-in-tags";
-const MAX_SUB_TASKS_PER_TASK: usize = 5;
+const DEFAULT_SUB_TASKS_PER_TASK: usize = 5;
 
 type GenTaskCollection = HashMap<String, Box<dyn GeneratedSuite>>;
 
@@ -206,11 +206,8 @@ impl Dependencies {
                 32,
             )));
         let enterprise_dir = evg_config_service.get_module_dir(ENTERPRISE_MODULE);
-        let gen_resmoke_config = GenResmokeConfig::new(
-            MAX_SUB_TASKS_PER_TASK,
-            execution_config.use_task_split_fallback,
-            enterprise_dir,
-        );
+        let gen_resmoke_config =
+            GenResmokeConfig::new(execution_config.use_task_split_fallback, enterprise_dir);
         let gen_resmoke_task_service = Arc::new(GenResmokeTaskServiceImpl::new(
             task_history_service,
             discovery_service,
