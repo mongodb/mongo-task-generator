@@ -59,6 +59,9 @@ const BURN_IN_TESTS_PREFIX: &str = "burn_in_tests";
 const BURN_IN_TASKS_PREFIX: &str = "burn_in_tasks";
 const BURN_IN_BV_SUFFIX: &str = "generated-by-burn-in-tags";
 const DEFAULT_SUB_TASKS_PER_TASK: usize = 5;
+const MAX_SUB_TASKS_PER_TASK: usize = 15;
+const IDEAL_REQUIRED_VARIANT_TASK_RUNTIME_SEC: f64 = 15.0 * 60.0;
+const REQUIRED_PREFIX: &str = "!";
 
 type GenTaskCollection = HashMap<String, Box<dyn GeneratedSuite>>;
 
@@ -589,7 +592,7 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
             )?;
             Some(
                 self.gen_resmoke_service
-                    .generate_resmoke_task(&params, &build_variant.name)
+                    .generate_resmoke_task(&params, &build_variant)
                     .await?,
             )
         };
@@ -1021,7 +1024,7 @@ mod tests {
         async fn generate_resmoke_task(
             &self,
             _params: &ResmokeGenParams,
-            _build_variant: &str,
+            _build_variant: &BuildVariant,
         ) -> Result<Box<dyn GeneratedSuite>> {
             todo!()
         }

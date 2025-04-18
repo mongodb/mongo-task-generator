@@ -14,6 +14,7 @@ use shrub_rs::models::{
     commands::{fn_call, fn_call_with_params, EvgCommand},
     params::ParamValue,
     task::{EvgTask, TaskDependency},
+    variant::BuildVariant,
 };
 use tokio::sync::Mutex;
 use tracing::{event, warn, Level};
@@ -33,7 +34,8 @@ use crate::{
     },
     resmoke::resmoke_proxy::TestDiscovery,
     utils::{fs_service::FsService, task_name::name_generated_task},
-    DEFAULT_SUB_TASKS_PER_TASK,
+    DEFAULT_SUB_TASKS_PER_TASK, IDEAL_REQUIRED_VARIANT_TASK_RUNTIME_SEC, MAX_SUB_TASKS_PER_TASK,
+    REQUIRED_PREFIX,
 };
 
 use super::{
@@ -294,7 +296,7 @@ pub trait GenResmokeTaskService: Sync + Send {
     async fn generate_resmoke_task(
         &self,
         params: &ResmokeGenParams,
-        build_variant: &str,
+        build_variant: &BuildVariant,
     ) -> Result<Box<dyn GeneratedSuite>>;
 
     /// Build a shrub task to execute a split sub-task.
@@ -409,6 +411,7 @@ impl GenResmokeTaskServiceImpl {
     /// * `task_stats` - Statistics on the historic runtimes of tests in the task.
     /// * `multiversion_name` - Name of task if performing multiversion generation.
     /// * `multiversion_tags` - Tag to include when performing multiversion generation.
+    /// * `build_variant` - Build variant to base generation off.
     ///
     /// # Returns
     ///
@@ -419,6 +422,7 @@ impl GenResmokeTaskServiceImpl {
         task_stats: &TaskRuntimeHistory,
         multiversion_name: Option<&str>,
         multiversion_tags: Option<String>,
+        build_variant: &BuildVariant,
     ) -> Result<Vec<SubSuite>> {
         let origin_suite = multiversion_name.unwrap_or(&params.suite_name);
         let test_list = self.get_test_list(params, multiversion_name)?;
@@ -427,8 +431,22 @@ impl GenResmokeTaskServiceImpl {
             .iter()
             .fold(0.0, |init, (_, item)| init + item.average_runtime);
 
-        let max_tasks = min(params.num_tasks, test_list.len());
-        let runtime_per_subtask = total_runtime / max_tasks as f64;
+        let ideal_num_tasks: usize = if build_variant
+            .display_name
+            .as_ref()
+            .unwrap()
+            .starts_with(REQUIRED_PREFIX)
+        {
+            (total_runtime / IDEAL_REQUIRED_VARIANT_TASK_RUNTIME_SEC).ceil() as usize
+        } else {
+            params.num_tasks
+        };
+        let num_tasks = *[ideal_num_tasks, test_list.len(), MAX_SUB_TASKS_PER_TASK]
+            .iter()
+            .min()
+            .unwrap();
+
+        let runtime_per_subtask = total_runtime / num_tasks as f64;
         event!(
             Level::INFO,
             "Splitting task: {}, runtime: {}, tests: {}",
@@ -438,8 +456,8 @@ impl GenResmokeTaskServiceImpl {
         );
 
         let sorted_test_list = sort_tests_by_runtime(test_list, task_stats);
-        let mut running_tests = vec![vec![]; max_tasks];
-        let mut running_runtimes = vec![0.0; max_tasks];
+        let mut running_tests = vec![vec![]; num_tasks];
+        let mut running_runtimes = vec![0.0; num_tasks];
         let mut left_tests = vec![];
 
         for test in sorted_test_list {
@@ -455,7 +473,7 @@ impl GenResmokeTaskServiceImpl {
 
         let min_idx = get_min_index(&running_runtimes);
         for (i, test) in left_tests.iter().enumerate() {
-            running_tests[(min_idx + i) % max_tasks].push(test.clone());
+            running_tests[(min_idx + i) % num_tasks].push(test.clone());
         }
 
         let mut sub_suites = vec![];
@@ -571,7 +589,7 @@ impl GenResmokeTaskServiceImpl {
     async fn create_multiversion_tasks(
         &self,
         params: &ResmokeGenParams,
-        build_variant: &str,
+        build_variant: &BuildVariant,
     ) -> Result<Vec<SubSuite>> {
         let mut mv_sub_suites = vec![];
         for multiversion_task in params.multiversion_generate_tasks.as_ref().unwrap() {
@@ -594,7 +612,7 @@ impl GenResmokeTaskServiceImpl {
     /// # Arguments
     ///
     /// * `params` - Parameters for how tasks should be generated.
-    /// * `build_variant` - Name of build variant to base generation off.
+    /// * `build_variant` - Build variant to base generation off.
     /// * `multiversion_name` - Name of task if performing multiversion generation.
     /// * `multiversion_tags` - Tag to include when performing multiversion generation.
     ///
@@ -604,7 +622,7 @@ impl GenResmokeTaskServiceImpl {
     async fn create_tasks(
         &self,
         params: &ResmokeGenParams,
-        build_variant: &str,
+        build_variant: &BuildVariant,
         multiversion_name: Option<&str>,
         multiversion_tags: Option<String>,
     ) -> Result<Vec<SubSuite>> {
@@ -613,7 +631,7 @@ impl GenResmokeTaskServiceImpl {
         } else {
             let task_history = self
                 .task_history_service
-                .get_task_history(&params.task_name, build_variant)
+                .get_task_history(&params.task_name, &build_variant.name)
                 .await;
 
             match task_history {
@@ -622,10 +640,11 @@ impl GenResmokeTaskServiceImpl {
                     &task_history,
                     multiversion_name,
                     multiversion_tags.clone(),
+                    build_variant,
                 )?,
                 Err(err) => {
                     warn!(
-                        build_variant = build_variant,
+                        build_variant = build_variant.name,
                         task_name = params.task_name.as_str(),
                         error = err.to_string().as_str(),
                         "Could not get task history from S3",
@@ -716,7 +735,7 @@ impl GenResmokeTaskService for GenResmokeTaskServiceImpl {
     async fn generate_resmoke_task(
         &self,
         params: &ResmokeGenParams,
-        build_variant: &str,
+        build_variant: &BuildVariant,
     ) -> Result<Box<dyn GeneratedSuite>> {
         let sub_suites = if params.require_multiversion_generate_tasks {
             self.create_multiversion_tasks(params, build_variant)
@@ -1183,7 +1202,16 @@ mod tests {
         };
 
         let sub_suites = gen_resmoke_service
-            .split_task(&params, &task_history, None, None)
+            .split_task(
+                &params,
+                &task_history,
+                None,
+                None,
+                &BuildVariant {
+                    display_name: Some("build-variant".to_string()),
+                    ..Default::default()
+                },
+            )
             .unwrap();
 
         assert_eq!(sub_suites.len(), num_tasks);
@@ -1221,7 +1249,16 @@ mod tests {
         };
 
         let sub_suites = gen_resmoke_service
-            .split_task(&params, &task_history, None, None)
+            .split_task(
+                &params,
+                &task_history,
+                None,
+                None,
+                &BuildVariant {
+                    display_name: Some("build-variant".to_string()),
+                    ..Default::default()
+                },
+            )
             .unwrap();
 
         assert_eq!(sub_suites.len(), num_tasks);
@@ -1261,6 +1298,10 @@ mod tests {
                 &task_history,
                 Some("multiversion_test"),
                 Some("multiversion_tag".to_string()),
+                &BuildVariant {
+                    display_name: Some("build-variant".to_string()),
+                    ..Default::default()
+                },
             )
             .unwrap();
 
@@ -1482,7 +1523,13 @@ mod tests {
         let gen_resmoke_service = build_mocked_service(test_list.clone(), task_history);
 
         let suite_list = gen_resmoke_service
-            .create_multiversion_tasks(&params, "build_variant")
+            .create_multiversion_tasks(
+                &params,
+                &BuildVariant {
+                    display_name: Some("build-variant".to_string()),
+                    ..Default::default()
+                },
+            )
             .await
             .unwrap();
 
@@ -1535,12 +1582,67 @@ mod tests {
         };
 
         let suite = gen_resmoke_service
-            .generate_resmoke_task(&params, "build-variant")
+            .generate_resmoke_task(
+                &params,
+                &BuildVariant {
+                    display_name: Some("build-variant".to_string()),
+                    ..Default::default()
+                },
+            )
             .await
             .unwrap();
 
         assert_eq!(suite.display_name(), "my_task".to_string());
         assert_eq!(suite.sub_tasks().len(), num_tasks);
+    }
+
+    #[tokio::test]
+    async fn test_generate_resmoke_tasks_required_variant() {
+        // Creating tasks based off of a required build variant, more than the
+        // default `num_tasks` should be used. The target is for subtasks to take
+        // `IDEAL_REQUIRED_VARIANT_TASK_RUNTIME_MIN`, currently 15 minutes.
+
+        let num_tasks = 5; // Default number of tasks, which should not be used in this case.
+        let test_list: Vec<String> = (0..9)
+            .into_iter()
+            .map(|i| format!("test_{}.js", i))
+            .collect();
+        let task_history = TaskRuntimeHistory {
+            task_name: "my_task".to_string(),
+            test_map: hashmap! {
+                "test_0".to_string() => build_mock_test_runtime("test_0.js", 15.0 * 60.0),
+                "test_1".to_string() => build_mock_test_runtime("test_1.js", 15.0 * 60.0),
+                "test_2".to_string() => build_mock_test_runtime("test_2.js", 15.0 * 60.0),
+                "test_3".to_string() => build_mock_test_runtime("test_3.js", 15.0 * 60.0),
+                "test_4".to_string() => build_mock_test_runtime("test_4.js", 15.0 * 60.0),
+                "test_5".to_string() => build_mock_test_runtime("test_5.js", 15.0 * 60.0),
+                "test_6".to_string() => build_mock_test_runtime("test_5.js", 15.0 * 60.0),
+                "test_7".to_string() => build_mock_test_runtime("test_5.js", 7.0 * 60.0),
+                "test_8".to_string() => build_mock_test_runtime("test_5.js", 8.0 * 60.0),
+            },
+        };
+        let gen_resmoke_service = build_mocked_service(test_list, task_history.clone());
+
+        let params = ResmokeGenParams {
+            task_name: "my_task".to_string(),
+            require_multiversion_generate_tasks: false,
+            num_tasks,
+            ..Default::default()
+        };
+
+        let suite = gen_resmoke_service
+            .generate_resmoke_task(
+                &params,
+                &BuildVariant {
+                    display_name: Some("! required build variant".to_string()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(suite.display_name(), "my_task".to_string());
+        assert_eq!(suite.sub_tasks().len(), 8);
     }
 
     #[tokio::test]
@@ -1577,7 +1679,13 @@ mod tests {
         };
 
         let suite = gen_resmoke_service
-            .generate_resmoke_task(&params, "build-variant")
+            .generate_resmoke_task(
+                &params,
+                &BuildVariant {
+                    display_name: Some("build-variant".to_string()),
+                    ..Default::default()
+                },
+            )
             .await
             .unwrap();
 
@@ -1610,7 +1718,13 @@ mod tests {
         };
 
         gen_resmoke_service
-            .generate_resmoke_task(&params, "build-variant")
+            .generate_resmoke_task(
+                &params,
+                &BuildVariant {
+                    display_name: Some("build-variant".to_string()),
+                    ..Default::default()
+                },
+            )
             .await
             .unwrap();
     }
