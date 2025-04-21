@@ -7,7 +7,8 @@ use std::{
 use anyhow::Result;
 use clap::Parser;
 use mongo_task_generator::{
-    generate_configuration, Dependencies, ExecutionConfiguration, ProjectInfo, SubtaskLimits,
+    build_s3_client, generate_configuration, Dependencies, ExecutionConfiguration, ProjectInfo,
+    SubtaskLimits,
 };
 use serde::Deserialize;
 use tracing::{error, event, Level};
@@ -18,7 +19,7 @@ const DEFAULT_EVG_PROJECT_FILE: &str = "etc/evergreen.yml";
 const DEFAULT_RESMOKE_COMMAND: &str = "python buildscripts/resmoke.py";
 const DEFAULT_BURN_IN_TESTS_COMMAND: &str = "python buildscripts/burn_in_tests.py run";
 const DEFAULT_TARGET_DIRECTORY: &str = "generated_resmoke_config";
-const DEFAULT_S3_TEST_STATS_ENDPOINT: &str = "https://mongo-test-stats.s3.amazonaws.com";
+const DEFAULT_S3_TEST_STATS_BUCKET: &str = "mongo-test-stats";
 const DEFAUL_REQUIRED_VARIANT_SUBTASK_RUNTIME: &str = "900"; // 15 minutes
 const DEFAULT_MAX_SUBTASKS_PER_TASK: &str = "20";
 
@@ -129,8 +130,8 @@ struct Args {
     burn_in_tests_command: String,
 
     /// S3 endpoint to get test stats from.
-    #[clap(long, default_value = DEFAULT_S3_TEST_STATS_ENDPOINT)]
-    s3_test_stats_endpoint: String,
+    #[clap(long, default_value = DEFAULT_S3_TEST_STATS_BUCKET)]
+    s3_test_stats_bucket: String,
 
     // Ideal runtime for individual subtasks on required variants, used to
     // determine the number of subtasks for tasks on required variants.
@@ -175,13 +176,14 @@ async fn main() {
         skip_covered_tests: evg_expansions.is_patch && !evg_expansions.run_covered_tests,
         include_fully_disabled_feature_tests: args.include_fully_disabled_feature_tests,
         burn_in_tests_command: &args.burn_in_tests_command,
-        s3_test_stats_endpoint: &args.s3_test_stats_endpoint,
+        s3_test_stats_bucket: &args.s3_test_stats_bucket,
         subtask_limits: SubtaskLimits {
             required_variant_subtask_runtime_seconds: args.required_variant_subtask_runtime_seconds,
             max_subtasks_per_task: args.max_subtasks_per_task,
         },
     };
-    let deps = Dependencies::new(execution_config).unwrap();
+    let s3_client = build_s3_client().await;
+    let deps = Dependencies::new(execution_config, s3_client).unwrap();
 
     let start = Instant::now();
     let result = generate_configuration(&deps, &args.target_directory).await;

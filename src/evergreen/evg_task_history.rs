@@ -2,16 +2,12 @@
 
 use anyhow::{bail, Result};
 use async_trait::async_trait;
-use reqwest::Error;
-use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
-use reqwest_retry::policies::ExponentialBackoff;
-use reqwest_retry::RetryTransientMiddleware;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
-use std::time::Duration;
+use std::str;
+use std::sync::Arc;
 
-const REQWEST_CLIENT_MAX_RETRY_COUNT: u32 = 3;
 const HOOK_DELIMITER: char = ':';
 
 /// Test stats stored on S3 bucket.
@@ -19,10 +15,6 @@ const HOOK_DELIMITER: char = ':';
 pub struct S3TestStats {
     /// Name of test.
     pub test_name: String,
-    /// Number of passed tests.
-    pub num_pass: u64,
-    /// Number of failed tests.
-    pub num_fail: u64,
     /// Average duration of passed tests.
     pub avg_duration_pass: f64,
 }
@@ -81,18 +73,6 @@ pub struct TaskRuntimeHistory {
 /// A service for querying task history from evergreen.
 #[async_trait]
 pub trait TaskHistoryService: Send + Sync {
-    /// Build URL to send request to.
-    ///
-    /// # Arguments
-    ///
-    /// * `task` - Name of task to query.
-    /// * `variant` - Name of build variant to query.
-    ///
-    /// # Returns
-    ///
-    /// URL to send request to.
-    fn build_url(&self, task: &str, variant: &str) -> String;
-
     /// Get the test runtime history of the given task.
     ///
     /// # Arguments
@@ -108,10 +88,11 @@ pub trait TaskHistoryService: Send + Sync {
 
 /// An implementation of the task history service.
 pub struct TaskHistoryServiceImpl {
-    /// Reqwest client.
-    client: ClientWithMiddleware,
-    /// S3 endpoint to get test stats from.
-    s3_test_stats_endpoint: String,
+    // AWS S3 client, and a sempahore to limit concurrent client usage.
+    s3_client: aws_sdk_s3::Client,
+    semaphore: Arc<tokio::sync::Semaphore>,
+    /// S3 bucket to get test stats from.
+    s3_test_stats_bucket: String,
     /// Evergreen project to query.
     evg_project: String,
 }
@@ -121,21 +102,22 @@ impl TaskHistoryServiceImpl {
     ///
     /// # Arguments
     ///
-    /// * `client` - Reqwest client.
-    /// * `s3_test_stats_endpoint` - S3 endpoint to get test stats from.
+    /// * `s3_client` - AWS s3 client.
+    /// * `s3_test_stats_bucket` - S3 bucket to get test stats from.
     /// * `evg_project` - Evergreen project to query.
     ///
     /// # Returns
     ///
     /// New instance of the task history service implementation.
     pub fn new(
-        client: ClientWithMiddleware,
-        s3_test_stats_endpoint: String,
+        s3_client: aws_sdk_s3::Client,
+        s3_test_stats_bucket: String,
         evg_project: String,
     ) -> Self {
         Self {
-            client,
-            s3_test_stats_endpoint,
+            s3_client,
+            semaphore: Arc::new(tokio::sync::Semaphore::new(20)),
+            s3_test_stats_bucket,
             evg_project,
         }
     }
@@ -143,23 +125,6 @@ impl TaskHistoryServiceImpl {
 
 #[async_trait]
 impl TaskHistoryService for TaskHistoryServiceImpl {
-    /// Build URL to send request to.
-    ///
-    /// # Arguments
-    ///
-    /// * `task` - Name of task to query.
-    /// * `variant` - Name of build variant to query.
-    ///
-    /// # Returns
-    ///
-    /// URL to send request to.
-    fn build_url(&self, task: &str, variant: &str) -> String {
-        format!(
-            "{}/{}/{}/{}",
-            self.s3_test_stats_endpoint, self.evg_project, variant, task
-        )
-    }
-
     /// Get the test runtime history of the given task.
     ///
     /// # Arguments
@@ -171,10 +136,23 @@ impl TaskHistoryService for TaskHistoryServiceImpl {
     ///
     /// The runtime history of tests belonging to the given suite on the given build variant.
     async fn get_task_history(&self, task: &str, variant: &str) -> Result<TaskRuntimeHistory> {
-        let url = self.build_url(task, variant);
-        let response = self.client.get(url).send().await?;
-        let stats: Result<Vec<S3TestStats>, Error> =
-            Ok(response.json::<Vec<S3TestStats>>().await?);
+        let key = format!("{}/{}/{}", self.evg_project, variant, task);
+
+        // Acquire a permit for concurrent use of the s3 client, limiting too many
+        // parallel connections that will result in network failures.
+        let permit = self.semaphore.acquire().await.unwrap();
+
+        let object = self
+            .s3_client
+            .get_object()
+            .bucket(&self.s3_test_stats_bucket)
+            .key(key)
+            .send()
+            .await?;
+        let body = &object.body.collect().await?.to_vec();
+        let stats = serde_json::from_str::<Vec<S3TestStats>>(str::from_utf8(body)?);
+
+        drop(permit);
 
         if let Ok(stats) = stats {
             // Split the returned stats into stats for hooks and tests. Also attach the hook stats
@@ -190,24 +168,6 @@ impl TaskHistoryService for TaskHistoryServiceImpl {
             bail!("Error from S3: {:?}", stats)
         }
     }
-}
-
-/// Build retryable reqwest client.
-///
-/// # Returns
-///
-/// Retryable reqwest client.
-pub fn build_retryable_client() -> ClientWithMiddleware {
-    let retry_policy =
-        ExponentialBackoff::builder().build_with_max_retries(REQWEST_CLIENT_MAX_RETRY_COUNT);
-    ClientBuilder::new(
-        reqwest::Client::builder()
-            .timeout(Duration::from_secs(30))
-            .build()
-            .unwrap(),
-    )
-    .with(RetryTransientMiddleware::new_with_policy(retry_policy))
-    .build()
 }
 
 /// Convert the list of stats into a map of test names to test stats.

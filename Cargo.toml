@@ -11,6 +11,8 @@ rust-version = "1.75"
 [dependencies]
 anyhow = "1.0.86"
 async-trait = "0.1.81"
+aws-config = "1.0.1"
+aws-sdk-s3 = { version = "1.4.0", features = ["rt-tokio"] }
 chrono = "0.4.38"
 clap = "4.5.15"
 cmd_lib = "1.9.4"
