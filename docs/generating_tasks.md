@@ -73,7 +73,7 @@ test suites into sub-suites that can be run in parallel on different hosts.
 
 For tasks appropriately marked, the `mongo-task-generator` will query the
 [runtime stats](https://docs.devprod.prod.corp.mongodb.com/evergreen/Project-Configuration/Evergreen-Data-for-Analytics#evergreen-test-statistics)
-endpoint https://mongo-test-stats.s3.amazonaws.com/{evg-project-name}/{variant-name}/{task-name}
+bucket https://mongo-test-stats.s3.amazonaws.com/{evg-project-name}/{variant-name}/{task-name}
 and use those stats to divide up the tests into sub-suite with roughly even runtimes.
 It will then generate "sub-tasks" for each of the "sub-suites" to actually run the tests.
 
@@ -339,8 +339,8 @@ Options:
           Generate burn_in related tasks
       --burn-in-tests-command <BURN_IN_TESTS_COMMAND>
           Command to invoke burn_in_tests [default: "python buildscripts/burn_in_tests.py run"]
-      --s3-test-stats-endpoint <S3_TEST_STATS_ENDPOINT>
-          S3 endpoint to get test stats from [default: https://mongo-test-stats.s3.amazonaws.com]
+      --s3-test-stats-bucket <S3_TEST_STATS_BUCKET>
+          S3 bucket to get test stats from [default: mongo-test-stats]
   -h, --help
           Print help
 ```

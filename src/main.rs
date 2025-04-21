@@ -129,7 +129,7 @@ struct Args {
     #[clap(long, default_value = DEFAULT_BURN_IN_TESTS_COMMAND)]
     burn_in_tests_command: String,
 
-    /// S3 endpoint to get test stats from.
+    /// S3 bucket to get test stats from.
     #[clap(long, default_value = DEFAULT_S3_TEST_STATS_BUCKET)]
     s3_test_stats_bucket: String,
 
