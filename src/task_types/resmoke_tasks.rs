@@ -34,8 +34,7 @@ use crate::{
     },
     resmoke::resmoke_proxy::TestDiscovery,
     utils::{fs_service::FsService, task_name::name_generated_task},
-    DEFAULT_SUB_TASKS_PER_TASK, IDEAL_REQUIRED_VARIANT_TASK_RUNTIME_SEC, MAX_SUB_TASKS_PER_TASK,
-    REQUIRED_PREFIX,
+    SubtaskLimits, DEFAULT_SUB_TASKS_PER_TASK, REQUIRED_PREFIX,
 };
 
 use super::{
@@ -368,6 +367,8 @@ pub struct GenResmokeTaskServiceImpl {
 
     /// Configuration for generating resmoke tasks.
     config: GenResmokeConfig,
+
+    subtask_limits: SubtaskLimits,
 }
 
 impl GenResmokeTaskServiceImpl {
@@ -390,6 +391,7 @@ impl GenResmokeTaskServiceImpl {
         multiversion_service: Arc<dyn MultiversionService>,
         fs_service: Arc<dyn FsService>,
         config: GenResmokeConfig,
+        subtask_limits: SubtaskLimits,
     ) -> Self {
         Self {
             task_history_service,
@@ -398,6 +400,7 @@ impl GenResmokeTaskServiceImpl {
             multiversion_service,
             fs_service,
             config,
+            subtask_limits,
         }
     }
 }
@@ -437,14 +440,19 @@ impl GenResmokeTaskServiceImpl {
             .unwrap()
             .starts_with(REQUIRED_PREFIX)
         {
-            (total_runtime / IDEAL_REQUIRED_VARIANT_TASK_RUNTIME_SEC).ceil() as usize
+            (total_runtime / self.subtask_limits.required_variant_subtask_runtime_seconds).ceil()
+                as usize
         } else {
             params.num_tasks
         };
-        let num_tasks = *[ideal_num_tasks, test_list.len(), MAX_SUB_TASKS_PER_TASK]
-            .iter()
-            .min()
-            .unwrap();
+        let num_tasks = *[
+            ideal_num_tasks,
+            test_list.len(),
+            self.subtask_limits.max_subtasks_per_task,
+        ]
+        .iter()
+        .min()
+        .unwrap();
 
         let runtime_per_subtask = total_runtime / num_tasks as f64;
         event!(
@@ -1162,6 +1170,10 @@ mod tests {
             Arc::new(multiversion_service),
             Arc::new(fs_service),
             config,
+            SubtaskLimits {
+                required_variant_subtask_runtime_seconds: 900.0,
+                max_subtasks_per_task: 20,
+            },
         )
     }
 

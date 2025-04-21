@@ -59,8 +59,6 @@ const BURN_IN_TESTS_PREFIX: &str = "burn_in_tests";
 const BURN_IN_TASKS_PREFIX: &str = "burn_in_tasks";
 const BURN_IN_BV_SUFFIX: &str = "generated-by-burn-in-tags";
 const DEFAULT_SUB_TASKS_PER_TASK: usize = 5;
-const MAX_SUB_TASKS_PER_TASK: usize = 15;
-const IDEAL_REQUIRED_VARIANT_TASK_RUNTIME_SEC: f64 = 15.0 * 60.0;
 const REQUIRED_PREFIX: &str = "!";
 
 type GenTaskCollection = HashMap<String, Box<dyn GeneratedSuite>>;
@@ -148,6 +146,16 @@ pub struct ExecutionConfiguration<'a> {
     pub burn_in_tests_command: &'a str,
     /// S3 endpoint to get test stats from.
     pub s3_test_stats_endpoint: &'a str,
+    pub subtask_limits: SubtaskLimits,
+}
+
+#[derive(Debug, Clone)]
+pub struct SubtaskLimits {
+    // Ideal runtime for individual subtasks on required variants, used to
+    // determine the number of subtasks for tasks on required variants.
+    pub required_variant_subtask_runtime_seconds: f64,
+    // Maximum number of subtasks that can be generated for tasks
+    pub max_subtasks_per_task: usize,
 }
 
 /// Collection of services needed to execution.
@@ -218,6 +226,7 @@ impl Dependencies {
             multiversion_service,
             fs_service,
             gen_resmoke_config,
+            execution_config.subtask_limits,
         ));
         let gen_task_service = Arc::new(GenerateTasksServiceImpl::new(
             evg_config_service,

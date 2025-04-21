@@ -7,7 +7,7 @@ use std::{
 use anyhow::Result;
 use clap::Parser;
 use mongo_task_generator::{
-    generate_configuration, Dependencies, ExecutionConfiguration, ProjectInfo,
+    generate_configuration, Dependencies, ExecutionConfiguration, ProjectInfo, SubtaskLimits,
 };
 use serde::Deserialize;
 use tracing::{error, event, Level};
@@ -19,6 +19,8 @@ const DEFAULT_RESMOKE_COMMAND: &str = "python buildscripts/resmoke.py";
 const DEFAULT_BURN_IN_TESTS_COMMAND: &str = "python buildscripts/burn_in_tests.py run";
 const DEFAULT_TARGET_DIRECTORY: &str = "generated_resmoke_config";
 const DEFAULT_S3_TEST_STATS_ENDPOINT: &str = "https://mongo-test-stats.s3.amazonaws.com";
+const DEFAUL_REQUIRED_VARIANT_SUBTASK_RUNTIME: &str = "900"; // 15 minutes
+const DEFAULT_MAX_SUBTASKS_PER_TASK: &str = "20";
 
 /// Expansions from evergreen to determine settings for how task should be generated.
 #[derive(Debug, Deserialize)]
@@ -129,6 +131,15 @@ struct Args {
     /// S3 endpoint to get test stats from.
     #[clap(long, default_value = DEFAULT_S3_TEST_STATS_ENDPOINT)]
     s3_test_stats_endpoint: String,
+
+    // Ideal runtime for individual subtasks on required variants, used to
+    // determine the number of subtasks for tasks on required variants.
+    #[clap(long, default_value = DEFAUL_REQUIRED_VARIANT_SUBTASK_RUNTIME)]
+    required_variant_subtask_runtime_seconds: f64,
+
+    // Maximum number of subtasks that can be generated for tasks
+    #[clap(long, default_value = DEFAULT_MAX_SUBTASKS_PER_TASK)]
+    max_subtasks_per_task: usize,
 }
 
 /// Configure logging for the command execution.
@@ -165,6 +176,10 @@ async fn main() {
         include_fully_disabled_feature_tests: args.include_fully_disabled_feature_tests,
         burn_in_tests_command: &args.burn_in_tests_command,
         s3_test_stats_endpoint: &args.s3_test_stats_endpoint,
+        subtask_limits: SubtaskLimits {
+            required_variant_subtask_runtime_seconds: args.required_variant_subtask_runtime_seconds,
+            max_subtasks_per_task: args.max_subtasks_per_task,
+        },
     };
     let deps = Dependencies::new(execution_config).unwrap();
 
