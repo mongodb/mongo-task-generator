@@ -429,22 +429,28 @@ impl GenResmokeTaskServiceImpl {
     ) -> Result<Vec<SubSuite>> {
         let origin_suite = multiversion_name.unwrap_or(&params.suite_name);
         let test_list = self.get_test_list(params, multiversion_name)?;
-        let total_runtime = task_stats
+        let temp = task_stats
             .test_map
             .iter()
-            .fold(0.0, |init, (_, item)| init + item.average_runtime);
+            .filter(|(_, t)| test_list.contains(&t.test_name));
+        // dbg!(&temp);
+        // dbg!(&test_list);
+        let total_runtime = temp.fold(0.0, |init, (_, item)| init + item.average_runtime);
 
         let ideal_num_tasks: usize = if build_variant
             .display_name
             .as_ref()
             .unwrap()
             .starts_with(REQUIRED_PREFIX)
+            && total_runtime > 3600.0
         {
-            (total_runtime / self.subtask_limits.required_variant_subtask_runtime_seconds).ceil()
-                as usize
+            // (total_runtime / self.subtask_limits.required_variant_subtask_runtime_seconds).ceil()
+            //     as usize
+            10
         } else {
             params.num_tasks
         };
+        dbg!(&params.suite_name, total_runtime, ideal_num_tasks);
         let num_tasks = *[
             ideal_num_tasks,
             test_list.len(),
