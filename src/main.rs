@@ -20,8 +20,10 @@ const DEFAULT_RESMOKE_COMMAND: &str = "python buildscripts/resmoke.py";
 const DEFAULT_BURN_IN_TESTS_COMMAND: &str = "python buildscripts/burn_in_tests.py run";
 const DEFAULT_TARGET_DIRECTORY: &str = "generated_resmoke_config";
 const DEFAULT_S3_TEST_STATS_BUCKET: &str = "mongo-test-stats";
-const DEFAUL_REQUIRED_VARIANT_SUBTASK_RUNTIME: &str = "900"; // 15 minutes
-const DEFAULT_MAX_SUBTASKS_PER_TASK: &str = "20";
+const DEFAULT_MAX_SUBTASKS_PER_TASK: &str = "10";
+const DEFAULT_DEFAULT_SUBTASKS_PER_TASKS: &str = "5";
+const DEFAULT_TEST_RUNTIME_PER_REQUIRED_SUBTASK: &str = "3600";
+const DEFAULT_LARGE_REQUIRED_TASK_RUNTIME_THRESHOLD: &str = "7200";
 
 /// Expansions from evergreen to determine settings for how task should be generated.
 #[derive(Debug, Deserialize)]
@@ -133,10 +135,19 @@ struct Args {
     #[clap(long, default_value = DEFAULT_S3_TEST_STATS_BUCKET)]
     s3_test_stats_bucket: String,
 
-    // Ideal runtime for individual subtasks on required variants, used to
-    // determine the number of subtasks for tasks on required variants.
-    #[clap(long, default_value = DEFAUL_REQUIRED_VARIANT_SUBTASK_RUNTIME)]
-    required_variant_subtask_runtime_seconds: f64,
+    // Ideal total test runtime (in seconds) for individual subtasks on required
+    // variants, used to determine the number of subtasks for tasks on required variants.
+    #[clap(long, default_value = DEFAULT_TEST_RUNTIME_PER_REQUIRED_SUBTASK)]
+    test_runtime_per_required_subtask: f64,
+
+    // Threshold of total test runtime (in seconds) for a required task to be considered
+    // large enough to warrant splitting into more that the default number of tasks.
+    #[clap(long, default_value = DEFAULT_LARGE_REQUIRED_TASK_RUNTIME_THRESHOLD)]
+    large_required_task_runtime_threshold: f64,
+
+    // Default number of subtasks that should be generated for tasks
+    #[clap(long, default_value = DEFAULT_DEFAULT_SUBTASKS_PER_TASKS)]
+    default_subtasks_per_task: usize,
 
     // Maximum number of subtasks that can be generated for tasks
     #[clap(long, default_value = DEFAULT_MAX_SUBTASKS_PER_TASK)]
@@ -178,8 +189,10 @@ async fn main() {
         burn_in_tests_command: &args.burn_in_tests_command,
         s3_test_stats_bucket: &args.s3_test_stats_bucket,
         subtask_limits: SubtaskLimits {
-            required_variant_subtask_runtime_seconds: args.required_variant_subtask_runtime_seconds,
+            test_runtime_per_required_subtask: args.test_runtime_per_required_subtask,
             max_subtasks_per_task: args.max_subtasks_per_task,
+            default_subtasks_per_task: args.default_subtasks_per_task,
+            large_required_task_runtime_threshold: args.large_required_task_runtime_threshold,
         },
     };
     let s3_client = build_s3_client().await;
