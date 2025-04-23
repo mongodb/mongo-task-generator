@@ -59,6 +59,7 @@ impl Display for TestRuntimeHistory {
 #[derive(Debug, Clone)]
 pub struct TaskRuntimeHistory {
     /// Name of task.
+    #[allow(dead_code)]
     pub task_name: String,
     /// Map of tests to the runtime history for that test.
     pub test_map: HashMap<String, TestRuntimeHistory>,
@@ -218,7 +219,7 @@ fn gather_hook_stats(stat_list: &[S3TestStats]) -> HashMap<String, Vec<HookRunti
         if is_hook(&normalized_test_file) {
             let test_name = hook_test_name(&normalized_test_file);
             let hook_name = hook_hook_name(&normalized_test_file);
-            if let Some(v) = hook_map.get_mut(&test_name.to_string()) {
+            if let Some(v) = hook_map.get_mut(test_name) {
                 v.push(HookRuntimeHistory {
                     test_name: test_name.to_string(),
                     hook_name: hook_name.to_string(),

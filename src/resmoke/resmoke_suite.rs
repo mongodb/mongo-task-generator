@@ -88,6 +88,7 @@ impl FromStr for ResmokeSuiteConfig {
     }
 }
 
+#[allow(clippy::to_string_trait_impl)]
 impl ToString for ResmokeSuiteConfig {
     /// Convert this resmoke suite configuration to a string.
     fn to_string(&self) -> String {

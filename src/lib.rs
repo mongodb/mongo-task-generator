@@ -3,7 +3,6 @@
 //! This code will go through the entire evergreen configuration and create task definitions
 //! for any tasks that need to be generated. It will then add references to those generated
 //! tasks to any build variants to expect to run them.
-#![cfg_attr(feature = "strict", deny(missing_docs))]
 
 use core::panic;
 use std::{
@@ -1020,7 +1019,6 @@ mod tests {
 
     use crate::{
         evergreen::evg_config_utils::MultiversionGenerateTaskConfig,
-        resmoke::burn_in_proxy::{BurnInDiscovery, DiscoveredTask},
         task_types::{
             fuzzer_tasks::FuzzerGenTaskParams,
             generated_suite::GeneratedSubTask,
@@ -1247,42 +1245,6 @@ mod tests {
         }
 
         async fn flush(&mut self) -> Result<Vec<String>> {
-            todo!()
-        }
-    }
-
-    struct MockBurnInDiscovery {}
-    impl BurnInDiscovery for MockBurnInDiscovery {
-        fn discover_tasks(&self, _build_variant: &str) -> Result<Vec<DiscoveredTask>> {
-            todo!()
-        }
-    }
-
-    struct MockConfigExtractionService {}
-    impl ConfigExtractionService for MockConfigExtractionService {
-        fn task_def_to_fuzzer_params(
-            &self,
-            _task_def: &EvgTask,
-            _build_variant: &BuildVariant,
-        ) -> Result<FuzzerGenTaskParams> {
-            todo!()
-        }
-
-        fn task_def_to_resmoke_params(
-            &self,
-            _task_def: &EvgTask,
-            _is_enterprise: bool,
-            _build_variant: Option<&BuildVariant>,
-            _platform: Option<String>,
-        ) -> Result<ResmokeGenParams> {
-            todo!()
-        }
-
-        fn determine_large_distro(
-            &self,
-            _generated_suite: &dyn GeneratedSuite,
-            _build_variant: &BuildVariant,
-        ) -> Result<Option<String>> {
             todo!()
         }
     }

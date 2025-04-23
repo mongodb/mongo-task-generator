@@ -31,6 +31,7 @@ pub struct FuzzerGenTaskParams {
     /// Multiversion tasks to generate.
     pub multiversion_generate_tasks: Option<Vec<MultiversionGenerateTaskConfig>>,
     /// Name of build variant being generated on.
+    #[allow(dead_code)]
     pub variant: String,
     /// Resmoke suite for generated tests.
     pub suite: String,
