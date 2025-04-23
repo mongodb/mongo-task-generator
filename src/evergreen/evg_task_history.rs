@@ -305,8 +305,8 @@ pub fn get_test_name(test_file: &str) -> String {
 }
 #[cfg(test)]
 mod tests {
-    use rstest::rstest;
     use super::*;
+    use rstest::rstest;
     #[rstest]
     #[case("some/random/test", false)]
     #[case("some/random/test:hook1", true)]
