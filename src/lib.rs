@@ -10,15 +10,19 @@ use std::{
     collections::{HashMap, HashSet},
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
+    time::Duration,
     vec,
 };
 
 use anyhow::{bail, Result};
 use async_trait::async_trait;
+use aws_config::{
+    meta::region::RegionProviderChain, retry::RetryConfig, timeout::TimeoutConfig, BehaviorVersion,
+};
 use evergreen::{
     evg_config::{EvgConfigService, EvgProjectConfig},
     evg_config_utils::{EvgConfigUtils, EvgConfigUtilsImpl},
-    evg_task_history::{build_retryable_client, TaskHistoryServiceImpl},
+    evg_task_history::TaskHistoryServiceImpl,
 };
 use evergreen_names::{
     BURN_IN_TAGS, BURN_IN_TAG_COMPILE_TASK_DEPENDENCY, BURN_IN_TAG_INCLUDE_BUILD_VARIANTS,
@@ -143,8 +147,8 @@ pub struct ExecutionConfiguration<'a> {
     pub include_fully_disabled_feature_tests: bool,
     /// Command to execute burn_in_tests.
     pub burn_in_tests_command: &'a str,
-    /// S3 endpoint to get test stats from.
-    pub s3_test_stats_endpoint: &'a str,
+    /// S3 bucket to get test stats from.
+    pub s3_test_stats_bucket: &'a str,
     pub subtask_limits: SubtaskLimits,
 }
 
@@ -184,7 +188,10 @@ impl Dependencies {
     /// # Returns
     ///
     /// A set of dependencies to run against.
-    pub fn new(execution_config: ExecutionConfiguration) -> Result<Self> {
+    pub fn new(
+        execution_config: ExecutionConfiguration,
+        s3_client: aws_sdk_s3::Client,
+    ) -> Result<Self> {
         let fs_service = Arc::new(FsServiceImpl::new());
         let discovery_service = Arc::new(ResmokeProxy::new(
             execution_config.resmoke_command,
@@ -207,10 +214,9 @@ impl Dependencies {
             execution_config.config_location.to_string(),
             gen_sub_tasks_config,
         ));
-        let client = build_retryable_client();
         let task_history_service = Arc::new(TaskHistoryServiceImpl::new(
-            client,
-            execution_config.s3_test_stats_endpoint.to_string(),
+            s3_client,
+            execution_config.s3_test_stats_bucket.to_string(),
             execution_config.project_info.evg_project.clone(),
         ));
         let resmoke_config_actor =
@@ -985,6 +991,27 @@ fn create_burn_in_tasks_worker(
             generated_tasks.insert(task_name, generated_task);
         }
     })
+}
+
+pub async fn build_s3_client() -> aws_sdk_s3::Client {
+    let region_provider = RegionProviderChain::default_provider().or_else("us-east-1");
+
+    let timeout_config = TimeoutConfig::builder()
+        .operation_timeout(Duration::from_secs(120))
+        .operation_attempt_timeout(Duration::from_secs(30))
+        .read_timeout(Duration::from_secs(15))
+        .build();
+
+    let retry_config = RetryConfig::standard().with_max_attempts(3);
+
+    let config = aws_config::defaults(BehaviorVersion::latest())
+        .timeout_config(timeout_config)
+        .retry_config(retry_config)
+        .region(region_provider)
+        .load()
+        .await;
+
+    aws_sdk_s3::Client::new(&config)
 }
 
 #[cfg(test)]

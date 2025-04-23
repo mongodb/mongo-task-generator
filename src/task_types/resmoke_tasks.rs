@@ -1071,10 +1071,6 @@ mod tests {
 
     #[async_trait]
     impl TaskHistoryService for MockTaskHistoryService {
-        fn build_url(&self, _task: &str, _variant: &str) -> String {
-            todo!()
-        }
-
         async fn get_task_history(
             &self,
             _task: &str,
