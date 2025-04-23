@@ -630,7 +630,7 @@ mod tests {
         async fn generate_resmoke_task(
             &self,
             _params: &ResmokeGenParams,
-            _build_variant: &str,
+            _build_variant: &BuildVariant,
         ) -> Result<Box<dyn GeneratedSuite>> {
             todo!()
         }
