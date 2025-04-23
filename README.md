@@ -112,8 +112,8 @@ Options:
           Generate burn_in related tasks
       --burn-in-tests-command <BURN_IN_TESTS_COMMAND>
           Command to invoke burn_in_tests [default: "python buildscripts/burn_in_tests.py run"]
-      --s3-test-stats-endpoint <S3_TEST_STATS_ENDPOINT>
-          S3 endpoint to get test stats from [default: https://mongo-test-stats.s3.amazonaws.com]
+      --s3-test-stats-bucket <S3_TEST_STATS_BUCKETT>
+          S3 bucket to get test stats from [default: mongo-test-stats]
   -h, --help
           Print help
 ```

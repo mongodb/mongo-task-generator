@@ -224,12 +224,14 @@ pub struct ResmokeSuiteGenerationInfo {
     pub task_name: String,
 
     /// Name of resmoke suite generated task is based on.
+    #[allow(dead_code)]
     pub origin_suite: String,
 
     /// List of generated sub-suites comprising task.
     pub sub_suites: Vec<SubSuite>,
 
     /// If true, sub-tasks should be generated for the multiversion generate tasks.
+    #[allow(dead_code)]
     pub require_multiversion_generate_tasks: bool,
 }
 
@@ -1071,10 +1073,6 @@ mod tests {
 
     #[async_trait]
     impl TaskHistoryService for MockTaskHistoryService {
-        fn build_url(&self, _task: &str, _variant: &str) -> String {
-            todo!()
-        }
-
         async fn get_task_history(
             &self,
             _task: &str,

@@ -101,7 +101,7 @@ impl MultiversionService for MultiversionServiceImpl {
         } else {
             self.multiversion_config.requires_fcv_tag.clone()
         };
-        let tags = vec![
+        let tags = [
             MULTIVERSION_INCOMPATIBLE.to_string(),
             BACKPORT_REQUIRED_TAG.to_string(),
             task_tag,

@@ -1,4 +1,8 @@
 # Changelog
+## 2.0.0 - 2025-04-23
+* Allow splitting large tasks on required variants based on total test runtime
+* Use the AWS-sdk for accessing the s3 bucket of test statistics
+
 ## 1.0.0 - 2025-04-16
 * Build, test, and release on Ubuntu 24.04
 
