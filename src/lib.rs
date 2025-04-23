@@ -58,7 +58,7 @@ mod utils;
 const BURN_IN_TESTS_PREFIX: &str = "burn_in_tests";
 const BURN_IN_TASKS_PREFIX: &str = "burn_in_tasks";
 const BURN_IN_BV_SUFFIX: &str = "generated-by-burn-in-tags";
-const DEFAULT_SUB_TASKS_PER_TASK: usize = 5;
+const REQUIRED_PREFIX: &str = "!";
 
 type GenTaskCollection = HashMap<String, Box<dyn GeneratedSuite>>;
 
@@ -145,6 +145,24 @@ pub struct ExecutionConfiguration<'a> {
     pub burn_in_tests_command: &'a str,
     /// S3 endpoint to get test stats from.
     pub s3_test_stats_endpoint: &'a str,
+    pub subtask_limits: SubtaskLimits,
+}
+
+#[derive(Debug, Clone)]
+pub struct SubtaskLimits {
+    // Ideal total test runtime (in seconds) for individual subtasks on required
+    // variants, used to determine the number of subtasks for tasks on required variants.
+    pub test_runtime_per_required_subtask: f64,
+
+    // Threshold of total test runtime (in seconds) for a required task to be considered
+    // large enough to warrant splitting into more that the default number of tasks.
+    pub large_required_task_runtime_threshold: f64,
+
+    // Default number of subtasks that should be generated for tasks
+    pub default_subtasks_per_task: usize,
+
+    // Maximum number of subtasks that can be generated for tasks
+    pub max_subtasks_per_task: usize,
 }
 
 /// Collection of services needed to execution.
@@ -215,6 +233,7 @@ impl Dependencies {
             multiversion_service,
             fs_service,
             gen_resmoke_config,
+            execution_config.subtask_limits,
         ));
         let gen_task_service = Arc::new(GenerateTasksServiceImpl::new(
             evg_config_service,
@@ -589,7 +608,7 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
             )?;
             Some(
                 self.gen_resmoke_service
-                    .generate_resmoke_task(&params, &build_variant.name)
+                    .generate_resmoke_task(&params, build_variant)
                     .await?,
             )
         };
@@ -1021,7 +1040,7 @@ mod tests {
         async fn generate_resmoke_task(
             &self,
             _params: &ResmokeGenParams,
-            _build_variant: &str,
+            _build_variant: &BuildVariant,
         ) -> Result<Box<dyn GeneratedSuite>> {
             todo!()
         }
