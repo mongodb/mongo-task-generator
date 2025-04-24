@@ -57,9 +57,21 @@ pub trait GeneratedSuite: Sync + Send {
                 if sub_task.use_large_distro || sub_task.use_xlarge_distro {
                     large_distro = distro.clone();
                 }
-                sub_task
+                let mut task_ref = sub_task
                     .evg_task
-                    .get_reference(sub_task.evg_task.depends_on.clone(), large_distro.map(|d| vec![d]), Some(false))
+                    .get_reference(large_distro.map(|d| vec![d]), Some(false));
+
+                match &sub_task.evg_task.depends_on {
+                    Some(deps)
+                        if deps
+                            .iter()
+                            .any(|dep| dep.name == "multiversion_binary_search") =>
+                    {
+                        task_ref.depends_on = sub_task.evg_task.depends_on.clone()
+                    }
+                    _ => (),
+                }
+                return task_ref;
             })
             .collect()
     }

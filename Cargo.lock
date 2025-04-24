@@ -3241,7 +3241,7 @@ checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
 [[package]]
 name = "shrub-rs"
 version = "0.5.5"
-source = "git+https://github.com/evergreen-ci/shrub-rs.git?branch=sleaux%2Ftask_deps#1423b85ddcc2f820f8d40793ddd6d3dd86cf9eeb"
+source = "git+https://github.com/evergreen-ci/shrub-rs.git?branch=sleaux%2Ftask_deps#a9b5065fc313dbb161a184dadc0c85595223edff"
 dependencies = [
  "serde",
  "serde_yaml 0.8.26",
