@@ -3,22 +3,25 @@
 //! This code will go through the entire evergreen configuration and create task definitions
 //! for any tasks that need to be generated. It will then add references to those generated
 //! tasks to any build variants to expect to run them.
-#![cfg_attr(feature = "strict", deny(missing_docs))]
 
 use core::panic;
 use std::{
     collections::{HashMap, HashSet},
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
+    time::Duration,
     vec,
 };
 
 use anyhow::{bail, Result};
 use async_trait::async_trait;
+use aws_config::{
+    meta::region::RegionProviderChain, retry::RetryConfig, timeout::TimeoutConfig, BehaviorVersion,
+};
 use evergreen::{
     evg_config::{EvgConfigService, EvgProjectConfig},
     evg_config_utils::{EvgConfigUtils, EvgConfigUtilsImpl},
-    evg_task_history::{build_retryable_client, TaskHistoryServiceImpl},
+    evg_task_history::TaskHistoryServiceImpl,
 };
 use evergreen_names::{
     BURN_IN_TAGS, BURN_IN_TAG_COMPILE_TASK_DEPENDENCY, BURN_IN_TAG_INCLUDE_BUILD_VARIANTS,
@@ -58,7 +61,7 @@ mod utils;
 const BURN_IN_TESTS_PREFIX: &str = "burn_in_tests";
 const BURN_IN_TASKS_PREFIX: &str = "burn_in_tasks";
 const BURN_IN_BV_SUFFIX: &str = "generated-by-burn-in-tags";
-const MAX_SUB_TASKS_PER_TASK: usize = 5;
+const REQUIRED_PREFIX: &str = "!";
 
 type GenTaskCollection = HashMap<String, Box<dyn GeneratedSuite>>;
 
@@ -143,8 +146,26 @@ pub struct ExecutionConfiguration<'a> {
     pub include_fully_disabled_feature_tests: bool,
     /// Command to execute burn_in_tests.
     pub burn_in_tests_command: &'a str,
-    /// S3 endpoint to get test stats from.
-    pub s3_test_stats_endpoint: &'a str,
+    /// S3 bucket to get test stats from.
+    pub s3_test_stats_bucket: &'a str,
+    pub subtask_limits: SubtaskLimits,
+}
+
+#[derive(Debug, Clone)]
+pub struct SubtaskLimits {
+    // Ideal total test runtime (in seconds) for individual subtasks on required
+    // variants, used to determine the number of subtasks for tasks on required variants.
+    pub test_runtime_per_required_subtask: f64,
+
+    // Threshold of total test runtime (in seconds) for a required task to be considered
+    // large enough to warrant splitting into more that the default number of tasks.
+    pub large_required_task_runtime_threshold: f64,
+
+    // Default number of subtasks that should be generated for tasks
+    pub default_subtasks_per_task: usize,
+
+    // Maximum number of subtasks that can be generated for tasks
+    pub max_subtasks_per_task: usize,
 }
 
 /// Collection of services needed to execution.
@@ -166,7 +187,10 @@ impl Dependencies {
     /// # Returns
     ///
     /// A set of dependencies to run against.
-    pub fn new(execution_config: ExecutionConfiguration) -> Result<Self> {
+    pub fn new(
+        execution_config: ExecutionConfiguration,
+        s3_client: aws_sdk_s3::Client,
+    ) -> Result<Self> {
         let fs_service = Arc::new(FsServiceImpl::new());
         let discovery_service = Arc::new(ResmokeProxy::new(
             execution_config.resmoke_command,
@@ -189,10 +213,9 @@ impl Dependencies {
             execution_config.config_location.to_string(),
             gen_sub_tasks_config,
         ));
-        let client = build_retryable_client();
         let task_history_service = Arc::new(TaskHistoryServiceImpl::new(
-            client,
-            execution_config.s3_test_stats_endpoint.to_string(),
+            s3_client,
+            execution_config.s3_test_stats_bucket.to_string(),
             execution_config.project_info.evg_project.clone(),
         ));
         let resmoke_config_actor =
@@ -206,11 +229,8 @@ impl Dependencies {
                 32,
             )));
         let enterprise_dir = evg_config_service.get_module_dir(ENTERPRISE_MODULE);
-        let gen_resmoke_config = GenResmokeConfig::new(
-            MAX_SUB_TASKS_PER_TASK,
-            execution_config.use_task_split_fallback,
-            enterprise_dir,
-        );
+        let gen_resmoke_config =
+            GenResmokeConfig::new(execution_config.use_task_split_fallback, enterprise_dir);
         let gen_resmoke_task_service = Arc::new(GenResmokeTaskServiceImpl::new(
             task_history_service,
             discovery_service,
@@ -218,6 +238,7 @@ impl Dependencies {
             multiversion_service,
             fs_service,
             gen_resmoke_config,
+            execution_config.subtask_limits,
         ));
         let gen_task_service = Arc::new(GenerateTasksServiceImpl::new(
             evg_config_service,
@@ -592,7 +613,7 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
             )?;
             Some(
                 self.gen_resmoke_service
-                    .generate_resmoke_task(&params, &build_variant.name)
+                    .generate_resmoke_task(&params, build_variant)
                     .await?,
             )
         };
@@ -988,13 +1009,33 @@ fn create_burn_in_tasks_worker(
     })
 }
 
+pub async fn build_s3_client() -> aws_sdk_s3::Client {
+    let region_provider = RegionProviderChain::default_provider().or_else("us-east-1");
+
+    let timeout_config = TimeoutConfig::builder()
+        .operation_timeout(Duration::from_secs(120))
+        .operation_attempt_timeout(Duration::from_secs(30))
+        .read_timeout(Duration::from_secs(15))
+        .build();
+
+    let retry_config = RetryConfig::standard().with_max_attempts(3);
+
+    let config = aws_config::defaults(BehaviorVersion::latest())
+        .timeout_config(timeout_config)
+        .retry_config(retry_config)
+        .region(region_provider)
+        .load()
+        .await;
+
+    aws_sdk_s3::Client::new(&config)
+}
+
 #[cfg(test)]
 mod tests {
     use rstest::rstest;
 
     use crate::{
         evergreen::evg_config_utils::MultiversionGenerateTaskConfig,
-        resmoke::burn_in_proxy::{BurnInDiscovery, DiscoveredTask},
         task_types::{
             fuzzer_tasks::FuzzerGenTaskParams,
             generated_suite::GeneratedSubTask,
@@ -1041,7 +1082,7 @@ mod tests {
         async fn generate_resmoke_task(
             &self,
             _params: &ResmokeGenParams,
-            _build_variant: &str,
+            _build_variant: &BuildVariant,
         ) -> Result<Box<dyn GeneratedSuite>> {
             todo!()
         }
@@ -1221,42 +1262,6 @@ mod tests {
         }
 
         async fn flush(&mut self) -> Result<Vec<String>> {
-            todo!()
-        }
-    }
-
-    struct MockBurnInDiscovery {}
-    impl BurnInDiscovery for MockBurnInDiscovery {
-        fn discover_tasks(&self, _build_variant: &str) -> Result<Vec<DiscoveredTask>> {
-            todo!()
-        }
-    }
-
-    struct MockConfigExtractionService {}
-    impl ConfigExtractionService for MockConfigExtractionService {
-        fn task_def_to_fuzzer_params(
-            &self,
-            _task_def: &EvgTask,
-            _build_variant: &BuildVariant,
-        ) -> Result<FuzzerGenTaskParams> {
-            todo!()
-        }
-
-        fn task_def_to_resmoke_params(
-            &self,
-            _task_def: &EvgTask,
-            _is_enterprise: bool,
-            _build_variant: Option<&BuildVariant>,
-            _platform: Option<String>,
-        ) -> Result<ResmokeGenParams> {
-            todo!()
-        }
-
-        fn determine_large_distro(
-            &self,
-            _generated_suite: &dyn GeneratedSuite,
-            _build_variant: &BuildVariant,
-        ) -> Result<Option<String>> {
             todo!()
         }
     }

@@ -1,14 +1,14 @@
 buildvariants:
-  - name: ubuntu1804
+  - name: ubuntu2404
     tasks:
       - name: build
       - name: unit_tests
       - name: lint
       - name: format
       - name: check_version
-    display_name: Ubuntu 18.04
+    display_name: Ubuntu 24.04
     run_on:
-      - ubuntu1804-test
+      - ubuntu2404-small
 
 tasks:
   - name: unit_tests
@@ -38,14 +38,6 @@ tasks:
         vars:
           target_dir: src
           cargo_command: build
-
-  - name: check_version
-    commands:
-      - func: version-check_run
-        vars:
-          package_type: rust
-          publish_type: github-release
-          target_dir: src
 
 functions:
   cargo_enable nextest:
@@ -86,18 +78,6 @@ functions:
           curl https://sh.rustup.rs -sSf | sh -s -- -y
           rustup default ${rust_version}
 
-  version-check_run:
-    - command: shell.exec
-      params:
-        script: |
-          set -o errexit
-          
-          if [ "${is_patch}" = "true" ]; then
-            wget -q https://github.com/dbradf/pypi-version-check/releases/download/v0.3.0/pypi-version-check
-            chmod +x pypi-version-check
-            ./pypi-version-check --package-type ${package_type} --publish-type ${publish_type} --project-path ${target_dir} --check-changelog
-          fi
-
 pre:
   - command: git.get_project
     params:
@@ -105,7 +85,7 @@ pre:
 
   - func: cargo_install rust
     vars:
-      rust_version: 1.75.0
+      rust_version: 1.81.0
 
   - func: cargo_enable nextest
 

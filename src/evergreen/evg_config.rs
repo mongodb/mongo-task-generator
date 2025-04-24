@@ -4,7 +4,7 @@ use std::{collections::HashMap, path::Path, process::Command};
 
 use shrub_rs::models::{project::EvgProject, task::EvgTask, variant::BuildVariant};
 
-const REQUIRED_PREFIX: &str = "!";
+use crate::REQUIRED_PREFIX;
 
 pub trait EvgConfigService: Sync + Send {
     /// Get a map of build variant names to build variant definitions.

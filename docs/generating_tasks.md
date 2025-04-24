@@ -73,7 +73,7 @@ test suites into sub-suites that can be run in parallel on different hosts.
 
 For tasks appropriately marked, the `mongo-task-generator` will query the
 [runtime stats](https://docs.devprod.prod.corp.mongodb.com/evergreen/Project-Configuration/Evergreen-Data-for-Analytics#evergreen-test-statistics)
-endpoint https://mongo-test-stats.s3.amazonaws.com/{evg-project-name}/{variant-name}/{task-name}
+bucket https://mongo-test-stats.s3.amazonaws.com/{evg-project-name}/{variant-name}/{task-name}
 and use those stats to divide up the tests into sub-suite with roughly even runtimes.
 It will then generate "sub-tasks" for each of the "sub-suites" to actually run the tests.
 
@@ -99,7 +99,7 @@ Looking at a [sample resmoke-based](https://github.com/mongodb/mongo/blob/852c5d
 ```
 
 Like fuzzer tasks, task generation is indicated by including the `"generate resmoke tasks"` function.
-Additionally, the 3 parameters here will impact how the task is generated.
+Additionally, the 4 parameters here will impact how the task is generated.
 
 * **suite**: By default, the name of the task (with the `_gen` suffix stripped off) will be used
   to determine which resmoke suite to base the generated sub-tasks on. This can be overwritten with
@@ -112,6 +112,7 @@ Additionally, the 3 parameters here will impact how the task is generated.
   variable is set to `"true"`, certain tasks will use an even larger distro that can be defined with
   the `xlarge_distro_name` expansion in the build variant. When the `xlarge_distro_name` expansion
   is not defined, it will fallback to the defined `large_distro_name` expansion in the build variant
+* **num_tasks**: The number of generated sub-tasks to split into. (Default 5).
 
 **Note**: If a task has the `use_large_distro` value defined, but is added to a build variant
 without a `large_distro_name`, it will trigger a failure. This can be supported by using the
@@ -338,8 +339,8 @@ Options:
           Generate burn_in related tasks
       --burn-in-tests-command <BURN_IN_TESTS_COMMAND>
           Command to invoke burn_in_tests [default: "python buildscripts/burn_in_tests.py run"]
-      --s3-test-stats-endpoint <S3_TEST_STATS_ENDPOINT>
-          S3 endpoint to get test stats from [default: https://mongo-test-stats.s3.amazonaws.com]
+      --s3-test-stats-bucket <S3_TEST_STATS_BUCKET>
+          S3 bucket to get test stats from [default: mongo-test-stats]
   -h, --help
           Print help
 ```

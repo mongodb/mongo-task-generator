@@ -1,4 +1,14 @@
 # Changelog
+## 2.0.0 - 2025-04-23
+* Allow splitting large tasks on required variants based on total test runtime
+* Use the AWS-sdk for accessing the s3 bucket of test statistics
+
+## 1.0.0 - 2025-04-16
+* Build, test, and release on Ubuntu 24.04
+
+## 0.7.25 - 2025-04-11
+* Fixed a bug that caused the fallback for task splitting to generate an extra subtask.
+
 ## 0.7.24 - 2025-04-10
 * Include fully disabled feature flags when using resmoke's test-discovery
 

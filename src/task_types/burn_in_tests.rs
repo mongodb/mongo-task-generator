@@ -440,7 +440,7 @@ impl BurnInService for BurnInServiceImpl {
             .lookup_build_variant_expansion(COMPILE_VARIANT, base_build_variant)
             .unwrap_or_else(|| base_build_variant.name.clone());
 
-        let variant_task_dependencies = vec![
+        let variant_task_dependencies = [
             TaskDependency {
                 name: compile_task_dependency,
                 variant: Some(compile_variant),
@@ -630,7 +630,7 @@ mod tests {
         async fn generate_resmoke_task(
             &self,
             _params: &ResmokeGenParams,
-            _build_variant: &str,
+            _build_variant: &BuildVariant,
         ) -> Result<Box<dyn GeneratedSuite>> {
             todo!()
         }
