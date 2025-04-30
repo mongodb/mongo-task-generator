@@ -65,7 +65,7 @@ Please include the following:
 
 ## Dependencies
 
-This project is built to run on linux. It is tested on Ubuntu 24.04.
+This project is built to run on linux. It is tested on Ubuntu 24.04 x86.
 
 The [evergreen CLI](https://docs.devprod.prod.corp.mongodb.com/evergreen/CLI) is
 required.
@@ -73,7 +73,7 @@ required.
 ## Installation
 
 The tool can be downloaded from the [github releases](https://github.com/mongodb/mongo-task-generator/releases)
-page. It is currently built on Ubuntu 24.04.
+page. It is currently built on Ubuntu 24.04 x86.
 
 The install can be automated using a tool like `wget` or `curl`:
 
