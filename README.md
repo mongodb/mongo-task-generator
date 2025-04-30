@@ -65,7 +65,7 @@ Please include the following:
 
 ## Dependencies
 
-This project is built to run on linux. It is tested on Ubuntu 18.04.
+This project is built to run on linux. It is tested on Ubuntu 24.04.
 
 The [evergreen CLI](https://docs.devprod.prod.corp.mongodb.com/evergreen/CLI) is
 required.
@@ -73,12 +73,22 @@ required.
 ## Installation
 
 The tool can be downloaded from the [github releases](https://github.com/mongodb/mongo-task-generator/releases)
-page. It is currently built on Ubuntu 20.04 and should work on recent x86 linux distributions.
+page. It is currently built on Ubuntu 24.04.
 
 The install can be automated using a tool like `wget` or `curl`:
 
 ```bash
-wget https://github.com/mongodb/mongo-task-generator/releases/download/v0.1.0/mongo-task-generator
+wget https://github.com/mongodb/mongo-task-generator/releases/latest/download/mongo-task-generator
+```
+
+## Building from source
+If you aren't on an system the Ubuntu 24.04 x86 release is compatible with, you can build from source:
+
+```bash
+git clone https://github.com/mongodb/mongo-task-generator.git && cd mongo-task-generator
+rustup run 1.81 cargo build --release
+
+./target/release/mongo-task-generator --help
 ```
 
 ## Usage
@@ -155,6 +165,8 @@ graph TD
 Make sure you have a rust development environment installed. See instructions [here](https://www.rust-lang.org/learn/get-started).
 
 From the root of the repository, run `cargo build` to build the project.
+
+You may want to pin the rust toolchain to the same one we use to test/release: `rustup default 1.81`
 
 ### linting/formatting
 
