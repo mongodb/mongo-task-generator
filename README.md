@@ -85,7 +85,8 @@ wget https://github.com/mongodb/mongo-task-generator/releases/latest/download/mo
 If you aren't on a system the Ubuntu 24.04 x86 release is compatible with, you can build from source:
 
 ```bash
-git clone https://github.com/mongodb/mongo-task-generator.git && cd mongo-task-generator
+git clone https://github.com/mongodb/mongo-task-generator.git
+cd mongo-task-generator
 rustup run 1.81 cargo build --release
 
 ./target/release/mongo-task-generator --help
