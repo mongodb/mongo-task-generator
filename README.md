@@ -82,7 +82,7 @@ wget https://github.com/mongodb/mongo-task-generator/releases/latest/download/mo
 ```
 
 ## Building from source
-If you aren't on an system the Ubuntu 24.04 x86 release is compatible with, you can build from source:
+If you aren't on a system the Ubuntu 24.04 x86 release is compatible with, you can build from source:
 
 ```bash
 git clone https://github.com/mongodb/mongo-task-generator.git && cd mongo-task-generator
