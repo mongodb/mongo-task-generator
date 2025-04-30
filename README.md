@@ -73,12 +73,12 @@ required.
 ## Installation
 
 The tool can be downloaded from the [github releases](https://github.com/mongodb/mongo-task-generator/releases)
-page. It is currently built on Ubuntu 20.04 and should work on recent x86 linux distributions.
+page. It is currently built on Ubuntu 24.04 and should work on recent x86 linux distributions.
 
 The install can be automated using a tool like `wget` or `curl`:
 
 ```bash
-wget https://github.com/mongodb/mongo-task-generator/releases/download/v0.1.0/mongo-task-generator
+wget https://github.com/mongodb/mongo-task-generator/releases/latest/download/mongo-task-generator
 ```
 
 ## Usage
