@@ -35,7 +35,7 @@ use resmoke::{
 use services::config_extraction::{ConfigExtractionService, ConfigExtractionServiceImpl};
 use shrub_rs::models::{
     project::EvgProject,
-    task::{EvgTask, TaskRef},
+    task::{EvgTask, TaskDependency, TaskRef},
     variant::{BuildVariant, DisplayTask},
 };
 use task_types::{
@@ -748,9 +748,37 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                     gen_config
                         .display_tasks
                         .push(generated_task.build_display_task());
+
+                    let mut task_ref_depends_on = None;
+                    if generated_task.sub_tasks().iter().any(|task| {
+                        match &task.evg_task.depends_on {
+                            Some(deps) => deps
+                                .iter()
+                                .any(|dep| dep.name == "multiversion_binary_search"),
+                            _ => true,
+                        }
+                    }) {
+                        let base_dependencies = self
+                            .evg_config_utils
+                            .get_task_ref_dependencies(&task.name, build_variant);
+
+                        if let Some(deps) = base_dependencies {
+                            task_ref_depends_on = Some(
+                                [
+                                    deps.clone(),
+                                    vec![TaskDependency {
+                                        name: "multiversion_binary_search".to_string(),
+                                        variant: None,
+                                    }],
+                                ]
+                                .concat(),
+                            );
+                        }
+                    }
+
                     gen_config
                         .gen_task_specs
-                        .extend(generated_task.build_task_ref(large_distro));
+                        .extend(generated_task.build_task_ref(large_distro, task_ref_depends_on));
 
                     // If any generated task depends on multiversion_binary_search, add multiversion_binary_search to the build variant.
                     if generated_task.sub_tasks().iter().any(|task| {
@@ -1033,6 +1061,7 @@ pub async fn build_s3_client() -> aws_sdk_s3::Client {
 #[cfg(test)]
 mod tests {
     use rstest::rstest;
+    use shrub_rs::models::task::TaskDependency;
 
     use crate::{
         evergreen::evg_config_utils::MultiversionGenerateTaskConfig,
@@ -1157,6 +1186,14 @@ mod tests {
         }
 
         fn get_task_dependencies(&self, _task: &EvgTask) -> Vec<String> {
+            todo!()
+        }
+
+        fn get_task_ref_dependencies(
+            &self,
+            _task_name: &str,
+            _build_variant: &BuildVariant,
+        ) -> Option<Vec<TaskDependency>> {
             todo!()
         }
 

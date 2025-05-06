@@ -1,5 +1,5 @@
 use shrub_rs::models::{
-    task::{EvgTask, TaskRef},
+    task::{EvgTask, TaskDependency, TaskRef},
     variant::DisplayTask,
 };
 
@@ -49,7 +49,11 @@ pub trait GeneratedSuite: Sync + Send {
     }
 
     /// Build a shrub task reference for this generated task.
-    fn build_task_ref(&self, distro: Option<String>) -> Vec<TaskRef> {
+    fn build_task_ref(
+        &self,
+        distro: Option<String>,
+        depends_on: Option<Vec<TaskDependency>>,
+    ) -> Vec<TaskRef> {
         self.sub_tasks()
             .iter()
             .map(|sub_task| {
@@ -61,17 +65,9 @@ pub trait GeneratedSuite: Sync + Send {
                     .evg_task
                     .get_reference(large_distro.map(|d| vec![d]), Some(false));
 
-                match &sub_task.evg_task.depends_on {
-                    Some(deps)
-                        if deps
-                            .iter()
-                            .any(|dep| dep.name == "multiversion_binary_search") =>
-                    {
-                        task_ref.depends_on = sub_task.evg_task.depends_on.clone()
-                    }
-                    _ => (),
-                }
-                return task_ref;
+                task_ref.depends_on = depends_on.clone();
+
+                task_ref
             })
             .collect()
     }

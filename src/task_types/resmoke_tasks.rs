@@ -1053,7 +1053,7 @@ mod tests {
                 .collect(),
         };
 
-        let task_refs = gen_suite.build_task_ref(Some(distro.clone()));
+        let task_refs = gen_suite.build_task_ref(Some(distro.clone()), None);
 
         for (i, task) in task_refs.iter().enumerate() {
             assert_eq!(task.name, format!("sub_suite_name_{}", i));

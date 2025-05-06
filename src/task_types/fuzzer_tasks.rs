@@ -439,7 +439,7 @@ mod tests {
             ],
         };
 
-        let task_refs = fuzzer_task.build_task_ref(Some("distro".to_string()));
+        let task_refs = fuzzer_task.build_task_ref(Some("distro".to_string()), None);
 
         for task in task_refs {
             assert_eq!(task.distros.as_ref(), None);
