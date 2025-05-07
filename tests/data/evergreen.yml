@@ -7942,6 +7942,9 @@ buildvariants:
     test_flags: >-
       --runAllFeatureFlagTests
       --excludeWithAnyTags=incompatible_with_shard_merge
+  depends_on:
+    - name: archive_dist_test
+      variant: enterprise-rhel-80-64-bit-dynamic-required
   tasks: &enterprise-rhel-80-64-bit-dynamic-all-feature-flags-tasks
   - name: change_streams_per_shard_cursor_passthrough
   - name: cqf

@@ -34,7 +34,6 @@ impl EvgProjectConfig {
     /// * `evg_project_location` - Path to evergreen project configuration to load.
     pub fn new(evg_project_location: &Path) -> Result<Self> {
         let evg_project = get_project_config(evg_project_location)?;
-        // dbg!(&evg_project);
         Ok(Self { evg_project })
     }
 }

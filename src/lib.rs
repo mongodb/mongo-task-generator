@@ -25,7 +25,8 @@ use evergreen::{
 };
 use evergreen_names::{
     BURN_IN_TAGS, BURN_IN_TAG_COMPILE_TASK_DEPENDENCY, BURN_IN_TAG_INCLUDE_BUILD_VARIANTS,
-    BURN_IN_TASKS, BURN_IN_TESTS, ENTERPRISE_MODULE, GENERATOR_TASKS, UNIQUE_GEN_SUFFIX_EXPANSION,
+    BURN_IN_TASKS, BURN_IN_TESTS, ENTERPRISE_MODULE, GENERATOR_TASKS,
+    MULTIVERSION_BINARY_SELECTION, UNIQUE_GEN_SUFFIX_EXPANSION,
 };
 use generate_sub_tasks_config::GenerateSubTasksConfig;
 use resmoke::{
@@ -749,48 +750,35 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                         .display_tasks
                         .push(generated_task.build_display_task());
 
-                    let mut task_ref_depends_on = None;
-                    if generated_task.sub_tasks().iter().any(|task| {
-                        match &task.evg_task.depends_on {
-                            Some(deps) => deps
-                                .iter()
-                                .any(|dep| dep.name == "multiversion_binary_search"),
-                            _ => true,
-                        }
-                    }) {
-                        let base_dependencies = self
-                            .evg_config_utils
-                            .get_task_ref_dependencies(&task.name, build_variant);
+                    // If a task is a multiversion task and it has dependencies overriden on the task
+                    // reference of the build variant, add the MULTIVERSION_BINARY_SELECTION task to
+                    // those overrides too.
+                    let mut task_ref_dependencies = self
+                        .evg_config_utils
+                        .get_task_ref_dependencies(&task.name, build_variant);
 
-                        if let Some(deps) = base_dependencies {
-                            task_ref_depends_on = Some(
-                                [
-                                    deps.clone(),
-                                    vec![TaskDependency {
-                                        name: "multiversion_binary_search".to_string(),
-                                        variant: None,
-                                    }],
-                                ]
-                                .concat(),
-                            );
-                        }
+                    if generated_task.is_multiversion() && task_ref_dependencies.is_some() {
+                        task_ref_dependencies = Some(
+                            [
+                                task_ref_dependencies.unwrap(),
+                                vec![TaskDependency {
+                                    name: MULTIVERSION_BINARY_SELECTION.to_string(),
+                                    variant: None,
+                                }],
+                            ]
+                            .concat(),
+                        );
                     }
 
                     gen_config
                         .gen_task_specs
-                        .extend(generated_task.build_task_ref(large_distro, task_ref_depends_on));
+                        .extend(generated_task.build_task_ref(large_distro, task_ref_dependencies));
 
-                    // If any generated task depends on multiversion_binary_search, add multiversion_binary_search to the build variant.
-                    if generated_task.sub_tasks().iter().any(|task| {
-                        match &task.evg_task.depends_on {
-                            Some(deps) => deps
-                                .iter()
-                                .any(|dep| dep.name == "multiversion_binary_search"),
-                            _ => false,
-                        }
-                    }) {
+                    // If any generated task is multiversion, ensure the
+                    // MULTIVERSION_BINARY_SELECTION task is added to the build variant.
+                    if generated_task.is_multiversion() {
                         gen_config.gen_task_specs.push(TaskRef {
-                            name: "multiversion_binary_search".to_string(),
+                            name: MULTIVERSION_BINARY_SELECTION.to_string(),
                             distros: None,
                             activate: Some(false),
                             depends_on: None,

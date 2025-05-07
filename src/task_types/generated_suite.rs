@@ -3,6 +3,8 @@ use shrub_rs::models::{
     variant::DisplayTask,
 };
 
+use crate::evergreen_names::MULTIVERSION_BINARY_SELECTION;
+
 /// Definition of a generated sub task.
 #[derive(Clone, Debug, Default)]
 pub struct GeneratedSubTask {
@@ -46,6 +48,17 @@ pub trait GeneratedSuite: Sync + Send {
                 .map(|s| s.evg_task.name.to_string())
                 .collect(),
         }
+    }
+
+    fn is_multiversion(&self) -> bool {
+        self.sub_tasks()
+            .iter()
+            .any(|task| match &task.evg_task.depends_on {
+                Some(deps) => deps
+                    .iter()
+                    .any(|dep| dep.name == MULTIVERSION_BINARY_SELECTION),
+                _ => false,
+            })
     }
 
     /// Build a shrub task reference for this generated task.
