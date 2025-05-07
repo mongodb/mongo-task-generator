@@ -709,6 +709,7 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                 .infer_build_variant_platform(build_variant);
             let mut gen_config = GeneratedConfig::new();
             let mut generating_tasks = vec![];
+            let mut includes_multiversion_tasks = false;
             for task in &build_variant.tasks {
                 if task.name == BURN_IN_TAGS {
                     if self.gen_burn_in {
@@ -770,21 +771,25 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                         );
                     }
 
+                    if generated_task.is_multiversion() {
+                        includes_multiversion_tasks = true;
+                    }
+
                     gen_config
                         .gen_task_specs
                         .extend(generated_task.build_task_ref(large_distro, task_ref_dependencies));
-
-                    // If any generated task is multiversion, ensure the
-                    // MULTIVERSION_BINARY_SELECTION task is added to the build variant.
-                    if generated_task.is_multiversion() {
-                        gen_config.gen_task_specs.push(TaskRef {
-                            name: MULTIVERSION_BINARY_SELECTION.to_string(),
-                            distros: None,
-                            activate: Some(false),
-                            depends_on: None,
-                        });
-                    }
                 }
+            }
+
+            // If any generated task is multiversion, ensure the
+            // MULTIVERSION_BINARY_SELECTION task is added to the build variant.
+            if includes_multiversion_tasks {
+                gen_config.gen_task_specs.push(TaskRef {
+                    name: MULTIVERSION_BINARY_SELECTION.to_string(),
+                    distros: None,
+                    activate: Some(false),
+                    depends_on: None,
+                });
             }
 
             if !generating_tasks.is_empty() {
