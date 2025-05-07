@@ -769,6 +769,8 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                             ]
                             .concat(),
                         );
+                    } else {
+                        task_ref_dependencies = None;
                     }
 
                     if generated_task.is_multiversion() {
