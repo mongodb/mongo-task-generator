@@ -1,4 +1,7 @@
 # Changelog
+## 3.0.0 - 2025-05-07
+* Generate multiversion binary selection tasks
+
 ## 2.0.0 - 2025-04-23
 * Allow splitting large tasks on required variants based on total test runtime
 * Use the AWS-sdk for accessing the s3 bucket of test statistics
