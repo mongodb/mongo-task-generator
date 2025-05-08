@@ -25,7 +25,8 @@ use evergreen::{
 };
 use evergreen_names::{
     BURN_IN_TAGS, BURN_IN_TAG_COMPILE_TASK_DEPENDENCY, BURN_IN_TAG_INCLUDE_BUILD_VARIANTS,
-    BURN_IN_TASKS, BURN_IN_TESTS, ENTERPRISE_MODULE, GENERATOR_TASKS, UNIQUE_GEN_SUFFIX_EXPANSION,
+    BURN_IN_TASKS, BURN_IN_TESTS, ENTERPRISE_MODULE, GENERATOR_TASKS,
+    MULTIVERSION_BINARY_SELECTION, UNIQUE_GEN_SUFFIX_EXPANSION,
 };
 use generate_sub_tasks_config::GenerateSubTasksConfig;
 use resmoke::{
@@ -35,7 +36,7 @@ use resmoke::{
 use services::config_extraction::{ConfigExtractionService, ConfigExtractionServiceImpl};
 use shrub_rs::models::{
     project::EvgProject,
-    task::{EvgTask, TaskRef},
+    task::{EvgTask, TaskDependency, TaskRef},
     variant::{BuildVariant, DisplayTask},
 };
 use task_types::{
@@ -708,6 +709,7 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                 .infer_build_variant_platform(build_variant);
             let mut gen_config = GeneratedConfig::new();
             let mut generating_tasks = vec![];
+            let mut includes_multiversion_tasks = false;
             for task in &build_variant.tasks {
                 if task.name == BURN_IN_TAGS {
                     if self.gen_burn_in {
@@ -748,10 +750,48 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                     gen_config
                         .display_tasks
                         .push(generated_task.build_display_task());
+
+                    // If a task is a multiversion task and it has dependencies overriden on the task
+                    // reference of the build variant, add the MULTIVERSION_BINARY_SELECTION task to
+                    // those overrides too.
+                    let mut task_ref_dependencies = self
+                        .evg_config_utils
+                        .get_task_ref_dependencies(&task.name, build_variant);
+
+                    if generated_task.is_multiversion() && task_ref_dependencies.is_some() {
+                        task_ref_dependencies = Some(
+                            [
+                                task_ref_dependencies.unwrap(),
+                                vec![TaskDependency {
+                                    name: MULTIVERSION_BINARY_SELECTION.to_string(),
+                                    variant: None,
+                                }],
+                            ]
+                            .concat(),
+                        );
+                    } else {
+                        task_ref_dependencies = None;
+                    }
+
+                    if generated_task.is_multiversion() {
+                        includes_multiversion_tasks = true;
+                    }
+
                     gen_config
                         .gen_task_specs
-                        .extend(generated_task.build_task_ref(large_distro));
+                        .extend(generated_task.build_task_ref(large_distro, task_ref_dependencies));
                 }
+            }
+
+            // If any generated task is multiversion, ensure the
+            // MULTIVERSION_BINARY_SELECTION task is added to the build variant.
+            if includes_multiversion_tasks {
+                gen_config.gen_task_specs.push(TaskRef {
+                    name: MULTIVERSION_BINARY_SELECTION.to_string(),
+                    distros: None,
+                    activate: Some(false),
+                    depends_on: None,
+                });
             }
 
             if !generating_tasks.is_empty() {
@@ -1016,6 +1056,7 @@ pub async fn build_s3_client() -> aws_sdk_s3::Client {
 #[cfg(test)]
 mod tests {
     use rstest::rstest;
+    use shrub_rs::models::task::TaskDependency;
 
     use crate::{
         evergreen::evg_config_utils::MultiversionGenerateTaskConfig,
@@ -1140,6 +1181,14 @@ mod tests {
         }
 
         fn get_task_dependencies(&self, _task: &EvgTask) -> Vec<String> {
+            todo!()
+        }
+
+        fn get_task_ref_dependencies(
+            &self,
+            _task_name: &str,
+            _build_variant: &BuildVariant,
+        ) -> Option<Vec<TaskDependency>> {
             todo!()
         }
 

@@ -1,7 +1,9 @@
 use shrub_rs::models::{
-    task::{EvgTask, TaskRef},
+    task::{EvgTask, TaskDependency, TaskRef},
     variant::DisplayTask,
 };
+
+use crate::evergreen_names::MULTIVERSION_BINARY_SELECTION;
 
 /// Definition of a generated sub task.
 #[derive(Clone, Debug, Default)]
@@ -48,8 +50,23 @@ pub trait GeneratedSuite: Sync + Send {
         }
     }
 
+    fn is_multiversion(&self) -> bool {
+        self.sub_tasks()
+            .iter()
+            .any(|task| match &task.evg_task.depends_on {
+                Some(deps) => deps
+                    .iter()
+                    .any(|dep| dep.name == MULTIVERSION_BINARY_SELECTION),
+                _ => false,
+            })
+    }
+
     /// Build a shrub task reference for this generated task.
-    fn build_task_ref(&self, distro: Option<String>) -> Vec<TaskRef> {
+    fn build_task_ref(
+        &self,
+        distro: Option<String>,
+        depends_on: Option<Vec<TaskDependency>>,
+    ) -> Vec<TaskRef> {
         self.sub_tasks()
             .iter()
             .map(|sub_task| {
@@ -57,9 +74,13 @@ pub trait GeneratedSuite: Sync + Send {
                 if sub_task.use_large_distro || sub_task.use_xlarge_distro {
                     large_distro = distro.clone();
                 }
-                sub_task
+                let mut task_ref = sub_task
                     .evg_task
-                    .get_reference(large_distro.map(|d| vec![d]), Some(false))
+                    .get_reference(large_distro.map(|d| vec![d]), Some(false));
+
+                task_ref.depends_on = depends_on.clone();
+
+                task_ref
             })
             .collect()
     }

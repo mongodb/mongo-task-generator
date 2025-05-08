@@ -6,6 +6,7 @@ use lazy_static::lazy_static;
 use regex::Regex;
 use shrub_rs::models::commands::EvgCommand::Function;
 use shrub_rs::models::params::ParamValue;
+use shrub_rs::models::task::TaskDependency;
 use shrub_rs::models::{commands::FunctionCall, task::EvgTask, variant::BuildVariant};
 
 use crate::evergreen_names::{
@@ -100,6 +101,12 @@ pub trait EvgConfigUtils: Sync + Send {
     ///
     /// List of task names the task depends on.
     fn get_task_dependencies(&self, task: &EvgTask) -> Vec<String>;
+
+    fn get_task_ref_dependencies(
+        &self,
+        task_name: &str,
+        build_variant: &BuildVariant,
+    ) -> Option<Vec<TaskDependency>>;
 
     /// Lookup the given variable in the vars section of the 'generate resmoke task' func.
     ///
@@ -428,6 +435,20 @@ impl EvgConfigUtils for EvgConfigUtilsImpl {
             .map(|dep_list| dep_list.iter().map(|d| d.name.to_string()).collect());
 
         dependencies.unwrap_or_default()
+    }
+
+    fn get_task_ref_dependencies(
+        &self,
+        task_name: &str,
+        build_variant: &BuildVariant,
+    ) -> Option<Vec<TaskDependency>> {
+        for task_ref in &build_variant.tasks {
+            if task_ref.name == task_name {
+                let dependencies = task_ref.depends_on.clone();
+                return dependencies;
+            }
+        }
+        None
     }
 
     /// Lookup the given variable in the vars section of the 'generate resmoke task' func.

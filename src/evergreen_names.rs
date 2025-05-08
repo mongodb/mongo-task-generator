@@ -44,6 +44,8 @@ pub const BURN_IN_TESTS: &str = "burn_in_tests_gen";
 pub const BURN_IN_TAGS: &str = "burn_in_tags_gen";
 /// Name of burn_in_tasks task.
 pub const BURN_IN_TASKS: &str = "burn_in_tasks_gen";
+/// Name of multiversion binary selection task.
+pub const MULTIVERSION_BINARY_SELECTION: &str = "select_multiversion_binaries";
 
 // Vars
 /// Variable that indicates a task is a fuzzer.

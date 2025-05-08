@@ -7,10 +7,10 @@ use crate::{
     evergreen::evg_config_utils::EvgConfigUtils,
     evergreen_names::{
         CONTINUE_ON_FAILURE, FUZZER_PARAMETERS, IDLE_TIMEOUT, LARGE_DISTRO_EXPANSION,
-        LAST_VERSIONS_EXPANSION, MULTIVERSION, NO_MULTIVERSION_GENERATE_TASKS, NPM_COMMAND,
-        NUM_FUZZER_FILES, NUM_FUZZER_TASKS, REPEAT_SUITES, RESMOKE_ARGS, RESMOKE_JOBS_MAX,
-        SHOULD_SHUFFLE_TESTS, UNIQUE_GEN_SUFFIX_EXPANSION, USE_LARGE_DISTRO, USE_XLARGE_DISTRO,
-        XLARGE_DISTRO_EXPANSION,
+        LAST_VERSIONS_EXPANSION, MULTIVERSION, MULTIVERSION_BINARY_SELECTION,
+        NO_MULTIVERSION_GENERATE_TASKS, NPM_COMMAND, NUM_FUZZER_FILES, NUM_FUZZER_TASKS,
+        REPEAT_SUITES, RESMOKE_ARGS, RESMOKE_JOBS_MAX, SHOULD_SHUFFLE_TESTS,
+        UNIQUE_GEN_SUFFIX_EXPANSION, USE_LARGE_DISTRO, USE_XLARGE_DISTRO, XLARGE_DISTRO_EXPANSION,
     },
     generate_sub_tasks_config::GenerateSubTasksConfig,
     task_types::{
@@ -127,7 +127,15 @@ impl ConfigExtractionServiceImpl {
     ///
     /// List of tasks that should be included as dependencies.
     fn determine_task_dependencies(&self, task_def: &EvgTask) -> Vec<String> {
-        let depends_on = self.evg_config_utils.get_task_dependencies(task_def);
+        let mut depends_on = self.evg_config_utils.get_task_dependencies(task_def);
+
+        if self
+            .evg_config_utils
+            .get_task_tags(task_def)
+            .contains(MULTIVERSION)
+        {
+            depends_on.push(MULTIVERSION_BINARY_SELECTION.to_string());
+        }
 
         depends_on
             .into_iter()
@@ -399,12 +407,14 @@ mod tests {
     // Tests for determine_task_dependencies.
     #[rstest]
     #[case(
-        vec![], vec![]
+        vec![], vec![], vec![]
     )]
-    #[case(vec!["dependency_0", "dependency_1"], vec!["dependency_0", "dependency_1"])]
-    #[case(vec!["dependency_0", "generating_task"], vec!["dependency_0"])]
+    #[case(vec!["dependency_0", "dependency_1"], vec![], vec!["dependency_0", "dependency_1"])]
+    #[case(vec!["dependency_0", "generating_task"], vec![], vec!["dependency_0"])]
+    #[case(vec!["dependency_0", "generating_task"], vec!["multiversion".to_string()], vec!["dependency_0", MULTIVERSION_BINARY_SELECTION])]
     fn test_determine_task_dependencies(
         #[case] depends_on: Vec<&str>,
+        #[case] tags: Vec<String>,
         #[case] expected_deps: Vec<&str>,
     ) {
         let config_extraction_service = build_mocked_config_extraction_service();
@@ -418,6 +428,7 @@ mod tests {
                     })
                     .collect(),
             ),
+            tags: Some(tags),
             ..Default::default()
         };
 

@@ -430,7 +430,7 @@ impl BurnInService for BurnInServiceImpl {
 
         gen_config
             .gen_task_specs
-            .extend(generated_task.build_task_ref(large_distro));
+            .extend(generated_task.build_task_ref(large_distro, None));
         gen_config
             .display_tasks
             .push(generated_task.build_display_task());
@@ -727,6 +727,14 @@ mod tests {
         }
 
         fn get_task_dependencies(&self, _task: &EvgTask) -> Vec<String> {
+            todo!()
+        }
+
+        fn get_task_ref_dependencies(
+            &self,
+            _task_name: &str,
+            _build_variant: &BuildVariant,
+        ) -> Option<Vec<TaskDependency>> {
             todo!()
         }
 
