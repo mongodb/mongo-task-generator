@@ -11,8 +11,8 @@ use std::{
 
 use crate::evergreen::evg_config_utils::EvgConfigUtils;
 use crate::evergreen_names::{
-    BURN_IN_TASKS, BURN_IN_TASK_NAME, COMPILE_VARIANT, VERSION_BURN_IN_GEN_TASK,
-    VERSION_GEN_VARIANT,
+    BURN_IN_TASKS, BURN_IN_TASK_NAME, COMPILE_VARIANT, MULTIVERSION_BINARY_SELECTION,
+    VERSION_BURN_IN_GEN_TASK, VERSION_GEN_VARIANT,
 };
 use crate::{
     evergreen_names::BURN_IN_BYPASS,
@@ -450,6 +450,48 @@ impl BurnInService for BurnInServiceImpl {
                 variant: Some(VERSION_GEN_VARIANT.to_string()),
             },
         ];
+
+        let mut includes_multiversion_tasks = false;
+        for task_ref in gen_config.gen_task_specs.iter_mut() {
+            // Find the corresponding subtask to check its dependencies
+            let depends_on_multiversion = generated_task
+                .sub_tasks()
+                .iter()
+                .find(|&t| t.evg_task.name == task_ref.name)
+                .map(|subtask| {
+                    subtask.evg_task.depends_on.as_ref().map_or(false, |deps| {
+                        deps.iter()
+                            .any(|dep| dep.name == MULTIVERSION_BINARY_SELECTION)
+                    })
+                })
+                .unwrap_or(false);
+
+            if depends_on_multiversion {
+                includes_multiversion_tasks = true;
+
+                // Combine the multiversion binary selection with variant task dependencies
+                let multiversion_dependency = TaskDependency {
+                    name: MULTIVERSION_BINARY_SELECTION.to_string(),
+                    variant: None,
+                };
+
+                task_ref.depends_on = Some(
+                    std::iter::once(multiversion_dependency)
+                        .chain(variant_task_dependencies.iter().cloned())
+                        .collect(),
+                );
+            }
+        }
+
+        // Add the multiversion binary selection task if needed
+        if includes_multiversion_tasks {
+            gen_config.gen_task_specs.push(TaskRef {
+                name: MULTIVERSION_BINARY_SELECTION.to_string(),
+                distros: None,
+                activate: Some(false),
+                depends_on: None,
+            });
+        }
 
         Ok(BuildVariant {
             name: gen_config.build_variant_name.clone(),
