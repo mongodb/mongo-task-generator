@@ -1,4 +1,7 @@
 # Changelog
+## 3.0.1 - 2025-05-22
+* Add multiversion binary selection dependency to burn-in tasks when needed.
+
 ## 3.0.0 - 2025-05-07
 * Generate multiversion binary selection tasks
 
