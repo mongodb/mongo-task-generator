@@ -612,6 +612,9 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                 Some(build_variant),
                 Some(platform),
             )?;
+            // if task_def.name != "bazel_aggregation_secondary_reads_gen" {
+            //     return Ok(None);
+            // }
             Some(
                 self.gen_resmoke_service
                     .generate_resmoke_task(&params, build_variant)

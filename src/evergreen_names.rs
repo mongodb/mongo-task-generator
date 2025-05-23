@@ -9,6 +9,9 @@ pub const ENTERPRISE_MODULE: &str = "enterprise";
 pub const CONFIGURE_EVG_API_CREDS: &str = "configure evergreen api credentials";
 /// Function to setup a resmoke task.
 pub const DO_SETUP: &str = "do setup";
+pub const RETRIEVE_GENERATED_TEST_CONFIG: &str = "retrieve generated test configuration";
+pub const EXTRACT_GENERATED_TEST_CONFIG: &str = "extract generated test configuration";
+pub const GET_ENGFLOW_CREDS: &str = "get engflow creds";
 
 // Functions for running generated tasks.
 /// Function to setup fuzzer.
@@ -17,6 +20,7 @@ pub const SETUP_JSTESTFUZZ: &str = "setup jstestfuzz";
 pub const RUN_FUZZER: &str = "run jstestfuzz";
 /// Function to run generated tasks.
 pub const RUN_GENERATED_TESTS: &str = "run generated tests";
+pub const BAZEL_TEST: &str = "bazel test";
 
 // Function for multi-version tests.
 /// Function to do setup for multi-version testing.
@@ -25,6 +29,7 @@ pub const DO_MULTIVERSION_SETUP: &str = "do multiversion setup";
 pub const GET_PROJECT_WITH_NO_MODULES: &str = "git get project no modules";
 /// Function to add a git tag.
 pub const ADD_GIT_TAG: &str = "add git tag";
+pub const GET_PROJECT_AND_ADD_TAG: &str = "git get project and add git tag";
 
 // Noop function which stores multiversion task data.
 pub const INITIALIZE_MULTIVERSION_TASKS: &str = "initialize multiversion tasks";

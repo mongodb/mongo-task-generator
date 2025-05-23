@@ -363,6 +363,9 @@ impl EvgConfigUtils for EvgConfigUtilsImpl {
         if let Some(vars) = optional_vars {
             if let Some(ParamValue::String(suite_var)) = vars.get("suite") {
                 suite_var
+            } else if let Some(ParamValue::String(bazel_target)) = vars.get("bazel_target"){
+                let (_, suite) = bazel_target.rsplit_once(':').unwrap();
+                suite
             } else {
                 generated_task_name
             }

@@ -261,6 +261,10 @@ impl ConfigExtractionService for ConfigExtractionServiceImpl {
             .get_gen_task_var(task_def, "num_tasks")
             .map(|str| str.parse().unwrap());
 
+        let bazel_target = self
+            .evg_config_utils
+            .get_gen_task_var(task_def, "bazel_target").map(|s| s.to_string());
+        
         Ok(ResmokeGenParams {
             task_name,
             suite_name: suite,
@@ -302,6 +306,7 @@ impl ConfigExtractionService for ConfigExtractionServiceImpl {
             platform,
             gen_task_suffix,
             num_tasks,
+            bazel_target,
         })
     }
 
