@@ -31,6 +31,7 @@ use evergreen_names::{
 use generate_sub_tasks_config::GenerateSubTasksConfig;
 use resmoke::{
     burn_in_proxy::BurnInProxy,
+    external_cmd::run_command,
     resmoke_proxy::{ResmokeProxy, TestDiscovery},
 };
 use services::config_extraction::{ConfigExtractionService, ConfigExtractionServiceImpl};
@@ -299,6 +300,17 @@ impl GeneratedConfig {
 pub async fn generate_configuration(deps: &Dependencies, target_directory: &Path) -> Result<()> {
     let generate_tasks_service = deps.gen_task_service.clone();
     std::fs::create_dir_all(target_directory)?;
+
+    // Build bazel-based resmoke configs:
+    let cmd = [
+        "bazel",
+        "build",
+        "--build_tag_filters",
+        "resmoke_config",
+        "//buildscripts/resmokeconfig/...",
+    ];
+    let cmd_output = run_command(&cmd).unwrap();
+    dbg!(&cmd_output);
 
     // We are going to do 2 passes through the project build variants. In this first pass, we
     // are actually going to create all the generated tasks that we discover.
@@ -612,9 +624,9 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                 Some(build_variant),
                 Some(platform),
             )?;
-            // if task_def.name != "bazel_aggregation_secondary_reads_gen" {
-            //     return Ok(None);
-            // }
+            if task_def.name != "bazel_aggregation_secondary_reads_gen" {
+                return Ok(None);
+            }
             Some(
                 self.gen_resmoke_service
                     .generate_resmoke_task(&params, build_variant)

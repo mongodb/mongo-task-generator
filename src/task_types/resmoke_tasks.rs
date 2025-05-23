@@ -531,6 +531,7 @@ impl GenResmokeTaskServiceImpl {
                 "' '.join([str(target.label)] + [f.path for f in target.files.to_list()])",
             ];
             let cmd_output = run_command(&cmd).unwrap();
+            dbg!(&cmd_output);
             let configs = cmd_output.split("\n").collect::<Vec<&str>>();
             let mut config_map = HashMap::new();
             for config in configs {
