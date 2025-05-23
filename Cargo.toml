@@ -2,7 +2,7 @@
 name = "mongo-task-generator"
 description = "Dynamically split evergreen tasks into subtasks for testing the 10gen/mongo project."
 license = "Apache-2.0"
-version = "3.1.1"
+version = "3.2.0"
 repository = "https://github.com/mongodb/mongo-task-generator"
 authors = ["DevProd Correctness Team <devprod-correctness-team@mongodb.com>"]
 edition = "2018"
@@ -23,7 +23,7 @@ serde = { version = "1.0.206", features = ["derive"] }
 serde_json = "1.0.124"
 serde_yaml = "0.9.33"
 shellexpand = "3.1.0"
-shrub-rs = "0.7.0"
+shrub-rs = "0.8.0"
 tokio = { version = "1.39.2", features = ["full"] }
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["json", "fmt", "std"] }
