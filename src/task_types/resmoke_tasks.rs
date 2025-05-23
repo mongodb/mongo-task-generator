@@ -853,16 +853,16 @@ impl GenResmokeTaskService for GenResmokeTaskServiceImpl {
             bazel_test_vars.insert("compiling_for_test".to_string(), ParamValue::from(true));
             bazel_test_vars.insert(
                 "bazel_args".to_string(),
-                ParamValue::List(vec![
-                    "--config=no-remote-exec".to_string(),
-                    "--test_output=all".to_string(),
-                    "--workspace_status_command=\"bazel/resmoke/volatile_status.sh\"".to_string(),
-                    "--//bazel/resmoke:in_evergreen".to_string(),
+                ParamValue::from(vec![
+                    "--config=no-remote-exec",
+                    "--test_output=all",
+                    "--workspace_status_command=\"bazel/resmoke/volatile_status.sh\"",
+                    "--//bazel/resmoke:in_evergreen",
                     format!(
                         "--test_arg=--suites={}/{}.yml",
                         "generated_resmoke_config", formatted_name,
-                    ), // needs to be --target-directory
-                ]),
+                    ).as_ref(), // needs to be --target-directory
+                ].join(" ").as_ref()),
             );
             Some(bazel_resmoke_commands(
                 bazel_test_vars,
