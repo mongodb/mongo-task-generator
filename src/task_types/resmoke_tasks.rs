@@ -856,7 +856,7 @@ impl GenResmokeTaskService for GenResmokeTaskServiceImpl {
                 ParamValue::from(vec![
                     "--config=no-remote-exec",
                     "--test_output=all",
-                    "--workspace_status_command=\"bazel/resmoke/volatile_status.sh\"",
+                    // "--workspace_status_command=\"bazel/resmoke/volatile_status.sh\"",
                     "--//bazel/resmoke:in_evergreen",
                     format!(
                         "--test_arg=--suites={}/{}.yml",
