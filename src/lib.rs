@@ -305,7 +305,8 @@ pub async fn generate_configuration(deps: &Dependencies, target_directory: &Path
     let cmd = [
         "bazel",
         "build",
-        "--config=local",
+        "--config",
+        "local",
         "--build_tag_filters",
         "resmoke_config",
         "//buildscripts/resmokeconfig/...",
