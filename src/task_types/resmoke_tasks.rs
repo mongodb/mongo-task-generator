@@ -30,10 +30,10 @@ use crate::{
     },
     evergreen_names::{
         ADD_GIT_TAG, BAZEL_TEST, CONFIGURE_EVG_API_CREDS, DO_MULTIVERSION_SETUP, DO_SETUP,
-        EXTRACT_GENERATED_TEST_CONFIG, GEN_TASK_CONFIG_LOCATION, GET_ENGFLOW_CREDS,
-        GET_PROJECT_AND_ADD_TAG, GET_PROJECT_WITH_NO_MODULES, MULTIVERSION_EXCLUDE_TAG,
-        MULTIVERSION_EXCLUDE_TAGS_FILE, REQUIRE_MULTIVERSION_SETUP, RESMOKE_ARGS, RESMOKE_JOBS_MAX,
-        RETRIEVE_GENERATED_TEST_CONFIG, RUN_GENERATED_TESTS, SUITE_NAME,
+        GEN_TASK_CONFIG_LOCATION, GET_ENGFLOW_CREDS, GET_PROJECT_AND_ADD_TAG,
+        GET_PROJECT_WITH_NO_MODULES, MULTIVERSION_EXCLUDE_TAG, MULTIVERSION_EXCLUDE_TAGS_FILE,
+        REQUIRE_MULTIVERSION_SETUP, RESMOKE_ARGS, RESMOKE_JOBS_MAX, RUN_GENERATED_TESTS,
+        RUN_RESMOKE_TESTS, SUITE_NAME,
     },
     resmoke::{external_cmd::run_command, resmoke_proxy::TestDiscovery},
     utils::{fs_service::FsService, task_name::name_generated_task},
@@ -85,9 +85,20 @@ pub struct ResmokeGenParams {
     pub num_tasks: Option<usize>,
     /// The bazel test target, if it is a bazel-based resmoke task.
     pub bazel_target: Option<String>,
+    /// Arguments that should be passed to bazel.
+    pub bazel_args: String,
 }
 
 impl ResmokeGenParams {
+    fn is_bazel(&self) -> bool {
+        self.bazel_target.is_some()
+            || self
+                .multiversion_generate_tasks
+                .as_ref()
+                .map(|tasks| tasks.iter().any(|t| t.bazel_target.is_some()))
+                .unwrap_or(false)
+    }
+
     /// Build the vars to send to the tasks in the 'run tests' function.
     ///
     /// # Arguments
@@ -220,6 +231,9 @@ pub struct SubSuite {
 
     /// Platform of build_variant the sub-suite is for.
     pub platform: Option<String>,
+
+    /// The bazel test target, if it is a bazel-based resmoke task.
+    pub bazel_target: Option<String>,
 }
 
 /// Information needed to generate resmoke configuration files for the generated task.
@@ -499,6 +513,7 @@ impl GenResmokeTaskServiceImpl {
                 mv_exclude_tags: multiversion_tags.clone(),
                 is_enterprise: params.is_enterprise,
                 platform: params.platform.clone(),
+                bazel_target: params.bazel_target.clone(),
             });
         }
 
@@ -519,43 +534,18 @@ impl GenResmokeTaskServiceImpl {
         params: &ResmokeGenParams,
         multiversion_name: Option<&str>,
     ) -> Result<Vec<String>> {
-        let suite_name = multiversion_name.unwrap_or(&params.suite_name);
-        let mut test_list: Vec<String> = if params.bazel_target.is_some() {
-            let cmd = [
-                "bazel",
-                "cquery",
-                "kind(resmoke_config, //...)",
-                "--output",
-                "starlark",
-                "--starlark:expr",
-                "' '.join([str(target.label)] + [f.path for f in target.files.to_list()])",
-            ];
-            let cmd_output = run_command(&cmd).unwrap();
-            dbg!(&cmd_output);
-            let configs = cmd_output.split("\n").collect::<Vec<&str>>();
-            let mut config_map = HashMap::new();
-            for config in configs {
-                let pair = config
-                    .trim_start_matches("@@")
-                    .split_whitespace()
-                    .collect::<Vec<&str>>();
-                if pair.len() != 2 {
-                    continue;
-                }
-                config_map.insert(pair[0].to_string(), pair[1].to_string());
-            }
-            let bazel_target = format!("{}_config", params.bazel_target.as_ref().unwrap());
-            let config_file = config_map.get(&bazel_target).unwrap();
-            let f = std::fs::File::open(&config_file)?;
-            let output: Result<ConfigFile, serde_yaml::Error> = serde_yaml::from_reader(f);
-            output?.selector.roots
+        let suite_name = if params.is_bazel() {
+            params.bazel_target.clone().unwrap()
         } else {
-            self.test_discovery
-                .discover_tests(suite_name)?
-                .into_iter()
-                .filter(|s| self.fs_service.file_exists(s))
-                .collect()
+            multiversion_name.unwrap_or(&params.suite_name).to_string()
         };
+
+        let mut test_list: Vec<String> = self
+            .test_discovery
+            .discover_tests(&suite_name)?
+            .into_iter()
+            .filter(|s| self.fs_service.file_exists(s))
+            .collect();
 
         if !params.is_enterprise {
             if let Some(enterprise_dir) = &self.config.enterprise_dir {
@@ -618,6 +608,7 @@ impl GenResmokeTaskServiceImpl {
                 mv_exclude_tags: multiversion_tags.clone(),
                 is_enterprise: params.is_enterprise,
                 platform: params.platform.clone(),
+                bazel_target: params.bazel_target.clone(),
             });
         }
         Ok(sub_suites)
@@ -640,9 +631,11 @@ impl GenResmokeTaskServiceImpl {
     ) -> Result<Vec<SubSuite>> {
         let mut mv_sub_suites = vec![];
         for multiversion_task in params.multiversion_generate_tasks.as_ref().unwrap() {
+            let mut params_for_multiversion = params.clone();
+            params_for_multiversion.bazel_target = multiversion_task.bazel_target.clone();
             let suites = self
                 .create_tasks(
-                    params,
+                    &params_for_multiversion,
                     build_variant,
                     Some(&multiversion_task.suite_name.clone()),
                     Some(multiversion_task.old_version.clone()),
@@ -844,39 +837,48 @@ impl GenResmokeTaskService for GenResmokeTaskServiceImpl {
             params.gen_task_suffix.as_deref().unwrap_or("")
         );
 
-        let commands = if params.bazel_target.is_some() {
-            let mut bazel_test_vars: HashMap<String, ParamValue> = hashmap! {};
-            bazel_test_vars.insert(
+        let mut run_test_vars =
+            params.build_run_test_vars(&suite_file, sub_suite, &exclude_tags, suite_override);
+
+        let run_test_fn_name;
+        if params.is_bazel() {
+            run_test_vars.insert(
                 "targets".to_string(),
-                ParamValue::from(params.bazel_target.clone().unwrap().as_str()),
+                ParamValue::from(sub_suite.bazel_target.clone().unwrap().as_str()),
             );
-            bazel_test_vars.insert("compiling_for_test".to_string(), ParamValue::from(true));
-            bazel_test_vars.insert(
+            run_test_vars.insert("compiling_for_test".to_string(), ParamValue::from(true));
+
+            let mut bazel_args: Vec<String> = run_test_vars
+                .get("resmoke_args")
+                .unwrap()
+                .to_string()
+                .split_whitespace()
+                .filter(|s| !s.starts_with("--originSuite"))
+                .map(|s| format!("--test_arg={}", s))
+                .collect();
+            run_test_vars.remove("resmoke_args");
+
+            bazel_args.push(format!(
+                "--test_arg=--suites={}/{}.yml",
+                "generated_resmoke_config", formatted_name,
+            )); // TODO needs to be --target-directory, not hardcoded generate_resmoke_config
+
+            run_test_vars.insert(
                 "bazel_args".to_string(),
-                ParamValue::from(vec![
-                    "--config=no-remote-exec",
-                    "--test_output=all",
-                    "--workspace_status_command='bazel/resmoke/volatile_status.sh'",
-                    "--//bazel/resmoke:in_evergreen",
-                    format!(
-                        "--test_arg=--suites={}/{}.yml",
-                        "generated_resmoke_config", formatted_name,
-                    ).as_ref(), // needs to be --target-directory
-                ].join(" ").as_ref()),
+                ParamValue::from(
+                    format!("{} {}", bazel_args.join(" "), params.bazel_args).as_ref(),
+                ),
             );
-            Some(bazel_resmoke_commands(
-                bazel_test_vars,
-                params.require_multiversion_setup,
-            ))
+            run_test_fn_name = BAZEL_TEST;
         } else {
-            let run_test_vars =
-                params.build_run_test_vars(&suite_file, sub_suite, &exclude_tags, suite_override);
-            Some(resmoke_commands(
-                RUN_GENERATED_TESTS,
-                run_test_vars,
-                params.require_multiversion_setup,
-            ))
-        };
+            run_test_fn_name = RUN_GENERATED_TESTS;
+        }
+
+        let commands = Some(resmoke_commands(
+            run_test_fn_name,
+            run_test_vars,
+            params.require_multiversion_setup,
+        ));
 
         GeneratedSubTask {
             evg_task: EvgTask {
@@ -925,33 +927,31 @@ fn resmoke_commands(
     commands
 }
 
-fn bazel_resmoke_commands(
-    bazel_test_vars: HashMap<String, ParamValue>,
-    requires_multiversion_setup: bool,
-) -> Vec<EvgCommand> {
-    let mut commands = vec![];
-    commands.push(fn_call(GET_PROJECT_AND_ADD_TAG));
-    commands.push(fn_call(DO_SETUP));
-    commands.push(fn_call(RETRIEVE_GENERATED_TEST_CONFIG));
-    commands.push(fn_call(EXTRACT_GENERATED_TEST_CONFIG));
+// fn bazel_resmoke_commands(
+//     bazel_test_vars: HashMap<String, ParamValue>,
+//     requires_multiversion_setup: bool,
+// ) -> Vec<EvgCommand> {
+//     let mut commands = vec![];
+//     commands.push(fn_call(GET_PROJECT_AND_ADD_TAG));
+//     commands.push(fn_call(DO_SETUP));
 
-    if requires_multiversion_setup {
-        commands.push(fn_call(CONFIGURE_EVG_API_CREDS));
-        commands.push(fn_call(DO_MULTIVERSION_SETUP));
-    }
+//     if requires_multiversion_setup {
+//         commands.push(fn_call(CONFIGURE_EVG_API_CREDS));
+//         commands.push(fn_call(DO_MULTIVERSION_SETUP));
+//     }
 
-    commands.push(fn_call(GET_ENGFLOW_CREDS));
+//     commands.push(fn_call(GET_ENGFLOW_CREDS));
 
-    commands.push(fn_call_with_params(BAZEL_TEST, bazel_test_vars));
-    commands.push(EvgCommand::BuiltIn(BuiltInCommand {
-        command: EvgCommandSpec::AttachResults(AttachResultsParams {
-            file_location: "report.json".to_string(),
-        }),
-        command_type: None,
-        params_yaml: None,
-    }));
-    commands
-}
+//     commands.push(fn_call_with_params(BAZEL_TEST, bazel_test_vars));
+//     commands.push(EvgCommand::BuiltIn(BuiltInCommand {
+//         command: EvgCommandSpec::AttachResults(AttachResultsParams {
+//             file_location: "report.json".to_string(),
+//         }),
+//         command_type: None,
+//         params_yaml: None,
+//     }));
+//     commands
+// }
 
 #[cfg(test)]
 mod tests {

@@ -30,6 +30,8 @@ pub struct MultiversionGenerateTaskConfig {
     pub suite_name: String,
     /// Old version to run testing against.
     pub old_version: String,
+    /// The bazel test target, if it is a bazel-based resmoke task.
+    pub bazel_target: Option<String>,
 }
 
 pub trait EvgConfigUtils: Sync + Send {
@@ -362,10 +364,12 @@ impl EvgConfigUtils for EvgConfigUtilsImpl {
 
         if let Some(vars) = optional_vars {
             if let Some(ParamValue::String(suite_var)) = vars.get("suite") {
-                suite_var
-            } else if let Some(ParamValue::String(bazel_target)) = vars.get("bazel_target"){
-                let (_, suite) = bazel_target.rsplit_once(':').unwrap();
-                suite
+                if suite_var.starts_with("//") {
+                    let (_, suite) = suite_var.rsplit_once(':').unwrap();
+                    suite
+                } else {
+                    suite_var
+                }
             } else {
                 generated_task_name
             }
@@ -409,11 +413,18 @@ impl EvgConfigUtils for EvgConfigUtilsImpl {
             get_func_vars_by_name(task, INITIALIZE_MULTIVERSION_TASKS)
         {
             let mut multiversion_generate_tasks = vec![];
-            for (suite_name, old_version) in multiversion_task_map {
+            for (suite_var, old_version) in multiversion_task_map {
+                let (suite_name, bazel_target) = if suite_var.starts_with("//") {
+                    let (_, suite) = suite_var.rsplit_once(':').unwrap();
+                    (suite.to_string(), Some(suite_var.clone()))
+                } else {
+                    (suite_var.clone(), None)
+                };
                 if let ParamValue::String(value) = old_version {
                     multiversion_generate_tasks.push(MultiversionGenerateTaskConfig {
-                        suite_name: suite_name.clone(),
+                        suite_name: suite_name,
                         old_version: value.clone(),
+                        bazel_target,
                     });
                 }
             }

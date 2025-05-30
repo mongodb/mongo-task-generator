@@ -5,6 +5,7 @@ use serde::Deserialize;
 use tracing::{error, event, Level};
 
 use super::{external_cmd::run_command, resmoke_suite::ResmokeSuiteConfig};
+use std::collections::HashMap;
 
 /// Interface for discovering details about test suites.
 pub trait TestDiscovery: Send + Sync {
@@ -45,6 +46,7 @@ pub struct ResmokeProxy {
     skip_covered_tests: bool,
     /// True if test discovery should include tests that are tagged with fully disabled features.
     include_fully_disabled_feature_tests: bool,
+    bazel_configs: BazelConfigs,
 }
 
 impl ResmokeProxy {
@@ -68,7 +70,46 @@ impl ResmokeProxy {
             resmoke_script: script,
             skip_covered_tests,
             include_fully_disabled_feature_tests,
+            bazel_configs: BazelConfigs::new(),
         }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct BazelConfigs {
+    configs: HashMap<String, String>,
+}
+
+impl BazelConfigs {
+    pub fn new() -> Self {
+        let mut configs = HashMap::new();
+
+        let cmd = [
+            "bazel",
+            "cquery",
+            "kind(resmoke_config, //...)",
+            "--output",
+            "starlark",
+            "--starlark:expr",
+            "' '.join([str(target.label)] + [f.path for f in target.files.to_list()])",
+        ];
+        let cmd_output = run_command(&cmd).unwrap();
+        let config_pairs = cmd_output.split("\n").collect::<Vec<&str>>();
+        for config in config_pairs {
+            let pair = config
+                .trim_start_matches("@@")
+                .split_whitespace()
+                .collect::<Vec<&str>>();
+            if pair.len() != 2 {
+                continue;
+            }
+            configs.insert(pair[0].to_string(), pair[1].to_string());
+        }
+        Self { configs }
+    }
+
+    pub fn get(&self, suite: &str) -> &str {
+        self.configs.get(&format!("{}_config",suite)).unwrap()
     }
 }
 
@@ -94,9 +135,15 @@ impl TestDiscovery for ResmokeProxy {
     ///
     /// A list of tests belonging to given suite.
     fn discover_tests(&self, suite_name: &str) -> Result<Vec<String>> {
+        let suite = if suite_name.starts_with("//") {
+            self.bazel_configs.get(suite_name)
+        } else {
+            suite_name
+        };
+
         let mut cmd = vec![&*self.resmoke_cmd];
         cmd.append(&mut self.resmoke_script.iter().map(|s| s.as_str()).collect());
-        cmd.append(&mut vec!["test-discovery", "--suite", suite_name]);
+        cmd.append(&mut vec!["test-discovery", "--suite", suite]);
 
         // When running in a patch build, we use the --skipTestsCoveredByMoreComplexSuites
         // flag to tell Resmoke to exclude any tests in the given suite that will
@@ -114,7 +161,7 @@ impl TestDiscovery for ResmokeProxy {
 
         event!(
             Level::INFO,
-            suite_name,
+            suite,
             duration_ms = start.elapsed().as_millis() as u64,
             "Resmoke test discovery finished"
         );
@@ -146,9 +193,15 @@ impl TestDiscovery for ResmokeProxy {
     ///
     /// Resmoke configuration for the given suite.
     fn get_suite_config(&self, suite_name: &str) -> Result<ResmokeSuiteConfig> {
+        let suite = if suite_name.starts_with("//") {
+            self.bazel_configs.get(suite_name)
+        } else {
+            suite_name
+        };
+
         let mut cmd = vec![&*self.resmoke_cmd];
         cmd.append(&mut self.resmoke_script.iter().map(|s| s.as_str()).collect());
-        cmd.append(&mut vec!["suiteconfig", "--suite", suite_name]);
+        cmd.append(&mut vec!["suiteconfig", "--suite", suite]);
         let cmd_output = run_command(&cmd).unwrap();
 
         Ok(ResmokeSuiteConfig::from_str(&cmd_output)?)

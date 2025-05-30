@@ -311,8 +311,7 @@ pub async fn generate_configuration(deps: &Dependencies, target_directory: &Path
         "resmoke_config",
         "//buildscripts/resmokeconfig/...",
     ];
-    let cmd_output = run_command(&cmd).unwrap();
-    dbg!(&cmd_output);
+    run_command(&cmd).unwrap();
 
     // We are going to do 2 passes through the project build variants. In this first pass, we
     // are actually going to create all the generated tasks that we discover.
@@ -626,9 +625,9 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                 Some(build_variant),
                 Some(platform),
             )?;
-            if task_def.name != "bazel_aggregation_secondary_reads_gen" {
-                return Ok(None);
-            }
+            // if task_def.name != "bazel_multiversion_sanity_check_gen" && task_def.name != "bazel_test_aggregation_secondary_reads_gen" {
+            //     return Ok(None);
+            // }
             Some(
                 self.gen_resmoke_service
                     .generate_resmoke_task(&params, build_variant)

@@ -6,11 +6,7 @@ use shrub_rs::models::{task::EvgTask, variant::BuildVariant};
 use crate::{
     evergreen::evg_config_utils::EvgConfigUtils,
     evergreen_names::{
-        CONTINUE_ON_FAILURE, FUZZER_PARAMETERS, IDLE_TIMEOUT, LARGE_DISTRO_EXPANSION,
-        LAST_VERSIONS_EXPANSION, MULTIVERSION, MULTIVERSION_BINARY_SELECTION,
-        NO_MULTIVERSION_GENERATE_TASKS, NPM_COMMAND, NUM_FUZZER_FILES, NUM_FUZZER_TASKS,
-        REPEAT_SUITES, RESMOKE_ARGS, RESMOKE_JOBS_MAX, SHOULD_SHUFFLE_TESTS,
-        UNIQUE_GEN_SUFFIX_EXPANSION, USE_LARGE_DISTRO, USE_XLARGE_DISTRO, XLARGE_DISTRO_EXPANSION,
+        BAZEL_ARGS, CONTINUE_ON_FAILURE, FUZZER_PARAMETERS, IDLE_TIMEOUT, LARGE_DISTRO_EXPANSION, LAST_VERSIONS_EXPANSION, MULTIVERSION, MULTIVERSION_BINARY_SELECTION, NO_MULTIVERSION_GENERATE_TASKS, NPM_COMMAND, NUM_FUZZER_FILES, NUM_FUZZER_TASKS, REPEAT_SUITES, RESMOKE_ARGS, RESMOKE_JOBS_MAX, SHOULD_SHUFFLE_TESTS, UNIQUE_GEN_SUFFIX_EXPANSION, USE_LARGE_DISTRO, USE_XLARGE_DISTRO, XLARGE_DISTRO_EXPANSION
     },
     generate_sub_tasks_config::GenerateSubTasksConfig,
     task_types::{
@@ -263,8 +259,10 @@ impl ConfigExtractionService for ConfigExtractionServiceImpl {
 
         let bazel_target = self
             .evg_config_utils
-            .get_gen_task_var(task_def, "bazel_target").map(|s| s.to_string());
-        
+            .get_gen_task_var(task_def, "suite")
+            .filter(|s| s.starts_with("//"))
+            .map(|s| s.to_string());
+
         Ok(ResmokeGenParams {
             task_name,
             suite_name: suite,
@@ -289,6 +287,9 @@ impl ConfigExtractionService for ConfigExtractionServiceImpl {
                 RESMOKE_ARGS,
                 "",
             ),
+            bazel_args: self
+                .evg_config_utils
+                .lookup_default_param_str(task_def, BAZEL_ARGS, ""),
             resmoke_jobs_max: self
                 .evg_config_utils
                 .lookup_optional_param_u64(task_def, RESMOKE_JOBS_MAX)?,

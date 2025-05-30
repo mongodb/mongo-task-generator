@@ -140,7 +140,12 @@ impl WriteConfigActorImpl {
             .iter()
             .filter(|s| s.exclude_test_list.is_none())
             .map(|s| {
-                let origin_config = resmoke_config_cache.get_config(&s.origin_suite)?;
+                let suite_name = if s.bazel_target.is_some() {
+                    s.bazel_target.clone().unwrap()
+                } else {
+                    s.origin_suite.clone()
+                };
+                let origin_config = resmoke_config_cache.get_config(&suite_name)?;
                 let config = origin_config.with_new_tests(Some(&s.test_list), None);
 
                 let filename = format!(

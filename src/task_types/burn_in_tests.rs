@@ -315,6 +315,7 @@ impl BurnInServiceImpl {
             mv_exclude_tags: suite_info.multiversion_tags.clone(),
             is_enterprise: false,
             platform: None,
+            bazel_target: params.bazel_target.clone(),
         };
 
         self.gen_resmoke_task_service.build_resmoke_sub_task(
