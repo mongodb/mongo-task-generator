@@ -306,10 +306,16 @@ fn build_fuzzer_sub_task(
     let mut run_test_vars = params.build_run_tests_vars(generated_suite_name, old_version);
 
     if params.is_bazel() {
-        run_test_vars.insert(
-            "targets".to_string(),
-            ParamValue::from(params.bazel_target.clone().unwrap().as_str()),
-        );
+        let target: String = if params.is_multiversion() {
+            params.multiversion_generate_tasks.as_ref().unwrap()[sub_task_index]
+                .bazel_target
+                .clone()
+                .unwrap()
+        } else {
+            params.bazel_target.clone().unwrap()
+        };
+
+        run_test_vars.insert("targets".to_string(), ParamValue::from(target.as_ref()));
         run_test_vars.insert("compiling_for_test".to_string(), ParamValue::from(true));
 
         let bazel_args: Vec<String> = run_test_vars
