@@ -82,8 +82,19 @@ pub struct BazelConfigs {
 
 impl BazelConfigs {
     pub fn new() -> Self {
-        let mut configs = HashMap::new();
+        // Builds all bazel-based resmoke configs
+        let cmd = [
+            "bazel",
+            "build",
+            "--config",
+            "local",
+            "--build_tag_filters",
+            "resmoke_config",
+            "//buildscripts/resmokeconfig/...",
+        ];
+        run_command(&cmd).unwrap();
 
+        // Queries all the bazel-based resmoke configs and their file paths
         let cmd = [
             "bazel",
             "cquery",
@@ -94,6 +105,7 @@ impl BazelConfigs {
             "' '.join([str(target.label)] + [f.path for f in target.files.to_list()])",
         ];
         let cmd_output = run_command(&cmd).unwrap();
+        let mut configs = HashMap::new();
         let config_pairs = cmd_output.split("\n").collect::<Vec<&str>>();
         for config in config_pairs {
             let pair = config
@@ -109,7 +121,7 @@ impl BazelConfigs {
     }
 
     pub fn get(&self, suite: &str) -> &str {
-        self.configs.get(&format!("{}_config",suite)).unwrap()
+        self.configs.get(&format!("{}_config", suite)).unwrap()
     }
 }
 

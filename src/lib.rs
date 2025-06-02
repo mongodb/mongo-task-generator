@@ -301,18 +301,6 @@ pub async fn generate_configuration(deps: &Dependencies, target_directory: &Path
     let generate_tasks_service = deps.gen_task_service.clone();
     std::fs::create_dir_all(target_directory)?;
 
-    // Build bazel-based resmoke configs:
-    let cmd = [
-        "bazel",
-        "build",
-        "--config",
-        "local",
-        "--build_tag_filters",
-        "resmoke_config",
-        "//buildscripts/resmokeconfig/...",
-    ];
-    run_command(&cmd).unwrap();
-
     // We are going to do 2 passes through the project build variants. In this first pass, we
     // are actually going to create all the generated tasks that we discover.
     let generated_tasks = generate_tasks_service.build_generated_tasks(deps).await?;

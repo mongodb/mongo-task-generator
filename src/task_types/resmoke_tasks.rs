@@ -911,7 +911,7 @@ fn resmoke_commands(
 ) -> Vec<EvgCommand> {
     let mut commands = vec![];
 
-    if requires_multiversion_setup {
+    if requires_multiversion_setup || run_test_fn_name == BAZEL_TEST {
         commands.push(fn_call(GET_PROJECT_WITH_NO_MODULES));
         commands.push(fn_call(ADD_GIT_TAG));
     }
