@@ -9,7 +9,6 @@ pub const ENTERPRISE_MODULE: &str = "enterprise";
 pub const CONFIGURE_EVG_API_CREDS: &str = "configure evergreen api credentials";
 /// Function to setup a resmoke task.
 pub const DO_SETUP: &str = "do setup";
-pub const GET_ENGFLOW_CREDS: &str = "get engflow creds";
 
 // Functions for running generated tasks.
 /// Function to setup fuzzer.
@@ -27,7 +26,6 @@ pub const DO_MULTIVERSION_SETUP: &str = "do multiversion setup";
 pub const GET_PROJECT_WITH_NO_MODULES: &str = "git get project no modules";
 /// Function to add a git tag.
 pub const ADD_GIT_TAG: &str = "add git tag";
-pub const GET_PROJECT_AND_ADD_TAG: &str = "git get project and add git tag";
 
 // Noop function which stores multiversion task data.
 pub const INITIALIZE_MULTIVERSION_TASKS: &str = "initialize multiversion tasks";

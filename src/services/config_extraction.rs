@@ -6,7 +6,11 @@ use shrub_rs::models::{task::EvgTask, variant::BuildVariant};
 use crate::{
     evergreen::evg_config_utils::EvgConfigUtils,
     evergreen_names::{
-        BAZEL_ARGS, CONTINUE_ON_FAILURE, FUZZER_PARAMETERS, IDLE_TIMEOUT, LARGE_DISTRO_EXPANSION, LAST_VERSIONS_EXPANSION, MULTIVERSION, MULTIVERSION_BINARY_SELECTION, NO_MULTIVERSION_GENERATE_TASKS, NPM_COMMAND, NUM_FUZZER_FILES, NUM_FUZZER_TASKS, REPEAT_SUITES, RESMOKE_ARGS, RESMOKE_JOBS_MAX, SHOULD_SHUFFLE_TESTS, UNIQUE_GEN_SUFFIX_EXPANSION, USE_LARGE_DISTRO, USE_XLARGE_DISTRO, XLARGE_DISTRO_EXPANSION
+        BAZEL_ARGS, CONTINUE_ON_FAILURE, FUZZER_PARAMETERS, IDLE_TIMEOUT, LARGE_DISTRO_EXPANSION,
+        LAST_VERSIONS_EXPANSION, MULTIVERSION, MULTIVERSION_BINARY_SELECTION,
+        NO_MULTIVERSION_GENERATE_TASKS, NPM_COMMAND, NUM_FUZZER_FILES, NUM_FUZZER_TASKS,
+        REPEAT_SUITES, RESMOKE_ARGS, RESMOKE_JOBS_MAX, SHOULD_SHUFFLE_TESTS,
+        UNIQUE_GEN_SUFFIX_EXPANSION, USE_LARGE_DISTRO, USE_XLARGE_DISTRO, XLARGE_DISTRO_EXPANSION,
     },
     generate_sub_tasks_config::GenerateSubTasksConfig,
     task_types::{
@@ -180,6 +184,13 @@ impl ConfigExtractionService for ConfigExtractionServiceImpl {
             .lookup_build_variant_expansion(UNIQUE_GEN_SUFFIX_EXPANSION, build_variant);
 
         let suite = evg_config_utils.find_suite_name(task_def).to_string();
+
+        let bazel_target = self
+            .evg_config_utils
+            .get_gen_task_var(task_def, "suite")
+            .filter(|s| s.starts_with("//"))
+            .map(|s| s.to_string());
+
         Ok(FuzzerGenTaskParams {
             task_name,
             variant: build_variant.name.to_string(),
@@ -216,6 +227,11 @@ impl ConfigExtractionService for ConfigExtractionServiceImpl {
             is_enterprise,
             platform: Some(evg_config_utils.infer_build_variant_platform(build_variant)),
             gen_task_suffix,
+            bazel_target,
+            bazel_args: self
+                .evg_config_utils
+                .get_gen_task_var(task_def, BAZEL_ARGS)
+                .map(|s| s.to_string()),
         })
     }
 
@@ -289,7 +305,8 @@ impl ConfigExtractionService for ConfigExtractionServiceImpl {
             ),
             bazel_args: self
                 .evg_config_utils
-                .lookup_default_param_str(task_def, BAZEL_ARGS, ""),
+                .get_gen_task_var(task_def, BAZEL_ARGS)
+                .map(|s| s.to_string()),
             resmoke_jobs_max: self
                 .evg_config_utils
                 .lookup_optional_param_u64(task_def, RESMOKE_JOBS_MAX)?,

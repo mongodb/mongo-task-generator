@@ -30,10 +30,9 @@ use crate::{
     },
     evergreen_names::{
         ADD_GIT_TAG, BAZEL_TEST, CONFIGURE_EVG_API_CREDS, DO_MULTIVERSION_SETUP, DO_SETUP,
-        GEN_TASK_CONFIG_LOCATION, GET_ENGFLOW_CREDS, GET_PROJECT_AND_ADD_TAG,
-        GET_PROJECT_WITH_NO_MODULES, MULTIVERSION_EXCLUDE_TAG, MULTIVERSION_EXCLUDE_TAGS_FILE,
-        REQUIRE_MULTIVERSION_SETUP, RESMOKE_ARGS, RESMOKE_JOBS_MAX, RUN_GENERATED_TESTS,
-        RUN_RESMOKE_TESTS, SUITE_NAME,
+        GEN_TASK_CONFIG_LOCATION, GET_PROJECT_WITH_NO_MODULES, MULTIVERSION_EXCLUDE_TAG,
+        MULTIVERSION_EXCLUDE_TAGS_FILE, REQUIRE_MULTIVERSION_SETUP, RESMOKE_ARGS, RESMOKE_JOBS_MAX,
+        RUN_GENERATED_TESTS, RUN_RESMOKE_TESTS, SUITE_NAME,
     },
     resmoke::{external_cmd::run_command, resmoke_proxy::TestDiscovery},
     utils::{fs_service::FsService, task_name::name_generated_task},
@@ -55,6 +54,8 @@ pub struct ResmokeGenParams {
     pub multiversion_generate_tasks: Option<Vec<MultiversionGenerateTaskConfig>>,
     /// Name of suite being generated.
     pub suite_name: String,
+    /// The bazel test target, if it is a bazel-based resmoke task.
+    pub bazel_target: Option<String>,
     /// Should the generated tasks run on a 'large' distro.
     pub use_large_distro: bool,
     /// Should the generated tasks run on a 'xlarge' distro.
@@ -67,6 +68,8 @@ pub struct ResmokeGenParams {
     pub repeat_suites: Option<u64>,
     /// Arguments that should be passed to resmoke.
     pub resmoke_args: String,
+    /// Arguments that should be passed to bazel.
+    pub bazel_args: Option<String>,
     /// Number of jobs to limit resmoke to.
     pub resmoke_jobs_max: Option<u64>,
     /// Location where generated task configuration will be stored in S3.
@@ -83,10 +86,7 @@ pub struct ResmokeGenParams {
     pub gen_task_suffix: Option<String>,
     /// Number of sub-tasks requested in the task's Evergreen YAML definition.
     pub num_tasks: Option<usize>,
-    /// The bazel test target, if it is a bazel-based resmoke task.
-    pub bazel_target: Option<String>,
-    /// Arguments that should be passed to bazel.
-    pub bazel_args: String,
+
 }
 
 impl ResmokeGenParams {
@@ -866,7 +866,12 @@ impl GenResmokeTaskService for GenResmokeTaskServiceImpl {
             run_test_vars.insert(
                 "bazel_args".to_string(),
                 ParamValue::from(
-                    format!("{} {}", bazel_args.join(" "), params.bazel_args).as_ref(),
+                    format!(
+                        "{} {}",
+                        bazel_args.join(" "),
+                        params.bazel_args.clone().unwrap_or("".to_string())
+                    )
+                    .as_ref(),
                 ),
             );
             run_test_fn_name = BAZEL_TEST;

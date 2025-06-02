@@ -12,11 +12,11 @@ use tracing::{event, Level};
 use crate::{
     evergreen::evg_config_utils::MultiversionGenerateTaskConfig,
     evergreen_names::{
-        ADD_GIT_TAG, CONFIGURE_EVG_API_CREDS, CONTINUE_ON_FAILURE, DO_MULTIVERSION_SETUP, DO_SETUP,
-        FUZZER_PARAMETERS, GEN_TASK_CONFIG_LOCATION, GET_PROJECT_WITH_NO_MODULES, IDLE_TIMEOUT,
-        MULTIVERSION_EXCLUDE_TAGS, NPM_COMMAND, REQUIRE_MULTIVERSION_SETUP, RESMOKE_ARGS,
-        RESMOKE_JOBS_MAX, RUN_FUZZER, RUN_GENERATED_TESTS, SETUP_JSTESTFUZZ, SHOULD_SHUFFLE_TESTS,
-        SUITE_NAME, TASK_NAME,
+        ADD_GIT_TAG, BAZEL_TEST, CONFIGURE_EVG_API_CREDS, CONTINUE_ON_FAILURE,
+        DO_MULTIVERSION_SETUP, DO_SETUP, FUZZER_PARAMETERS, GEN_TASK_CONFIG_LOCATION,
+        GET_PROJECT_WITH_NO_MODULES, IDLE_TIMEOUT, MULTIVERSION_EXCLUDE_TAGS, NPM_COMMAND,
+        REQUIRE_MULTIVERSION_SETUP, RESMOKE_ARGS, RESMOKE_JOBS_MAX, RUN_FUZZER,
+        RUN_GENERATED_TESTS, SETUP_JSTESTFUZZ, SHOULD_SHUFFLE_TESTS, SUITE_NAME, TASK_NAME,
     },
     utils::task_name::name_generated_task,
 };
@@ -35,12 +35,16 @@ pub struct FuzzerGenTaskParams {
     pub variant: String,
     /// Resmoke suite for generated tests.
     pub suite: String,
+    /// The bazel test target, if it is a bazel-based resmoke task.
+    pub bazel_target: Option<String>,
     /// Number of javascript files fuzzer should generate.
     pub num_files: String,
     /// Number of sub-tasks fuzzer should generate.
     pub num_tasks: u64,
     /// Arguments to pass to resmoke invocation.
     pub resmoke_args: String,
+    /// Arguments that should be passed to bazel.
+    pub bazel_args: Option<String>,
     /// NPM command to perform fuzzer execution.
     pub npm_command: String,
     /// Arguments to pass to fuzzer invocation.
@@ -68,6 +72,15 @@ pub struct FuzzerGenTaskParams {
 }
 
 impl FuzzerGenTaskParams {
+    fn is_bazel(&self) -> bool {
+        self.bazel_target.is_some()
+            || self
+                .multiversion_generate_tasks
+                .as_ref()
+                .map(|tasks| tasks.iter().any(|t| t.bazel_target.is_some()))
+                .unwrap_or(false)
+    }
+
     /// Create parameters to send to fuzzer to generate appropriate fuzzer tests.
     fn build_fuzzer_parameters(&self) -> HashMap<String, ParamValue> {
         hashmap! {
@@ -288,11 +301,41 @@ fn build_fuzzer_sub_task(
     commands.extend(vec![
         fn_call(SETUP_JSTESTFUZZ),
         fn_call_with_params(RUN_FUZZER, params.build_fuzzer_parameters()),
-        fn_call_with_params(
-            RUN_GENERATED_TESTS,
-            params.build_run_tests_vars(generated_suite_name, old_version),
-        ),
     ]);
+
+    let mut run_test_vars = params.build_run_tests_vars(generated_suite_name, old_version);
+
+    if params.is_bazel() {
+        run_test_vars.insert(
+            "targets".to_string(),
+            ParamValue::from(params.bazel_target.clone().unwrap().as_str()),
+        );
+        run_test_vars.insert("compiling_for_test".to_string(), ParamValue::from(true));
+
+        let bazel_args: Vec<String> = run_test_vars
+            .get("resmoke_args")
+            .unwrap()
+            .to_string()
+            .split_whitespace()
+            .map(|s| format!("--test_arg={}", s))
+            .collect();
+        run_test_vars.remove("resmoke_args");
+
+        run_test_vars.insert(
+            "bazel_args".to_string(),
+            ParamValue::from(
+                format!(
+                    "{} {}",
+                    bazel_args.join(" "),
+                    params.bazel_args.clone().unwrap_or("".to_string())
+                )
+                .as_ref(),
+            ),
+        );
+        commands.push(fn_call_with_params(BAZEL_TEST, run_test_vars));
+    } else {
+        commands.push(fn_call_with_params(RUN_GENERATED_TESTS, run_test_vars));
+    }
 
     let formatted_name = format!(
         "{}{}",
