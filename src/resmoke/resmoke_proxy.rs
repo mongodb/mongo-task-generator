@@ -4,6 +4,8 @@ use anyhow::Result;
 use serde::Deserialize;
 use tracing::{error, event, Level};
 
+use crate::evergreen::evg_config_utils::is_bazel_suite;
+
 use super::{external_cmd::run_command, resmoke_suite::ResmokeSuiteConfig};
 use std::collections::HashMap;
 
@@ -133,11 +135,11 @@ impl BazelConfigs {
     ///
     /// # Arguments
     ///
-    /// * `target` - Bazel resmoke test target, like //buildscripts/resmoke:core.
+    /// * `target` - Bazel resmoke test target, like "//buildscripts/resmoke:core".
     ///
     /// # Returns
     ///
-    /// The path the the generated suite config YAML, like bazel-out/buildscripts/resmoke/core_config.yml.
+    /// The path the the generated suite config YAML, like "bazel-out/buildscripts/resmoke/core_config.yml".
     pub fn get(&self, target: &str) -> &str {
         self.configs.get(&format!("{}_config", target)).unwrap()
     }
@@ -241,10 +243,6 @@ impl TestDiscovery for ResmokeProxy {
     fn get_multiversion_config(&self) -> Result<MultiversionConfig> {
         MultiversionConfig::from_resmoke(&self.resmoke_cmd, &self.resmoke_script)
     }
-}
-
-fn is_bazel_suite(suite: &str) -> bool {
-    suite.starts_with("//")
 }
 
 /// Multiversion configuration.

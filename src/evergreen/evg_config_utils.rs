@@ -363,12 +363,11 @@ impl EvgConfigUtils for EvgConfigUtilsImpl {
         let generated_task_name = remove_gen_suffix(&task.name);
 
         if let Some(vars) = optional_vars {
-            if let Some(ParamValue::String(suite_var)) = vars.get("suite") {
-                if suite_var.starts_with("//") {
-                    let (_, suite) = suite_var.rsplit_once(':').unwrap();
-                    suite
+            if let Some(ParamValue::String(suite)) = vars.get("suite") {
+                if is_bazel_suite(suite) {
+                    get_bazel_suite_name(suite)
                 } else {
-                    suite_var
+                    suite
                 }
             } else {
                 generated_task_name
@@ -413,13 +412,13 @@ impl EvgConfigUtils for EvgConfigUtilsImpl {
             get_func_vars_by_name(task, INITIALIZE_MULTIVERSION_TASKS)
         {
             let mut multiversion_generate_tasks = vec![];
-            for (suite_var, old_version) in multiversion_task_map {
-                let (suite_name, bazel_target) = if suite_var.starts_with("//") {
-                    let (_, suite) = suite_var.rsplit_once(':').unwrap();
-                    (suite.to_string(), Some(suite_var.clone()))
+            for (suite, old_version) in multiversion_task_map {
+                let (suite_name, bazel_target) = if is_bazel_suite(suite) {
+                    (get_bazel_suite_name(suite).to_string(), Some(suite.clone()))
                 } else {
-                    (suite_var.clone(), None)
+                    (suite.clone(), None)
                 };
+
                 if let ParamValue::String(value) = old_version {
                     multiversion_generate_tasks.push(MultiversionGenerateTaskConfig {
                         suite_name: suite_name,
@@ -856,6 +855,15 @@ fn get_resmoke_vars(task: &EvgTask) -> Option<&HashMap<String, ParamValue>> {
         return Some(generate_resmoke_tasks_vars);
     }
     return get_func_vars_by_name(task, RUN_RESMOKE_TESTS);
+}
+
+pub fn is_bazel_suite(suite: &str) -> bool {
+    suite.starts_with("//")
+}
+
+pub fn get_bazel_suite_name(target: &str) -> &str {
+    let (_, name) = target.rsplit_once(':').unwrap();
+    name
 }
 
 #[cfg(test)]
