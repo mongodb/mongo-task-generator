@@ -31,7 +31,6 @@ use evergreen_names::{
 use generate_sub_tasks_config::GenerateSubTasksConfig;
 use resmoke::{
     burn_in_proxy::BurnInProxy,
-    external_cmd::run_command,
     resmoke_proxy::{ResmokeProxy, TestDiscovery},
 };
 use services::config_extraction::{ConfigExtractionService, ConfigExtractionServiceImpl};
@@ -613,9 +612,6 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                 Some(build_variant),
                 Some(platform),
             )?;
-            // if task_def.name != "bazel_multiversion_sanity_check_gen" && task_def.name != "bazel_test_aggregation_secondary_reads_gen" {
-            //     return Ok(None);
-            // }
             Some(
                 self.gen_resmoke_service
                     .generate_resmoke_task(&params, build_variant)

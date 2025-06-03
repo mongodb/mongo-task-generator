@@ -77,25 +77,29 @@ impl ResmokeProxy {
 
 #[derive(Debug, Clone)]
 pub struct BazelConfigs {
+    /// Map of bazel resmoke config targets to their generated suite config YAMLs.
     configs: HashMap<String, String>,
 }
 
 impl BazelConfigs {
     pub fn new() -> Self {
-        // Builds all bazel-based resmoke configs
-        let cmd = [
+        // Ensure all the bazel-based resmoke configs are built
+        let build_cmd = [
             "bazel",
             "build",
             "--config",
             "local",
             "--build_tag_filters",
             "resmoke_config",
-            "//buildscripts/resmokeconfig/...",
+            "//...",
         ];
-        run_command(&cmd).unwrap();
+        let build_output = run_command(&build_cmd);
+        if let Err(_) = build_output {
+            panic!("Failed to build bazel-based resmoke configs.");
+        }
 
         // Queries all the bazel-based resmoke configs and their file paths
-        let cmd = [
+        let cquery_cmd = [
             "bazel",
             "cquery",
             "kind(resmoke_config, //...)",
@@ -104,9 +108,14 @@ impl BazelConfigs {
             "--starlark:expr",
             "' '.join([str(target.label)] + [f.path for f in target.files.to_list()])",
         ];
-        let cmd_output = run_command(&cmd).unwrap();
+        let query_output = run_command(&cquery_cmd);
+        if let Err(_) = query_output {
+            panic!("Failed to query bazel-based resmoke configs.");
+        }
+
         let mut configs = HashMap::new();
-        let config_pairs = cmd_output.split("\n").collect::<Vec<&str>>();
+        let query_str = query_output.unwrap();
+        let config_pairs = query_str.split("\n").collect::<Vec<&str>>();
         for config in config_pairs {
             let pair = config
                 .trim_start_matches("@@")
@@ -120,8 +129,17 @@ impl BazelConfigs {
         Self { configs }
     }
 
-    pub fn get(&self, suite: &str) -> &str {
-        self.configs.get(&format!("{}_config", suite)).unwrap()
+    /// Get the generated suite config for a bazel resmoke target.
+    ///
+    /// # Arguments
+    ///
+    /// * `target` - Bazel resmoke test target, like //buildscripts/resmoke:core.
+    ///
+    /// # Returns
+    ///
+    /// The path the the generated suite config YAML, like bazel-out/buildscripts/resmoke/core_config.yml.
+    pub fn get(&self, target: &str) -> &str {
+        self.configs.get(&format!("{}_config", target)).unwrap()
     }
 }
 
@@ -147,7 +165,7 @@ impl TestDiscovery for ResmokeProxy {
     ///
     /// A list of tests belonging to given suite.
     fn discover_tests(&self, suite_name: &str) -> Result<Vec<String>> {
-        let suite = if suite_name.starts_with("//") {
+        let suite_config = if is_bazel_suite(suite_name) {
             self.bazel_configs.get(suite_name)
         } else {
             suite_name
@@ -155,7 +173,7 @@ impl TestDiscovery for ResmokeProxy {
 
         let mut cmd = vec![&*self.resmoke_cmd];
         cmd.append(&mut self.resmoke_script.iter().map(|s| s.as_str()).collect());
-        cmd.append(&mut vec!["test-discovery", "--suite", suite]);
+        cmd.append(&mut vec!["test-discovery", "--suite", suite_config]);
 
         // When running in a patch build, we use the --skipTestsCoveredByMoreComplexSuites
         // flag to tell Resmoke to exclude any tests in the given suite that will
@@ -173,7 +191,7 @@ impl TestDiscovery for ResmokeProxy {
 
         event!(
             Level::INFO,
-            suite,
+            suite_config,
             duration_ms = start.elapsed().as_millis() as u64,
             "Resmoke test discovery finished"
         );
@@ -205,7 +223,7 @@ impl TestDiscovery for ResmokeProxy {
     ///
     /// Resmoke configuration for the given suite.
     fn get_suite_config(&self, suite_name: &str) -> Result<ResmokeSuiteConfig> {
-        let suite = if suite_name.starts_with("//") {
+        let suite_config = if is_bazel_suite(suite_name) {
             self.bazel_configs.get(suite_name)
         } else {
             suite_name
@@ -213,7 +231,7 @@ impl TestDiscovery for ResmokeProxy {
 
         let mut cmd = vec![&*self.resmoke_cmd];
         cmd.append(&mut self.resmoke_script.iter().map(|s| s.as_str()).collect());
-        cmd.append(&mut vec!["suiteconfig", "--suite", suite]);
+        cmd.append(&mut vec!["suiteconfig", "--suite", suite_config]);
         let cmd_output = run_command(&cmd).unwrap();
 
         Ok(ResmokeSuiteConfig::from_str(&cmd_output)?)
@@ -223,6 +241,10 @@ impl TestDiscovery for ResmokeProxy {
     fn get_multiversion_config(&self) -> Result<MultiversionConfig> {
         MultiversionConfig::from_resmoke(&self.resmoke_cmd, &self.resmoke_script)
     }
+}
+
+fn is_bazel_suite(suite: &str) -> bool {
+    suite.starts_with("//")
 }
 
 /// Multiversion configuration.

@@ -402,20 +402,6 @@ impl GenResmokeTaskServiceImpl {
     }
 }
 
-#[derive(Debug, Deserialize)]
-#[allow(dead_code)]
-struct ConfigFile {
-    /// Name of tests comprising suite.
-    pub selector: Selector,
-}
-
-#[derive(Debug, Deserialize)]
-#[allow(dead_code)]
-struct Selector {
-    /// Name of tests comprising suite.
-    pub roots: Vec<String>,
-}
-
 impl GenResmokeTaskServiceImpl {
     /// Split the given task into a number of sub-tasks for parallel execution.
     ///
@@ -932,31 +918,6 @@ fn resmoke_commands(
     commands
 }
 
-// fn bazel_resmoke_commands(
-//     bazel_test_vars: HashMap<String, ParamValue>,
-//     requires_multiversion_setup: bool,
-// ) -> Vec<EvgCommand> {
-//     let mut commands = vec![];
-//     commands.push(fn_call(GET_PROJECT_AND_ADD_TAG));
-//     commands.push(fn_call(DO_SETUP));
-
-//     if requires_multiversion_setup {
-//         commands.push(fn_call(CONFIGURE_EVG_API_CREDS));
-//         commands.push(fn_call(DO_MULTIVERSION_SETUP));
-//     }
-
-//     commands.push(fn_call(GET_ENGFLOW_CREDS));
-
-//     commands.push(fn_call_with_params(BAZEL_TEST, bazel_test_vars));
-//     commands.push(EvgCommand::BuiltIn(BuiltInCommand {
-//         command: EvgCommandSpec::AttachResults(AttachResultsParams {
-//             file_location: "report.json".to_string(),
-//         }),
-//         command_type: None,
-//         params_yaml: None,
-//     }));
-//     commands
-// }
 
 #[cfg(test)]
 mod tests {
