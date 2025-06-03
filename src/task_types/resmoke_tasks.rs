@@ -29,7 +29,7 @@ use crate::{
         },
     },
     evergreen_names::{
-        ADD_GIT_TAG, BAZEL_TEST, CONFIGURE_EVG_API_CREDS, DO_MULTIVERSION_SETUP, DO_SETUP,
+        ADD_GIT_TAG, RUN_GENERATED_TESTS_VIA_BAZEL, CONFIGURE_EVG_API_CREDS, DO_MULTIVERSION_SETUP, DO_SETUP,
         GEN_TASK_CONFIG_LOCATION, GET_PROJECT_WITH_NO_MODULES, MULTIVERSION_EXCLUDE_TAG,
         MULTIVERSION_EXCLUDE_TAGS_FILE, REQUIRE_MULTIVERSION_SETUP, RESMOKE_ARGS, RESMOKE_JOBS_MAX,
         RUN_GENERATED_TESTS, RUN_RESMOKE_TESTS, SUITE_NAME,
@@ -874,7 +874,7 @@ impl GenResmokeTaskService for GenResmokeTaskServiceImpl {
                     .as_ref(),
                 ),
             );
-            run_test_fn_name = BAZEL_TEST;
+            run_test_fn_name = RUN_GENERATED_TESTS_VIA_BAZEL;
         } else {
             run_test_fn_name = RUN_GENERATED_TESTS;
         }

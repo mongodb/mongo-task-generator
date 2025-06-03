@@ -12,11 +12,11 @@ use tracing::{event, Level};
 use crate::{
     evergreen::evg_config_utils::MultiversionGenerateTaskConfig,
     evergreen_names::{
-        ADD_GIT_TAG, BAZEL_TEST, CONFIGURE_EVG_API_CREDS, CONTINUE_ON_FAILURE,
-        DO_MULTIVERSION_SETUP, DO_SETUP, FUZZER_PARAMETERS, GEN_TASK_CONFIG_LOCATION,
-        GET_PROJECT_WITH_NO_MODULES, IDLE_TIMEOUT, MULTIVERSION_EXCLUDE_TAGS, NPM_COMMAND,
-        REQUIRE_MULTIVERSION_SETUP, RESMOKE_ARGS, RESMOKE_JOBS_MAX, RUN_FUZZER,
-        RUN_GENERATED_TESTS, SETUP_JSTESTFUZZ, SHOULD_SHUFFLE_TESTS, SUITE_NAME, TASK_NAME,
+        ADD_GIT_TAG, CONFIGURE_EVG_API_CREDS, CONTINUE_ON_FAILURE, DO_MULTIVERSION_SETUP, DO_SETUP,
+        FUZZER_PARAMETERS, GEN_TASK_CONFIG_LOCATION, GET_PROJECT_WITH_NO_MODULES, IDLE_TIMEOUT,
+        MULTIVERSION_EXCLUDE_TAGS, NPM_COMMAND, REQUIRE_MULTIVERSION_SETUP, RESMOKE_ARGS,
+        RESMOKE_JOBS_MAX, RUN_FUZZER, RUN_GENERATED_TESTS, RUN_GENERATED_TESTS_VIA_BAZEL,
+        SETUP_JSTESTFUZZ, SHOULD_SHUFFLE_TESTS, SUITE_NAME, TASK_NAME,
     },
     utils::task_name::name_generated_task,
 };
@@ -338,7 +338,7 @@ fn build_fuzzer_sub_task(
                 .as_ref(),
             ),
         );
-        commands.push(fn_call_with_params(BAZEL_TEST, run_test_vars));
+        commands.push(fn_call_with_params(RUN_GENERATED_TESTS_VIA_BAZEL, run_test_vars));
     } else {
         commands.push(fn_call_with_params(RUN_GENERATED_TESTS, run_test_vars));
     }
