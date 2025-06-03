@@ -10,9 +10,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use maplit::hashmap;
 use rand::{prelude::SliceRandom, thread_rng};
-use serde::Deserialize;
 use shrub_rs::models::{
-    builtin::{AttachResultsParams, BuiltInCommand, EvgCommandSpec},
     commands::{fn_call, fn_call_with_params, EvgCommand},
     params::ParamValue,
     task::{EvgTask, TaskDependency},
@@ -29,12 +27,12 @@ use crate::{
         },
     },
     evergreen_names::{
-        ADD_GIT_TAG, RUN_GENERATED_TESTS_VIA_BAZEL, CONFIGURE_EVG_API_CREDS, DO_MULTIVERSION_SETUP, DO_SETUP,
+        ADD_GIT_TAG, CONFIGURE_EVG_API_CREDS, DO_MULTIVERSION_SETUP, DO_SETUP,
         GEN_TASK_CONFIG_LOCATION, GET_PROJECT_WITH_NO_MODULES, MULTIVERSION_EXCLUDE_TAG,
         MULTIVERSION_EXCLUDE_TAGS_FILE, REQUIRE_MULTIVERSION_SETUP, RESMOKE_ARGS, RESMOKE_JOBS_MAX,
-        RUN_GENERATED_TESTS, RUN_RESMOKE_TESTS, SUITE_NAME,
+        RUN_GENERATED_TESTS, RUN_GENERATED_TESTS_VIA_BAZEL, SUITE_NAME,
     },
-    resmoke::{external_cmd::run_command, resmoke_proxy::TestDiscovery},
+    resmoke::resmoke_proxy::TestDiscovery,
     utils::{fs_service::FsService, task_name::name_generated_task},
     SubtaskLimits, REQUIRED_PREFIX,
 };
@@ -86,7 +84,6 @@ pub struct ResmokeGenParams {
     pub gen_task_suffix: Option<String>,
     /// Number of sub-tasks requested in the task's Evergreen YAML definition.
     pub num_tasks: Option<usize>,
-
 }
 
 impl ResmokeGenParams {
@@ -917,7 +914,6 @@ fn resmoke_commands(
     commands.push(fn_call_with_params(run_test_fn_name, run_test_vars));
     commands
 }
-
 
 #[cfg(test)]
 mod tests {

@@ -338,7 +338,10 @@ fn build_fuzzer_sub_task(
                 .as_ref(),
             ),
         );
-        commands.push(fn_call_with_params(RUN_GENERATED_TESTS_VIA_BAZEL, run_test_vars));
+        commands.push(fn_call_with_params(
+            RUN_GENERATED_TESTS_VIA_BAZEL,
+            run_test_vars,
+        ));
     } else {
         commands.push(fn_call_with_params(RUN_GENERATED_TESTS, run_test_vars));
     }
