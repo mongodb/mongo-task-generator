@@ -17,7 +17,8 @@ pub const SETUP_JSTESTFUZZ: &str = "setup jstestfuzz";
 pub const RUN_FUZZER: &str = "run jstestfuzz";
 /// Function to run generated tasks.
 pub const RUN_GENERATED_TESTS: &str = "run generated tests";
-pub const BAZEL_TEST: &str = "run generated tests via bazel";
+/// Function to run generated tasks via 'bazel test'.
+pub const RUN_GENERATED_TESTS_VIA_BAZEL: &str = "run generated tests via bazel";
 
 // Function for multi-version tests.
 /// Function to do setup for multi-version testing.

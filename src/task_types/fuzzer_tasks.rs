@@ -286,7 +286,7 @@ fn build_fuzzer_sub_task(
     );
 
     let mut commands = vec![];
-    if params.is_multiversion() || params.is_bazel() {
+    if params.is_multiversion() {
         commands.extend(vec![
             fn_call(GET_PROJECT_WITH_NO_MODULES),
             fn_call(ADD_GIT_TAG),
