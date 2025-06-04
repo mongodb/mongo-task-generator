@@ -4,7 +4,7 @@
 //! use that information to divide the tests into sub-suites that can be run in parallel.
 //!
 //! Each task will contain the generated sub-suites.
-use std::{cmp::min, collections::HashMap, sync::Arc};
+use std::{cmp::min, collections::HashMap, path::Path, sync::Arc};
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -363,6 +363,9 @@ pub struct GenResmokeTaskServiceImpl {
     config: GenResmokeConfig,
 
     subtask_limits: SubtaskLimits,
+
+    /// Directory to place generated configuration files.
+    pub target_directory: String,
 }
 
 impl GenResmokeTaskServiceImpl {
@@ -386,6 +389,7 @@ impl GenResmokeTaskServiceImpl {
         fs_service: Arc<dyn FsService>,
         config: GenResmokeConfig,
         subtask_limits: SubtaskLimits,
+        target_directory: String,
     ) -> Self {
         Self {
             task_history_service,
@@ -395,6 +399,7 @@ impl GenResmokeTaskServiceImpl {
             fs_service,
             config,
             subtask_limits,
+            target_directory,
         }
     }
 }
@@ -831,32 +836,19 @@ impl GenResmokeTaskService for GenResmokeTaskServiceImpl {
             );
             run_test_vars.insert("compiling_for_test".to_string(), ParamValue::from(true));
 
-            let mut bazel_args: Vec<String> = run_test_vars
-                .get("resmoke_args")
-                .unwrap()
-                .to_string()
-                .split_whitespace()
-                .filter(|s| !s.starts_with("--originSuite"))
-                .map(|s| format!("--test_arg={}", s))
-                .collect();
-            run_test_vars.remove("resmoke_args");
-
-            bazel_args.push(format!(
-                "--test_arg=--suites={}/{}.yml",
-                "generated_resmoke_config", formatted_name,
-            )); // TODO needs to be --target-directory, not hardcoded generate_resmoke_config
-
-            run_test_vars.insert(
-                "bazel_args".to_string(),
-                ParamValue::from(
+            replace_resmoke_args_with_bazel_args(
+                &mut run_test_vars,
+                vec![
+                    params.bazel_args.clone().unwrap_or("".to_string()),
                     format!(
-                        "{} {}",
-                        bazel_args.join(" "),
-                        params.bazel_args.clone().unwrap_or("".to_string())
-                    )
-                    .as_ref(),
-                ),
+                        "--test_arg=--suites={}/{}.yml",
+                        self.target_directory, formatted_name,
+                    ),
+                ]
+                .join(" ")
+                .as_str(),
             );
+
             run_test_fn_name = RUN_GENERATED_TESTS_VIA_BAZEL;
         } else {
             run_test_fn_name = RUN_GENERATED_TESTS;
@@ -879,6 +871,26 @@ impl GenResmokeTaskService for GenResmokeTaskServiceImpl {
             use_xlarge_distro: params.use_xlarge_distro,
         }
     }
+}
+
+/// Replaces a `resmoke_args` ParamValue with an equivalent `bazel_args` ParamValue.
+pub fn replace_resmoke_args_with_bazel_args(
+    run_test_vars: &mut HashMap<String, ParamValue>,
+    bazel_args: &str,
+) {
+    let converted_args: Vec<String> = run_test_vars
+        .get("resmoke_args")
+        .unwrap()
+        .to_string()
+        .split_whitespace()
+        .filter(|s| !s.starts_with("--originSuite"))
+        .map(|s| format!("--test_arg={}", s))
+        .collect();
+    run_test_vars.remove("resmoke_args");
+    run_test_vars.insert(
+        "bazel_args".to_string(),
+        ParamValue::from(format!("{} {}", converted_args.join(" "), bazel_args).as_ref()),
+    );
 }
 
 /// Create a list of commands to run a resmoke task in evergreen.

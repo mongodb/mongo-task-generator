@@ -18,6 +18,7 @@ use crate::{
         RESMOKE_JOBS_MAX, RUN_FUZZER, RUN_GENERATED_TESTS, RUN_GENERATED_TESTS_VIA_BAZEL,
         SETUP_JSTESTFUZZ, SHOULD_SHUFFLE_TESTS, SUITE_NAME, TASK_NAME,
     },
+    task_types::resmoke_tasks::replace_resmoke_args_with_bazel_args,
     utils::task_name::name_generated_task,
 };
 
@@ -318,26 +319,11 @@ fn build_fuzzer_sub_task(
         run_test_vars.insert("targets".to_string(), ParamValue::from(target.as_ref()));
         run_test_vars.insert("compiling_for_test".to_string(), ParamValue::from(true));
 
-        let bazel_args: Vec<String> = run_test_vars
-            .get("resmoke_args")
-            .unwrap()
-            .to_string()
-            .split_whitespace()
-            .map(|s| format!("--test_arg={}", s))
-            .collect();
-        run_test_vars.remove("resmoke_args");
-
-        run_test_vars.insert(
-            "bazel_args".to_string(),
-            ParamValue::from(
-                format!(
-                    "{} {}",
-                    bazel_args.join(" "),
-                    params.bazel_args.clone().unwrap_or("".to_string())
-                )
-                .as_ref(),
-            ),
+        replace_resmoke_args_with_bazel_args(
+            &mut run_test_vars,
+            &params.bazel_args.clone().unwrap_or("".to_string()),
         );
+
         commands.push(fn_call_with_params(
             RUN_GENERATED_TESTS_VIA_BAZEL,
             run_test_vars,

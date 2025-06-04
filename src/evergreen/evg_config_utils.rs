@@ -421,7 +421,7 @@ impl EvgConfigUtils for EvgConfigUtilsImpl {
 
                 if let ParamValue::String(value) = old_version {
                     multiversion_generate_tasks.push(MultiversionGenerateTaskConfig {
-                        suite_name: suite_name,
+                        suite_name,
                         old_version: value.clone(),
                         bazel_target,
                     });
@@ -857,10 +857,28 @@ fn get_resmoke_vars(task: &EvgTask) -> Option<&HashMap<String, ParamValue>> {
     return get_func_vars_by_name(task, RUN_RESMOKE_TESTS);
 }
 
+/// Checks if a Resmoke suite is a bazel target.
+///
+/// # Arguments
+///
+/// * `suite` - A suite name from Evergreen YAML.
+///
+/// # Returns
+///
+/// True if the suite looks like a bazel target (e.g. starts with `//`).
 pub fn is_bazel_suite(suite: &str) -> bool {
     suite.starts_with("//")
 }
 
+/// Get a suite name from a bazel target.
+///
+/// # Arguments
+///
+/// * `target` - A bazel target.
+///
+/// # Returns
+///
+/// A useful suite name, just the name of the target without the bazel package prefix.
 pub fn get_bazel_suite_name(target: &str) -> &str {
     let (_, name) = target.rsplit_once(':').unwrap();
     name

@@ -240,6 +240,11 @@ impl Dependencies {
             fs_service,
             gen_resmoke_config,
             execution_config.subtask_limits,
+            execution_config
+                .target_directory
+                .to_str()
+                .unwrap_or("")
+                .to_string(),
         ));
         let gen_task_service = Arc::new(GenerateTasksServiceImpl::new(
             evg_config_service,
