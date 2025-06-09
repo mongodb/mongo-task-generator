@@ -1453,10 +1453,12 @@ mod tests {
             MultiversionGenerateTaskConfig {
                 suite_name: "mv_suite1_last_continuous".to_string(),
                 old_version: "last-continuous".to_string(),
+                bazel_target: None,
             },
             MultiversionGenerateTaskConfig {
                 suite_name: "mv_suite1_last_lts".to_string(),
                 old_version: "last-lts".to_string(),
+                bazel_target: None,
             },
         ];
         assert!(multiversion_generate_tasks

@@ -136,7 +136,7 @@ impl TestDiscovery for ResmokeProxy {
     ///
     /// A list of tests belonging to given suite.
     fn discover_tests(&self, suite_name: &str) -> Result<Vec<String>> {
-        let suite_config = if is_bazel_suite(suite_name) { 
+        let suite_config = if is_bazel_suite(suite_name) {
             self.bazel_suite_configs.get(suite_name)
         } else {
             suite_name

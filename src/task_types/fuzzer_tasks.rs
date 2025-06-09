@@ -547,4 +547,32 @@ mod tests {
             "archive_dist_test_debug"
         )
     }
+
+    #[test]
+    fn test_build_bazel_fuzzer_sub_task() {
+        let display_name = "my_task";
+        let sub_task_index = 42;
+        let params = FuzzerGenTaskParams {
+            task_name: "some task".to_string(),
+            dependencies: vec!["archive_dist_test_debug".to_string()],
+            bazel_target: Some("//my/bazel:target".to_string()),
+            ..Default::default()
+        };
+
+        let sub_task = build_fuzzer_sub_task(display_name, sub_task_index, &params, None, None);
+
+        assert_eq!(sub_task.name, "my_task_42");
+        assert!(sub_task.commands.is_some());
+        let commands = sub_task.commands.unwrap();
+        assert_eq!(get_evg_fn_name(&commands[0]), Some("do setup"));
+        assert_eq!(get_evg_fn_name(&commands[3]), Some("run jstestfuzz"));
+        assert_eq!(
+            get_evg_fn_name(&commands[4]),
+            Some("run generated tests via bazel")
+        );
+        assert_eq!(
+            sub_task.depends_on.unwrap()[0].name,
+            "archive_dist_test_debug"
+        )
+    }
 }
