@@ -829,7 +829,6 @@ impl GenResmokeTaskService for GenResmokeTaskServiceImpl {
         let mut run_test_vars =
             params.build_run_test_vars(&suite_file, sub_suite, &exclude_tags, suite_override);
 
-        
         let run_test_fn_name = if params.is_bazel() {
             run_test_vars.insert(
                 "targets".to_string(),
@@ -839,11 +838,13 @@ impl GenResmokeTaskService for GenResmokeTaskServiceImpl {
 
             replace_resmoke_args_with_bazel_args(
                 &mut run_test_vars,
-                [params.bazel_args.clone().unwrap_or("".to_string()),
+                [
+                    params.bazel_args.clone().unwrap_or("".to_string()),
                     format!(
                         "--test_arg=--suites={}/{}.yml",
                         self.target_directory, formatted_name,
-                    )]
+                    ),
+                ]
                 .join(" ")
                 .as_str(),
             );

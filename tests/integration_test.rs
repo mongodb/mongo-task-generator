@@ -23,6 +23,8 @@ fn test_end2end_execution() {
         "--use-task-split-fallback",
         "--generate-sub-tasks-config",
         "tests/data/sample_generate_subtasks_config.yml",
+        "--bazel-suite-configs",
+        "tests/data/sample_bazel_suite_configs.yml",
     ])
     .assert()
     .success();
