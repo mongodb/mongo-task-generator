@@ -1,5 +1,5 @@
 # Changelog
-## 3.1.0 - 2025-06-10
+## 3.3.0 - 2025-06-10
 * Generate tasks for suites that run via bazel
 
 ## 3.0.1 - 2025-05-22
