@@ -51,6 +51,8 @@ use tokio::{runtime::Handle, task::JoinHandle, time};
 use tracing::{event, Level};
 use utils::fs_service::FsServiceImpl;
 
+use crate::resmoke::resmoke_proxy::BazelConfigs;
+
 mod evergreen;
 mod evergreen_names;
 mod generate_sub_tasks_config;
@@ -150,6 +152,7 @@ pub struct ExecutionConfiguration<'a> {
     /// S3 bucket to get test stats from.
     pub s3_test_stats_bucket: &'a str,
     pub subtask_limits: SubtaskLimits,
+    pub bazel_suite_configs: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone)]
@@ -193,10 +196,15 @@ impl Dependencies {
         s3_client: aws_sdk_s3::Client,
     ) -> Result<Self> {
         let fs_service = Arc::new(FsServiceImpl::new());
+        let bazel_suite_configs = match execution_config.bazel_suite_configs {
+            Some(path) => BazelConfigs::from_yaml_file(&path).unwrap_or_default(),
+            None => BazelConfigs::default(),
+        };
         let discovery_service = Arc::new(ResmokeProxy::new(
             execution_config.resmoke_command,
             execution_config.skip_covered_tests,
             execution_config.include_fully_disabled_feature_tests,
+            bazel_suite_configs,
         ));
         let multiversion_service = Arc::new(MultiversionServiceImpl::new(
             discovery_service.get_multiversion_config()?,

@@ -152,6 +152,10 @@ struct Args {
     // Maximum number of subtasks that can be generated for tasks
     #[clap(long, default_value = DEFAULT_MAX_SUBTASKS_PER_TASK)]
     max_subtasks_per_task: usize,
+
+    /// File containing map of bazel-resmoke configs to their location
+    #[clap(long, value_parser)]
+    bazel_suite_configs: Option<PathBuf>,
 }
 
 /// Configure logging for the command execution.
@@ -175,6 +179,7 @@ async fn main() {
         &evg_expansions.project,
         gen_sub_tasks_config_file.as_ref(),
     );
+
     let execution_config = ExecutionConfiguration {
         project_info: &project_info,
         evg_auth_file: &expand_path(&args.evg_auth_file),
@@ -194,6 +199,7 @@ async fn main() {
             default_subtasks_per_task: args.default_subtasks_per_task,
             large_required_task_runtime_threshold: args.large_required_task_runtime_threshold,
         },
+        bazel_suite_configs: args.bazel_suite_configs.as_ref().map(|p| expand_path(p)),
     };
     let s3_client = build_s3_client().await;
     let deps = Dependencies::new(execution_config, s3_client).unwrap();

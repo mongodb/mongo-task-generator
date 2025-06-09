@@ -48,7 +48,7 @@ pub struct ResmokeProxy {
     skip_covered_tests: bool,
     /// True if test discovery should include tests that are tagged with fully disabled features.
     include_fully_disabled_feature_tests: bool,
-    bazel_configs: BazelConfigs,
+    bazel_suite_configs: BazelConfigs,
 }
 
 impl ResmokeProxy {
@@ -59,10 +59,12 @@ impl ResmokeProxy {
     /// * `resmoke_cmd` - Command to invoke resmoke.
     /// * `skip_covered_tests` - Whether the generator should skip tests run in more complex suites.
     /// * `include_fully_disabled_feature_tests` - If the generator should include tests that are tagged with fully disabled features.
+    /// * `bazel_suite_configs` - Optional bazel suite configurations.
     pub fn new(
         resmoke_cmd: &str,
         skip_covered_tests: bool,
         include_fully_disabled_feature_tests: bool,
+        bazel_suite_configs: BazelConfigs,
     ) -> Self {
         let cmd_parts: Vec<_> = resmoke_cmd.split(' ').collect();
         let cmd = cmd_parts[0];
@@ -72,63 +74,30 @@ impl ResmokeProxy {
             resmoke_script: script,
             skip_covered_tests,
             include_fully_disabled_feature_tests,
-            bazel_configs: BazelConfigs::new(),
+            bazel_suite_configs,
         }
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct BazelConfigs {
     /// Map of bazel resmoke config targets to their generated suite config YAMLs.
     configs: HashMap<String, String>,
 }
 
 impl BazelConfigs {
-    pub fn new() -> Self {
-        // Ensure all the bazel-based resmoke configs are built
-        // let build_cmd = [
-        //     "bazel",
-        //     "build",
-        //     "--config",
-        //     "local",
-        //     "--build_tag_filters",
-        //     "resmoke_config",
-        //     "//...",
-        // ];
-        // let build_output = run_command(&build_cmd);
-        // if let Err(_) = build_output {
-        //     panic!("Failed to build bazel-based resmoke configs.");
-        // }
-
-        // Queries all the bazel-based resmoke configs and their file paths
-        let cquery_cmd = [
-            "bazel",
-            "cquery",
-            "kind(resmoke_config, //...)",
-            "--output",
-            "starlark",
-            "--starlark:expr",
-            "' '.join([str(target.label)] + [f.path for f in target.files.to_list()])",
-        ];
-        let query_output = run_command(&cquery_cmd);
-        if let Err(_) = query_output {
-            panic!("Failed to query bazel-based resmoke configs.");
+    pub fn from_yaml_file(path: &Path) -> Result<Self> {
+        let contents = std::fs::read_to_string(path)?;
+        let configs: Result<HashMap<String, String>, serde_yaml::Error> =
+            serde_yaml::from_str(&contents);
+        if configs.is_err() {
+            error!(
+                file = path.display().to_string(),
+                contents = &contents,
+                "Failed to parse bazel configs from yaml file",
+            );
         }
-
-        let mut configs = HashMap::new();
-        let query_str = query_output.unwrap();
-        let config_pairs = query_str.split("\n").collect::<Vec<&str>>();
-        for config in config_pairs {
-            let pair = config
-                .trim_start_matches("@@")
-                .split_whitespace()
-                .collect::<Vec<&str>>();
-            if pair.len() != 2 {
-                continue;
-            }
-            configs.insert(pair[0].to_string(), pair[1].to_string());
-        }
-        Self { configs }
+        Ok(Self { configs: configs? })
     }
 
     /// Get the generated suite config for a bazel resmoke target.
@@ -167,8 +136,8 @@ impl TestDiscovery for ResmokeProxy {
     ///
     /// A list of tests belonging to given suite.
     fn discover_tests(&self, suite_name: &str) -> Result<Vec<String>> {
-        let suite_config = if is_bazel_suite(suite_name) {
-            self.bazel_configs.get(suite_name)
+        let suite_config = if is_bazel_suite(suite_name) { 
+            self.bazel_suite_configs.get(suite_name)
         } else {
             suite_name
         };
@@ -226,7 +195,7 @@ impl TestDiscovery for ResmokeProxy {
     /// Resmoke configuration for the given suite.
     fn get_suite_config(&self, suite_name: &str) -> Result<ResmokeSuiteConfig> {
         let suite_config = if is_bazel_suite(suite_name) {
-            self.bazel_configs.get(suite_name)
+            self.bazel_suite_configs.get(suite_name)
         } else {
             suite_name
         };
