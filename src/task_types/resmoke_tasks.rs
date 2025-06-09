@@ -30,7 +30,7 @@ use crate::{
         ADD_GIT_TAG, CONFIGURE_EVG_API_CREDS, DO_MULTIVERSION_SETUP, DO_SETUP,
         GEN_TASK_CONFIG_LOCATION, GET_PROJECT_WITH_NO_MODULES, MULTIVERSION_EXCLUDE_TAG,
         MULTIVERSION_EXCLUDE_TAGS_FILE, REQUIRE_MULTIVERSION_SETUP, RESMOKE_ARGS, RESMOKE_JOBS_MAX,
-        RUN_GENERATED_TESTS, SUITE_NAME,
+        RUN_GENERATED_TESTS, RUN_GENERATED_TESTS_VIA_BAZEL, SUITE_NAME,
     },
     resmoke::resmoke_proxy::TestDiscovery,
     utils::{fs_service::FsService, task_name::name_generated_task},
@@ -52,6 +52,8 @@ pub struct ResmokeGenParams {
     pub multiversion_generate_tasks: Option<Vec<MultiversionGenerateTaskConfig>>,
     /// Name of suite being generated.
     pub suite_name: String,
+    /// The bazel test target, if it is a bazel-based resmoke task.
+    pub bazel_target: Option<String>,
     /// Should the generated tasks run on a 'large' distro.
     pub use_large_distro: bool,
     /// Should the generated tasks run on a 'xlarge' distro.
@@ -64,6 +66,8 @@ pub struct ResmokeGenParams {
     pub repeat_suites: Option<u64>,
     /// Arguments that should be passed to resmoke.
     pub resmoke_args: String,
+    /// Arguments that should be passed to bazel.
+    pub bazel_args: Option<String>,
     /// Number of jobs to limit resmoke to.
     pub resmoke_jobs_max: Option<u64>,
     /// Location where generated task configuration will be stored in S3.
@@ -83,6 +87,15 @@ pub struct ResmokeGenParams {
 }
 
 impl ResmokeGenParams {
+    fn is_bazel(&self) -> bool {
+        self.bazel_target.is_some()
+            || self
+                .multiversion_generate_tasks
+                .as_ref()
+                .map(|tasks| tasks.iter().any(|t| t.bazel_target.is_some()))
+                .unwrap_or(false)
+    }
+
     /// Build the vars to send to the tasks in the 'run tests' function.
     ///
     /// # Arguments
@@ -215,6 +228,9 @@ pub struct SubSuite {
 
     /// Platform of build_variant the sub-suite is for.
     pub platform: Option<String>,
+
+    /// The bazel test target, if it is a bazel-based resmoke task.
+    pub bazel_target: Option<String>,
 }
 
 /// Information needed to generate resmoke configuration files for the generated task.
@@ -347,6 +363,9 @@ pub struct GenResmokeTaskServiceImpl {
     config: GenResmokeConfig,
 
     subtask_limits: SubtaskLimits,
+
+    /// Directory to place generated configuration files.
+    pub target_directory: String,
 }
 
 impl GenResmokeTaskServiceImpl {
@@ -362,6 +381,7 @@ impl GenResmokeTaskServiceImpl {
     /// # Returns
     ///
     /// New instance of GenResmokeTaskService.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         task_history_service: Arc<dyn TaskHistoryService>,
         test_discovery: Arc<dyn TestDiscovery>,
@@ -370,6 +390,7 @@ impl GenResmokeTaskServiceImpl {
         fs_service: Arc<dyn FsService>,
         config: GenResmokeConfig,
         subtask_limits: SubtaskLimits,
+        target_directory: String,
     ) -> Self {
         Self {
             task_history_service,
@@ -379,6 +400,7 @@ impl GenResmokeTaskServiceImpl {
             fs_service,
             config,
             subtask_limits,
+            target_directory,
         }
     }
 }
@@ -480,6 +502,7 @@ impl GenResmokeTaskServiceImpl {
                 mv_exclude_tags: multiversion_tags.clone(),
                 is_enterprise: params.is_enterprise,
                 platform: params.platform.clone(),
+                bazel_target: params.bazel_target.clone(),
             });
         }
 
@@ -500,10 +523,15 @@ impl GenResmokeTaskServiceImpl {
         params: &ResmokeGenParams,
         multiversion_name: Option<&str>,
     ) -> Result<Vec<String>> {
-        let suite_name = multiversion_name.unwrap_or(&params.suite_name);
+        let suite_name = if params.is_bazel() {
+            params.bazel_target.clone().unwrap()
+        } else {
+            multiversion_name.unwrap_or(&params.suite_name).to_string()
+        };
+
         let mut test_list: Vec<String> = self
             .test_discovery
-            .discover_tests(suite_name)?
+            .discover_tests(&suite_name)?
             .into_iter()
             .filter(|s| self.fs_service.file_exists(s))
             .collect();
@@ -569,6 +597,7 @@ impl GenResmokeTaskServiceImpl {
                 mv_exclude_tags: multiversion_tags.clone(),
                 is_enterprise: params.is_enterprise,
                 platform: params.platform.clone(),
+                bazel_target: params.bazel_target.clone(),
             });
         }
         Ok(sub_suites)
@@ -591,9 +620,11 @@ impl GenResmokeTaskServiceImpl {
     ) -> Result<Vec<SubSuite>> {
         let mut mv_sub_suites = vec![];
         for multiversion_task in params.multiversion_generate_tasks.as_ref().unwrap() {
+            let mut params_for_multiversion = params.clone();
+            params_for_multiversion.bazel_target = multiversion_task.bazel_target.clone();
             let suites = self
                 .create_tasks(
-                    params,
+                    &params_for_multiversion,
                     build_variant,
                     Some(&multiversion_task.suite_name.clone()),
                     Some(multiversion_task.old_version.clone()),
@@ -789,22 +820,50 @@ impl GenResmokeTaskService for GenResmokeTaskServiceImpl {
             params.platform.as_deref(),
         );
 
-        let run_test_vars =
-            params.build_run_test_vars(&suite_file, sub_suite, &exclude_tags, suite_override);
-
         let formatted_name = format!(
             "{}{}",
             suite_file,
             params.gen_task_suffix.as_deref().unwrap_or("")
         );
+
+        let mut run_test_vars =
+            params.build_run_test_vars(&suite_file, sub_suite, &exclude_tags, suite_override);
+
+        let run_test_fn_name = if params.is_bazel() {
+            run_test_vars.insert(
+                "targets".to_string(),
+                ParamValue::from(sub_suite.bazel_target.clone().unwrap().as_str()),
+            );
+            run_test_vars.insert("compiling_for_test".to_string(), ParamValue::from(true));
+
+            replace_resmoke_args_with_bazel_args(
+                &mut run_test_vars,
+                [
+                    params.bazel_args.clone().unwrap_or("".to_string()),
+                    format!(
+                        "--test_arg=--suites={}/{}.yml",
+                        self.target_directory, formatted_name,
+                    ),
+                ]
+                .join(" ")
+                .as_str(),
+            );
+
+            RUN_GENERATED_TESTS_VIA_BAZEL
+        } else {
+            RUN_GENERATED_TESTS
+        };
+
+        let commands = Some(resmoke_commands(
+            run_test_fn_name,
+            run_test_vars,
+            params.require_multiversion_setup,
+        ));
+
         GeneratedSubTask {
             evg_task: EvgTask {
                 name: formatted_name,
-                commands: Some(resmoke_commands(
-                    RUN_GENERATED_TESTS,
-                    run_test_vars,
-                    params.require_multiversion_setup,
-                )),
+                commands,
                 depends_on: params.get_dependencies(),
                 ..Default::default()
             },
@@ -812,6 +871,26 @@ impl GenResmokeTaskService for GenResmokeTaskServiceImpl {
             use_xlarge_distro: params.use_xlarge_distro,
         }
     }
+}
+
+/// Replaces a `resmoke_args` ParamValue with an equivalent `bazel_args` ParamValue.
+pub fn replace_resmoke_args_with_bazel_args(
+    run_test_vars: &mut HashMap<String, ParamValue>,
+    bazel_args: &str,
+) {
+    let converted_args: Vec<String> = run_test_vars
+        .get("resmoke_args")
+        .unwrap()
+        .to_string()
+        .split_whitespace()
+        .filter(|s| !s.starts_with("--originSuite"))
+        .map(|s| format!("--test_arg={}", s))
+        .collect();
+    run_test_vars.remove("resmoke_args");
+    run_test_vars.insert(
+        "bazel_args".to_string(),
+        ParamValue::from(format!("{} {}", converted_args.join(" "), bazel_args).as_ref()),
+    );
 }
 
 /// Create a list of commands to run a resmoke task in evergreen.
@@ -1162,6 +1241,7 @@ mod tests {
                 default_subtasks_per_task: 5,
                 max_subtasks_per_task: 10,
             },
+            "generated_resmoke_config".to_string(),
         )
     }
 
@@ -1482,10 +1562,12 @@ mod tests {
                 MultiversionGenerateTaskConfig {
                     suite_name: "suite1_last_lts".to_string(),
                     old_version: "last-lts".to_string(),
+                    bazel_target: None,
                 },
                 MultiversionGenerateTaskConfig {
                     suite_name: "suite1_last_continuous".to_string(),
                     old_version: "last-continuous".to_string(),
+                    bazel_target: None,
                 },
             ]),
             num_tasks: Some(1),
@@ -1730,10 +1812,12 @@ mod tests {
             MultiversionGenerateTaskConfig {
                 suite_name: "suite1_last_lts".to_string(),
                 old_version: "last-lts".to_string(),
+                bazel_target: None,
             },
             MultiversionGenerateTaskConfig {
                 suite_name: "suite1_last_continuous".to_string(),
                 old_version: "last-continuous".to_string(),
+                bazel_target: None,
             },
         ];
         let params = ResmokeGenParams {
@@ -1862,5 +1946,57 @@ mod tests {
     fn test_get_min_index(#[case] running_runtimes: Vec<f64>, #[case] expected_min_idx: usize) {
         let min_idx = get_min_index(&running_runtimes);
         assert_eq!(min_idx, expected_min_idx);
+    }
+
+    #[tokio::test]
+    async fn test_generate_bazel_resmoke_tasks() {
+        let num_tasks = 3;
+        let test_list: Vec<String> = (0..6)
+            .into_iter()
+            .map(|i| format!("test_{}.js", i))
+            .collect();
+        let task_history = TaskRuntimeHistory {
+            task_name: "my_task".to_string(),
+            test_map: hashmap! {
+                "test_0".to_string() => build_mock_test_runtime("test_0.js", 100.0),
+                "test_1".to_string() => build_mock_test_runtime("test_1.js", 50.0),
+                "test_2".to_string() => build_mock_test_runtime("test_2.js", 50.0),
+                "test_3".to_string() => build_mock_test_runtime("test_3.js", 34.0),
+                "test_4".to_string() => build_mock_test_runtime("test_4.js", 34.0),
+                "test_5".to_string() => build_mock_test_runtime("test_5.js", 34.0),
+            },
+        };
+        let gen_resmoke_service = build_mocked_service(test_list, task_history.clone());
+        let params = ResmokeGenParams {
+            task_name: "my_task".to_string(),
+            require_multiversion_generate_tasks: false,
+            num_tasks: Some(num_tasks),
+            bazel_target: Some("//some:my_task".to_string()),
+            ..Default::default()
+        };
+
+        let suite = gen_resmoke_service
+            .generate_resmoke_task(
+                &params,
+                &BuildVariant {
+                    display_name: Some("build-variant".to_string()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(suite.display_name(), "my_task".to_string());
+        assert_eq!(suite.sub_tasks().len(), num_tasks);
+
+        for sub_task in suite.sub_tasks() {
+            assert!(sub_task.evg_task.commands.is_some());
+            let commands = sub_task.evg_task.commands.unwrap();
+            assert_eq!(get_evg_fn_name(&commands[0]), Some("do setup"));
+            assert_eq!(
+                get_evg_fn_name(&commands[2]),
+                Some("run generated tests via bazel")
+            );
+        }
     }
 }

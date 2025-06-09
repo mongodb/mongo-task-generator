@@ -117,14 +117,27 @@ Options:
           Disable evergreen task-history queries and use task splitting fallback
       --resmoke-command <RESMOKE_COMMAND>
           Command to invoke resmoke [default: "python buildscripts/resmoke.py"]
+      --include-fully-disabled-feature-tests
+          If the generator should include tests that are tagged with fully disabled features
       --generate-sub-tasks-config <GENERATE_SUB_TASKS_CONFIG>
           File containing configuration for generating sub-tasks
       --burn-in
           Generate burn_in related tasks
       --burn-in-tests-command <BURN_IN_TESTS_COMMAND>
           Command to invoke burn_in_tests [default: "python buildscripts/burn_in_tests.py run"]
-      --s3-test-stats-bucket <S3_TEST_STATS_BUCKETT>
+      --s3-test-stats-bucket <S3_TEST_STATS_BUCKET>
           S3 bucket to get test stats from [default: mongo-test-stats]
+      --test-runtime-per-required-subtask <TEST_RUNTIME_PER_REQUIRED_SUBTASK>
+          [default: 3600]
+      --large-required-task-runtime-threshold <LARGE_REQUIRED_TASK_RUNTIME_THRESHOLD>
+          [default: 7200]
+      --default-subtasks-per-task <DEFAULT_SUBTASKS_PER_TASK>
+          [default: 5]
+      --max-subtasks-per-task <MAX_SUBTASKS_PER_TASK>
+          [default: 10]
+      --bazel-suite-configs <BAZEL_SUITE_CONFIGS>
+          YAML file mapping mapping bazel target names of suite configs to their file location location
+      
   -h, --help
           Print help
 ```
