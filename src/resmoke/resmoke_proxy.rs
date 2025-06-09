@@ -86,19 +86,19 @@ pub struct BazelConfigs {
 impl BazelConfigs {
     pub fn new() -> Self {
         // Ensure all the bazel-based resmoke configs are built
-        let build_cmd = [
-            "bazel",
-            "build",
-            "--config",
-            "local",
-            "--build_tag_filters",
-            "resmoke_config",
-            "//...",
-        ];
-        let build_output = run_command(&build_cmd);
-        if let Err(_) = build_output {
-            panic!("Failed to build bazel-based resmoke configs.");
-        }
+        // let build_cmd = [
+        //     "bazel",
+        //     "build",
+        //     "--config",
+        //     "local",
+        //     "--build_tag_filters",
+        //     "resmoke_config",
+        //     "//...",
+        // ];
+        // let build_output = run_command(&build_cmd);
+        // if let Err(_) = build_output {
+        //     panic!("Failed to build bazel-based resmoke configs.");
+        // }
 
         // Queries all the bazel-based resmoke configs and their file paths
         let cquery_cmd = [
