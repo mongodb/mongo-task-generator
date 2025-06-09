@@ -153,7 +153,7 @@ struct Args {
     #[clap(long, default_value = DEFAULT_MAX_SUBTASKS_PER_TASK)]
     max_subtasks_per_task: usize,
 
-    /// File containing map of bazel-resmoke configs to their location
+    /// YAML file mapping mapping bazel target names of suite configs to their file location location
     #[clap(long, value_parser)]
     bazel_suite_configs: Option<PathBuf>,
 }
