@@ -129,7 +129,6 @@ variables:
     vars:
       resmoke_args: --help
       resmoke_jobs_max: 1
-  - func: "send benchmark results"
   - func: "analyze benchmark results"
     vars:
       suite: benchmark_suite
@@ -863,20 +862,6 @@ functions:
       permissions: public-read
       content_type: atext-plain
       display_name: Pip Requirements
-
-  "send benchmark results":
-    - command: json.send
-      params:
-        name: perf
-        file: src/perf.json
-
-    - command: perf.send
-      params:
-        aws_key: ${aws_key}
-        aws_secret: ${aws_secret}
-        bucket: mciuploads
-        prefix: ${task_id}_${execution}
-        file: src/cedar_report.json
 
   "analyze benchmark results":
     - *f_expansions_write
@@ -3189,7 +3174,6 @@ tasks:
       suite: benchmarks
       exec_timeout_secs: 10800  # 3 hour timeout.
       resmoke_jobs_max: 1
-  - func: "send benchmark results"
   - func: "analyze benchmark results"
     vars:
       suite: benchmarks
@@ -3203,7 +3187,6 @@ tasks:
     vars:
       suite: benchmarks_sharding
       resmoke_jobs_max: 1
-  - func: "send benchmark results"
   - func: "analyze benchmark results"
 
 - <<: *benchmark_template
@@ -3215,7 +3198,6 @@ tasks:
     vars:
       suite: benchmarks_cst
       resmoke_jobs_max: 1
-  - func: "send benchmark results"
   - func: "analyze benchmark results"
 
 - <<: *run_jepsen_template
@@ -4062,17 +4044,17 @@ tasks:
   name: multiversion_sanity_check_gen
   tags: ["multiversion", "multiversion_sanity_check"]
   commands:
-  - func: "initialize multiversion tasks"
-    vars:
-      multiversion_sanity_check_last_continuous_new_new_old: last_continuous
-      multiversion_sanity_check_last_continuous_new_old_new: last_continuous
-      multiversion_sanity_check_last_continuous_old_new_new: last_continuous
-      multiversion_sanity_check_last_lts_new_new_old: last_lts
-      multiversion_sanity_check_last_lts_new_old_new: last_lts
-      multiversion_sanity_check_last_lts_old_new_new: last_lts
   - func: "generate resmoke tasks"
     vars:
       run_no_feature_flag_tests: "true"
+  - func: "initialize multiversion tasks"
+    vars:
+      //buildscripts/resmokeconfig:multiversion_sanity_check_last_continuous_new_new_old: last_continuous
+      //buildscripts/resmokeconfig:multiversion_sanity_check_last_continuous_new_old_new: last_continuous
+      //buildscripts/resmokeconfig:multiversion_sanity_check_last_continuous_old_new_new: last_continuous
+      //buildscripts/resmokeconfig:multiversion_sanity_check_last_lts_new_new_old: last_lts
+      //buildscripts/resmokeconfig:multiversion_sanity_check_last_lts_new_old_new: last_lts
+      //buildscripts/resmokeconfig:multiversion_sanity_check_last_lts_old_new_new: last_lts
 
 - <<: *gen_task_template
   name: replica_sets_jscore_multiversion_gen

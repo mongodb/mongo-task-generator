@@ -1,0 +1,6 @@
+      //buildscripts/resmokeconfig:multiversion_sanity_check_last_continuous_new_new_old_config: bazel-out/multiversion_sanity_check.yml
+      //buildscripts/resmokeconfig:multiversion_sanity_check_last_continuous_new_old_new_config: bazel-out/multiversion_sanity_check.yml
+      //buildscripts/resmokeconfig:multiversion_sanity_check_last_continuous_old_new_new_config: bazel-out/multiversion_sanity_check.yml
+      //buildscripts/resmokeconfig:multiversion_sanity_check_last_lts_new_new_old_config: bazel-out/multiversion_sanity_check.yml
+      //buildscripts/resmokeconfig:multiversion_sanity_check_last_lts_new_old_new_config: bazel-out/multiversion_sanity_check.yml
+      //buildscripts/resmokeconfig:multiversion_sanity_check_last_lts_old_new_new_config: bazel-out/multiversion_sanity_check.yml

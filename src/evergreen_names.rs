@@ -17,6 +17,8 @@ pub const SETUP_JSTESTFUZZ: &str = "setup jstestfuzz";
 pub const RUN_FUZZER: &str = "run jstestfuzz";
 /// Function to run generated tasks.
 pub const RUN_GENERATED_TESTS: &str = "run generated tests";
+/// Function to run generated tasks via 'bazel test'.
+pub const RUN_GENERATED_TESTS_VIA_BAZEL: &str = "run generated tests via bazel";
 
 // Function for multi-version tests.
 /// Function to do setup for multi-version testing.
@@ -67,6 +69,8 @@ pub const MULTIVERSION_EXCLUDE_TAG: &str = "multiversion_exclude_tags_version";
 pub const REQUIRE_MULTIVERSION_SETUP: &str = "require_multiversion_setup";
 /// Arguments to pass to resmoke command.
 pub const RESMOKE_ARGS: &str = "resmoke_args";
+/// Arguments to pass to bazel command.
+pub const BAZEL_ARGS: &str = "bazel_args";
 /// Name of suite being executed.
 pub const SUITE_NAME: &str = "suite";
 /// Location where generation task configuration is stored in S3.

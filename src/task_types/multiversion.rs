@@ -154,10 +154,12 @@ mod tests {
             MultiversionGenerateTaskConfig {
                 suite_name: "suite1".to_string(),
                 old_version: "last_lts".to_string(),
+                bazel_target: None,
             },
             MultiversionGenerateTaskConfig {
                 suite_name: "suite2".to_string(),
                 old_version: "last_continuous".to_string(),
+                bazel_target: None,
             },
         ];
         let multiversion_service = MultiversionServiceImpl {
@@ -181,10 +183,12 @@ mod tests {
             MultiversionGenerateTaskConfig {
                 suite_name: "suite1".to_string(),
                 old_version: "last_lts".to_string(),
+                bazel_target: None,
             },
             MultiversionGenerateTaskConfig {
                 suite_name: "suite2".to_string(),
                 old_version: "last_continuous".to_string(),
+                bazel_target: None,
             },
         ];
         let multiversion_service = MultiversionServiceImpl {

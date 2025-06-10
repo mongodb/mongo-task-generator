@@ -30,6 +30,8 @@ pub struct MultiversionGenerateTaskConfig {
     pub suite_name: String,
     /// Old version to run testing against.
     pub old_version: String,
+    /// The bazel test target, if it is a bazel-based resmoke task.
+    pub bazel_target: Option<String>,
 }
 
 pub trait EvgConfigUtils: Sync + Send {
@@ -361,8 +363,12 @@ impl EvgConfigUtils for EvgConfigUtilsImpl {
         let generated_task_name = remove_gen_suffix(&task.name);
 
         if let Some(vars) = optional_vars {
-            if let Some(ParamValue::String(suite_var)) = vars.get("suite") {
-                suite_var
+            if let Some(ParamValue::String(suite)) = vars.get("suite") {
+                if is_bazel_suite(suite) {
+                    get_bazel_suite_name(suite)
+                } else {
+                    suite
+                }
             } else {
                 generated_task_name
             }
@@ -406,11 +412,18 @@ impl EvgConfigUtils for EvgConfigUtilsImpl {
             get_func_vars_by_name(task, INITIALIZE_MULTIVERSION_TASKS)
         {
             let mut multiversion_generate_tasks = vec![];
-            for (suite_name, old_version) in multiversion_task_map {
+            for (suite, old_version) in multiversion_task_map {
+                let (suite_name, bazel_target) = if is_bazel_suite(suite) {
+                    (get_bazel_suite_name(suite).to_string(), Some(suite.clone()))
+                } else {
+                    (suite.clone(), None)
+                };
+
                 if let ParamValue::String(value) = old_version {
                     multiversion_generate_tasks.push(MultiversionGenerateTaskConfig {
-                        suite_name: suite_name.clone(),
+                        suite_name,
                         old_version: value.clone(),
+                        bazel_target,
                     });
                 }
             }
@@ -842,6 +855,33 @@ fn get_resmoke_vars(task: &EvgTask) -> Option<&HashMap<String, ParamValue>> {
         return Some(generate_resmoke_tasks_vars);
     }
     return get_func_vars_by_name(task, RUN_RESMOKE_TESTS);
+}
+
+/// Checks if a Resmoke suite is a bazel target.
+///
+/// # Arguments
+///
+/// * `suite` - A suite name from Evergreen YAML.
+///
+/// # Returns
+///
+/// True if the suite looks like a bazel target (e.g. starts with `//`).
+pub fn is_bazel_suite(suite: &str) -> bool {
+    suite.starts_with("//")
+}
+
+/// Get a suite name from a bazel target.
+///
+/// # Arguments
+///
+/// * `target` - A bazel target.
+///
+/// # Returns
+///
+/// A useful suite name, just the name of the target without the bazel package prefix.
+pub fn get_bazel_suite_name(target: &str) -> &str {
+    let (_, name) = target.rsplit_once(':').unwrap();
+    name
 }
 
 #[cfg(test)]
@@ -1413,10 +1453,12 @@ mod tests {
             MultiversionGenerateTaskConfig {
                 suite_name: "mv_suite1_last_continuous".to_string(),
                 old_version: "last-continuous".to_string(),
+                bazel_target: None,
             },
             MultiversionGenerateTaskConfig {
                 suite_name: "mv_suite1_last_lts".to_string(),
                 old_version: "last-lts".to_string(),
+                bazel_target: None,
             },
         ];
         assert!(multiversion_generate_tasks

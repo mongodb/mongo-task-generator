@@ -15,9 +15,10 @@ use crate::{
         ADD_GIT_TAG, CONFIGURE_EVG_API_CREDS, CONTINUE_ON_FAILURE, DO_MULTIVERSION_SETUP, DO_SETUP,
         FUZZER_PARAMETERS, GEN_TASK_CONFIG_LOCATION, GET_PROJECT_WITH_NO_MODULES, IDLE_TIMEOUT,
         MULTIVERSION_EXCLUDE_TAGS, NPM_COMMAND, REQUIRE_MULTIVERSION_SETUP, RESMOKE_ARGS,
-        RESMOKE_JOBS_MAX, RUN_FUZZER, RUN_GENERATED_TESTS, SETUP_JSTESTFUZZ, SHOULD_SHUFFLE_TESTS,
-        SUITE_NAME, TASK_NAME,
+        RESMOKE_JOBS_MAX, RUN_FUZZER, RUN_GENERATED_TESTS, RUN_GENERATED_TESTS_VIA_BAZEL,
+        SETUP_JSTESTFUZZ, SHOULD_SHUFFLE_TESTS, SUITE_NAME, TASK_NAME,
     },
+    task_types::resmoke_tasks::replace_resmoke_args_with_bazel_args,
     utils::task_name::name_generated_task,
 };
 
@@ -35,12 +36,16 @@ pub struct FuzzerGenTaskParams {
     pub variant: String,
     /// Resmoke suite for generated tests.
     pub suite: String,
+    /// The bazel test target, if it is a bazel-based resmoke task.
+    pub bazel_target: Option<String>,
     /// Number of javascript files fuzzer should generate.
     pub num_files: String,
     /// Number of sub-tasks fuzzer should generate.
     pub num_tasks: u64,
     /// Arguments to pass to resmoke invocation.
     pub resmoke_args: String,
+    /// Arguments that should be passed to bazel.
+    pub bazel_args: Option<String>,
     /// NPM command to perform fuzzer execution.
     pub npm_command: String,
     /// Arguments to pass to fuzzer invocation.
@@ -68,6 +73,15 @@ pub struct FuzzerGenTaskParams {
 }
 
 impl FuzzerGenTaskParams {
+    fn is_bazel(&self) -> bool {
+        self.bazel_target.is_some()
+            || self
+                .multiversion_generate_tasks
+                .as_ref()
+                .map(|tasks| tasks.iter().any(|t| t.bazel_target.is_some()))
+                .unwrap_or(false)
+    }
+
     /// Create parameters to send to fuzzer to generate appropriate fuzzer tests.
     fn build_fuzzer_parameters(&self) -> HashMap<String, ParamValue> {
         hashmap! {
@@ -288,11 +302,35 @@ fn build_fuzzer_sub_task(
     commands.extend(vec![
         fn_call(SETUP_JSTESTFUZZ),
         fn_call_with_params(RUN_FUZZER, params.build_fuzzer_parameters()),
-        fn_call_with_params(
-            RUN_GENERATED_TESTS,
-            params.build_run_tests_vars(generated_suite_name, old_version),
-        ),
     ]);
+
+    let mut run_test_vars = params.build_run_tests_vars(generated_suite_name, old_version);
+
+    if params.is_bazel() {
+        let target: String = if params.is_multiversion() {
+            params.multiversion_generate_tasks.as_ref().unwrap()[sub_task_index]
+                .bazel_target
+                .clone()
+                .unwrap()
+        } else {
+            params.bazel_target.clone().unwrap()
+        };
+
+        run_test_vars.insert("targets".to_string(), ParamValue::from(target.as_ref()));
+        run_test_vars.insert("compiling_for_test".to_string(), ParamValue::from(true));
+
+        replace_resmoke_args_with_bazel_args(
+            &mut run_test_vars,
+            &params.bazel_args.clone().unwrap_or("".to_string()),
+        );
+
+        commands.push(fn_call_with_params(
+            RUN_GENERATED_TESTS_VIA_BAZEL,
+            run_test_vars,
+        ));
+    } else {
+        commands.push(fn_call_with_params(RUN_GENERATED_TESTS, run_test_vars));
+    }
 
     let formatted_name = format!(
         "{}{}",
@@ -504,6 +542,34 @@ mod tests {
         assert_eq!(get_evg_fn_name(&commands[4]), Some("do multiversion setup"));
         assert_eq!(get_evg_fn_name(&commands[6]), Some("run jstestfuzz"));
         assert_eq!(get_evg_fn_name(&commands[7]), Some("run generated tests"));
+        assert_eq!(
+            sub_task.depends_on.unwrap()[0].name,
+            "archive_dist_test_debug"
+        )
+    }
+
+    #[test]
+    fn test_build_bazel_fuzzer_sub_task() {
+        let display_name = "my_task";
+        let sub_task_index = 42;
+        let params = FuzzerGenTaskParams {
+            task_name: "some task".to_string(),
+            dependencies: vec!["archive_dist_test_debug".to_string()],
+            bazel_target: Some("//my/bazel:target".to_string()),
+            ..Default::default()
+        };
+
+        let sub_task = build_fuzzer_sub_task(display_name, sub_task_index, &params, None, None);
+
+        assert_eq!(sub_task.name, "my_task_42");
+        assert!(sub_task.commands.is_some());
+        let commands = sub_task.commands.unwrap();
+        assert_eq!(get_evg_fn_name(&commands[0]), Some("do setup"));
+        assert_eq!(get_evg_fn_name(&commands[3]), Some("run jstestfuzz"));
+        assert_eq!(
+            get_evg_fn_name(&commands[4]),
+            Some("run generated tests via bazel")
+        );
         assert_eq!(
             sub_task.depends_on.unwrap()[0].name,
             "archive_dist_test_debug"
