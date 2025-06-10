@@ -179,7 +179,6 @@ async fn main() {
         &evg_expansions.project,
         gen_sub_tasks_config_file.as_ref(),
     );
-
     let execution_config = ExecutionConfiguration {
         project_info: &project_info,
         evg_auth_file: &expand_path(&args.evg_auth_file),
