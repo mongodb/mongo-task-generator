@@ -1,4 +1,7 @@
 # Changelog
+## 3.4.0 - 2025-06-12
+* Allow fuzzer tasks to use the `no_multiversion_generate_tasks` tag
+
 ## 3.3.0 - 2025-06-10
 * Generate tasks for suites that run via bazel
 
