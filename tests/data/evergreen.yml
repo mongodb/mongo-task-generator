@@ -4056,6 +4056,19 @@ tasks:
       //buildscripts/resmokeconfig:multiversion_sanity_check_last_lts_new_old_new: last_lts
       //buildscripts/resmokeconfig:multiversion_sanity_check_last_lts_old_new_new: last_lts
 
+- <<: *jstestfuzz_template
+  name: multiversion_fuzzer_no_generate_gen
+  tags: ["aggfuzzer", "multiversion", "no_multiversion_generate_tasks", "require_npm", "random_name"]
+  commands:
+  - func: "generate resmoke tasks"
+    vars:
+      <<: *jstestfuzz_config_vars
+      num_files: 5
+      num_tasks: 5
+      suite: generational_fuzzer
+      resmoke_args: "--mongodSetParameters='{logComponentVerbosity: {command: 2}}'"
+      npm_command: agg-expr-fuzzer
+
 - <<: *gen_task_template
   name: replica_sets_jscore_multiversion_gen
   tags: ["multiversion", "multiversion_passthrough"]
