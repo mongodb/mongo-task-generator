@@ -183,6 +183,9 @@ impl ConfigExtractionService for ConfigExtractionServiceImpl {
             .evg_config_utils
             .lookup_build_variant_expansion(UNIQUE_GEN_SUFFIX_EXPANSION, build_variant);
 
+        let task_tags = self.evg_config_utils.get_task_tags(task_def);
+        let require_multiversion_setup = task_tags.contains(MULTIVERSION);
+        let no_multiversion_generate_tasks = task_tags.contains(NO_MULTIVERSION_GENERATE_TASKS);
         let suite = evg_config_utils.find_suite_name(task_def).to_string();
 
         let bazel_target = self
@@ -213,9 +216,9 @@ impl ConfigExtractionService for ConfigExtractionServiceImpl {
             should_shuffle: evg_config_utils
                 .lookup_required_param_bool(task_def, SHOULD_SHUFFLE_TESTS)?,
             timeout_secs: evg_config_utils.lookup_required_param_u64(task_def, IDLE_TIMEOUT)?,
-            require_multiversion_setup: evg_config_utils
-                .get_task_tags(task_def)
-                .contains(MULTIVERSION),
+            require_multiversion_setup,
+            require_multiversion_generate_tasks: require_multiversion_setup
+                && !no_multiversion_generate_tasks,
             multiversion_generate_tasks: self
                 .multiversion_service
                 .filter_multiversion_generate_tasks(
