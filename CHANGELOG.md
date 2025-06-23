@@ -1,4 +1,7 @@
 # Changelog
+## 3.4.1 - 2025-06-23
+* Respect `use_large_distro` and `use_xlarge_distro` when generating jstestfuzz tasks
+
 ## 3.4.0 - 2025-06-12
 * Allow fuzzer tasks to use the `no_multiversion_generate_tasks` tag
 

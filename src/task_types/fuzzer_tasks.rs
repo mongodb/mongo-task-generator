@@ -38,6 +38,10 @@ pub struct FuzzerGenTaskParams {
     pub suite: String,
     /// The bazel test target, if it is a bazel-based resmoke task.
     pub bazel_target: Option<String>,
+    /// Should the generated tasks run on a 'large' distro.
+    pub use_large_distro: bool,
+    /// Should the generated tasks run on a 'xlarge' distro.
+    pub use_xlarge_distro: bool,
     /// Number of javascript files fuzzer should generate.
     pub num_files: String,
     /// Number of sub-tasks fuzzer should generate.
@@ -165,12 +169,16 @@ impl FuzzerGenTaskParams {
 }
 
 /// A Generated Fuzzer task.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct FuzzerTask {
     /// Name for generated task.
     pub task_name: String,
     /// Sub-tasks comprising generated task.
     pub sub_tasks: Vec<EvgTask>,
+    /// Should the generated tasks run on a 'large' distro.
+    pub use_large_distro: bool,
+    /// Should the generated tasks run on a 'xlarge' distro.
+    pub use_xlarge_distro: bool,
 }
 
 impl GeneratedSuite for FuzzerTask {
@@ -186,8 +194,8 @@ impl GeneratedSuite for FuzzerTask {
             .into_iter()
             .map(|sub_task| GeneratedSubTask {
                 evg_task: sub_task,
-                use_large_distro: false,
-                use_xlarge_distro: false,
+                use_large_distro: self.use_large_distro,
+                use_xlarge_distro: self.use_xlarge_distro,
             })
             .collect()
     }
@@ -256,6 +264,8 @@ impl GenFuzzerService for GenFuzzerServiceImpl {
         Ok(Box::new(FuzzerTask {
             task_name: params.task_name.to_string(),
             sub_tasks,
+            use_large_distro: params.use_large_distro,
+            use_xlarge_distro: params.use_xlarge_distro,
         }))
     }
 }
@@ -443,9 +453,22 @@ mod tests {
         let fuzzer_task = FuzzerTask {
             task_name: "my fuzzer".to_string(),
             sub_tasks: vec![],
+            ..Default::default()
         };
 
         assert_eq!(fuzzer_task.display_name(), "my fuzzer".to_string());
+    }
+
+    #[test]
+    fn test_large_distro() {
+        let fuzzer_task = FuzzerTask {
+            task_name: "my fuzzer".to_string(),
+            sub_tasks: vec![],
+            use_large_distro: true,
+            ..Default::default()
+        };
+
+        assert!(fuzzer_task.use_large_distro);
     }
 
     #[test]
@@ -460,6 +483,7 @@ mod tests {
                     ..Default::default()
                 },
             ],
+            ..Default::default()
         };
 
         assert_eq!(fuzzer_task.sub_tasks().len(), 2);
@@ -477,6 +501,7 @@ mod tests {
                     ..Default::default()
                 },
             ],
+            ..Default::default()
         };
 
         let task_refs = fuzzer_task.build_task_ref(Some("distro".to_string()), None);
