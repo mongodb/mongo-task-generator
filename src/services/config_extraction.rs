@@ -198,6 +198,16 @@ impl ConfigExtractionService for ConfigExtractionServiceImpl {
             task_name,
             variant: build_variant.name.to_string(),
             suite,
+            use_large_distro: self.evg_config_utils.lookup_default_param_bool(
+                task_def,
+                USE_LARGE_DISTRO,
+                false,
+            )?,
+            use_xlarge_distro: self.evg_config_utils.lookup_default_param_bool(
+                task_def,
+                USE_XLARGE_DISTRO,
+                false,
+            )?,
             num_files,
             num_tasks: evg_config_utils.lookup_required_param_u64(task_def, NUM_FUZZER_TASKS)?,
             resmoke_args: evg_config_utils.lookup_required_param_str(task_def, RESMOKE_ARGS)?,
