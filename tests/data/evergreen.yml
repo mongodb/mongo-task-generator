@@ -3302,7 +3302,7 @@ tasks:
       num_tasks: 5
       npm_command: initsync-fuzzer
       suite: initial_sync_fuzzer
-      resmoke_args: "--mongodSetParameters='{logComponentVerbosity: {command: 2}}'" 
+      resmoke_args: "--mongodSetParameters='{logComponentVerbosity: {command: 2}}'"
       use_large_distro: "true"
 
 ## initial sync generational fuzzer ##
