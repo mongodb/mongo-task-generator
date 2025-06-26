@@ -250,6 +250,7 @@ impl GenFuzzerService for GenFuzzerServiceImpl {
                                 params,
                                 Some(&multiversion_task.suite_name),
                                 Some(&multiversion_task.old_version),
+                                multiversion_task.bazel_target.clone(),
                             )
                         })
                         .collect::<Vec<EvgTask>>(),
@@ -257,7 +258,7 @@ impl GenFuzzerService for GenFuzzerServiceImpl {
             }
         } else {
             sub_tasks = (0..params.num_tasks as usize)
-                .map(|i| build_fuzzer_sub_task(&params.task_name, i, params, None, None))
+                .map(|i| build_fuzzer_sub_task(&params.task_name, i, params, None, None, params.bazel_target.clone()))
                 .collect();
         }
 
@@ -279,6 +280,7 @@ impl GenFuzzerService for GenFuzzerServiceImpl {
 /// * `params` - Parameters for how task should be generated.
 /// * `generated_suite_name` - Name of suite to execute against.
 /// * `old_version` - Previous version of mongo to test against.
+/// * `bazel_target` - Bazel target name, if running via bazel
 ///
 /// # Returns
 ///
@@ -289,6 +291,7 @@ fn build_fuzzer_sub_task(
     params: &FuzzerGenTaskParams,
     generated_suite_name: Option<&str>,
     old_version: Option<&str>,
+    bazel_target: Option<String>,
 ) -> EvgTask {
     let sub_task_name = name_generated_task(
         display_name,
@@ -319,16 +322,7 @@ fn build_fuzzer_sub_task(
     let mut run_test_vars = params.build_run_tests_vars(generated_suite_name, old_version);
 
     if params.is_bazel() {
-        let target: String = if params.is_multiversion() {
-            params.multiversion_generate_tasks.as_ref().unwrap()[sub_task_index]
-                .bazel_target
-                .clone()
-                .unwrap()
-        } else {
-            params.bazel_target.clone().unwrap()
-        };
-
-        run_test_vars.insert("targets".to_string(), ParamValue::from(target.as_ref()));
+        run_test_vars.insert("targets".to_string(), ParamValue::from(bazel_target.unwrap().as_str()));
         run_test_vars.insert("compiling_for_test".to_string(), ParamValue::from(true));
 
         replace_resmoke_args_with_bazel_args(
@@ -531,7 +525,7 @@ mod tests {
             ..Default::default()
         };
 
-        let sub_task = build_fuzzer_sub_task(display_name, sub_task_index, &params, None, None);
+        let sub_task = build_fuzzer_sub_task(display_name, sub_task_index, &params, None, None, None);
 
         assert_eq!(sub_task.name, "my_task_42");
         assert!(sub_task.commands.is_some());
@@ -593,6 +587,53 @@ mod tests {
     }
 
     #[test]
+    fn test_build_bazel_multiversion_fuzzer_sub_tasks() {
+        let num_tasks = 10;
+        let multiversion_generate_tasks = Some(vec![
+            MultiversionGenerateTaskConfig {
+                suite_name: "suite1_last_lts".to_string(),
+                old_version: "last-lts".to_string(),
+                bazel_target: Some("//my/bazel:target".to_string()),
+            },
+            MultiversionGenerateTaskConfig {
+                suite_name: "suite1_last_continuous".to_string(),
+                old_version: "last-continuous".to_string(),
+                bazel_target: Some("//my/bazel:target".to_string()),
+            },
+        ]);
+        let params = FuzzerGenTaskParams {
+            task_name: "some_task".to_string(),
+            require_multiversion_setup: true,
+            dependencies: vec!["archive_dist_test_debug".to_string()],
+            multiversion_generate_tasks,
+            require_multiversion_generate_tasks: true,
+            num_tasks,
+            ..Default::default()
+        };
+
+        let gen_fuzzer_service = GenFuzzerServiceImpl::new();
+        let suite = gen_fuzzer_service.generate_fuzzer_task(&params).unwrap();
+
+        assert_eq!(suite.display_name(), "some_task".to_string());
+        assert_eq!(
+            suite.sub_tasks().len(),
+            20 // 2 multiversion configs * 10 sub-tasks each
+        );
+        for sub_task in suite.sub_tasks() {
+            assert!(sub_task.evg_task.commands.is_some());
+            let commands = sub_task.evg_task.commands.unwrap();
+            assert_eq!(
+                get_evg_fn_name(&commands[0]),
+                Some("git get project no modules")
+            );
+            assert_eq!(get_evg_fn_name(&commands[2]), Some("do setup"));
+            assert_eq!(get_evg_fn_name(&commands[4]), Some("do multiversion setup"));
+            assert_eq!(get_evg_fn_name(&commands[6]), Some("run jstestfuzz"));
+            assert_eq!(get_evg_fn_name(&commands[7]), Some("run generated tests via bazel"));
+        }
+    }
+
+    #[test]
     fn test_build_multiversion_no_generate_fuzzer_sub_task() {
         let num_tasks = 10;
 
@@ -635,7 +676,7 @@ mod tests {
             ..Default::default()
         };
 
-        let sub_task = build_fuzzer_sub_task(display_name, sub_task_index, &params, None, None);
+        let sub_task = build_fuzzer_sub_task(display_name, sub_task_index, &params, None, None, Some("//my/bazel:target".to_string()));
 
         assert_eq!(sub_task.name, "my_task_42");
         assert!(sub_task.commands.is_some());
