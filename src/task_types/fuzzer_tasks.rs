@@ -289,7 +289,7 @@ impl GenFuzzerService for GenFuzzerServiceImpl {
 /// * `params` - Parameters for how task should be generated.
 /// * `generated_suite_name` - Name of suite to execute against.
 /// * `old_version` - Previous version of mongo to test against.
-/// * `bazel_target` - Bazel target name, if running via bazel
+/// * `bazel_target` - Full bazel target name, if running via bazel, like //my/bazel:target
 ///
 /// # Returns
 ///
