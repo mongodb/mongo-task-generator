@@ -195,6 +195,19 @@ cargo clippy
 cargo test
 ```
 
+### Testing in the mongo repo
+Locally:
+```bash
+# Run from root of mongo repo: 
+bazel build //... --build_tag_filters=resmoke_config
+bazel cquery "kind(resmoke_config, //...)" --output=starlark --starlark:expr "': '.join([str(target.label).replace('@@','')] + [f.path for f in target.files.to_list()])" > generated_resmoke_config/resmoke_suite_configs.yml
+
+../mongo-task-generator/target/debug/mongo-task-generator --target-directory ./generated_resmoke_config/ --expansion-file ../mongo-task-generator/tests/data/sample_expansions.yml --use-task-split-fallback --generate-sub-tasks-config etc/generate_subtasks_config.yml --bazel-suite-configs generated_resmoke_config/resmoke_suite_configs.yml
+```
+
+In an evergreen patch:
+See https://github.com/mongodb/mongo/blob/b806a7f1bf2a0eb0b85023b9751208d0bbf6c6a1/evergreen/prelude_mongo_task_generator.sh#L8
+
 ### Versioning
 
 This project uses [semver](https://semver.org/) for versioning.
