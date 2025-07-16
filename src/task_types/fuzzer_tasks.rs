@@ -258,7 +258,16 @@ impl GenFuzzerService for GenFuzzerServiceImpl {
             }
         } else {
             sub_tasks = (0..params.num_tasks as usize)
-                .map(|i| build_fuzzer_sub_task(&params.task_name, i, params, None, None, params.bazel_target.clone()))
+                .map(|i| {
+                    build_fuzzer_sub_task(
+                        &params.task_name,
+                        i,
+                        params,
+                        None,
+                        None,
+                        params.bazel_target.clone(),
+                    )
+                })
                 .collect();
         }
 
@@ -322,7 +331,10 @@ fn build_fuzzer_sub_task(
     let mut run_test_vars = params.build_run_tests_vars(generated_suite_name, old_version);
 
     if params.is_bazel() {
-        run_test_vars.insert("targets".to_string(), ParamValue::from(bazel_target.unwrap().as_str()));
+        run_test_vars.insert(
+            "targets".to_string(),
+            ParamValue::from(bazel_target.unwrap().as_str()),
+        );
         run_test_vars.insert("compiling_for_test".to_string(), ParamValue::from(true));
 
         replace_resmoke_args_with_bazel_args(
@@ -525,7 +537,8 @@ mod tests {
             ..Default::default()
         };
 
-        let sub_task = build_fuzzer_sub_task(display_name, sub_task_index, &params, None, None, None);
+        let sub_task =
+            build_fuzzer_sub_task(display_name, sub_task_index, &params, None, None, None);
 
         assert_eq!(sub_task.name, "my_task_42");
         assert!(sub_task.commands.is_some());
@@ -629,7 +642,10 @@ mod tests {
             assert_eq!(get_evg_fn_name(&commands[2]), Some("do setup"));
             assert_eq!(get_evg_fn_name(&commands[4]), Some("do multiversion setup"));
             assert_eq!(get_evg_fn_name(&commands[6]), Some("run jstestfuzz"));
-            assert_eq!(get_evg_fn_name(&commands[7]), Some("run generated tests via bazel"));
+            assert_eq!(
+                get_evg_fn_name(&commands[7]),
+                Some("run generated tests via bazel")
+            );
         }
     }
 
@@ -676,7 +692,14 @@ mod tests {
             ..Default::default()
         };
 
-        let sub_task = build_fuzzer_sub_task(display_name, sub_task_index, &params, None, None, Some("//my/bazel:target".to_string()));
+        let sub_task = build_fuzzer_sub_task(
+            display_name,
+            sub_task_index,
+            &params,
+            None,
+            None,
+            Some("//my/bazel:target".to_string()),
+        );
 
         assert_eq!(sub_task.name, "my_task_42");
         assert!(sub_task.commands.is_some());
