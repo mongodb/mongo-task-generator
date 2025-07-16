@@ -110,7 +110,12 @@ impl BazelConfigs {
     ///
     /// The path the the generated suite config YAML, like "bazel-out/buildscripts/resmoke/core_config.yml".
     pub fn get(&self, target: &str) -> &str {
-        self.configs.get(&format!("{}_config", target)).unwrap()
+        match self.configs.get(&format!("{}_config", target)) {
+            Some(config) => config,
+            None => {
+                panic!("No bazel config found for target: {}", target);
+            }
+        }
     }
 }
 

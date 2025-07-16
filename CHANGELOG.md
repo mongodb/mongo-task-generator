@@ -1,4 +1,7 @@
 # Changelog
+## 3.4.2 - 2025-07-16
+* Fixes a bug where Bazel-based multiversion tasks did not generate the correct number of subtasks.
+
 ## 3.4.1 - 2025-06-23
 * Respect `use_large_distro` and `use_xlarge_distro` when generating jstestfuzz tasks
 
