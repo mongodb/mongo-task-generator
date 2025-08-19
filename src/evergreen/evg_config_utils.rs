@@ -1790,7 +1790,7 @@ mod tests {
     #[case(Some(vec!["--enableEnterpriseTests=on".to_string()]))]
     #[case(Some(vec!["--enableEnterpriseTests=off".to_string()]))]
     fn test_build_variant_with_enterprise_module_should_return_true(
-        #[case] modules: Option<Vec<String>>
+        #[case] modules: Option<Vec<String>>,
     ) {
         let build_variant = BuildVariant {
             modules,
