@@ -751,7 +751,8 @@ impl EvgConfigUtils for EvgConfigUtilsImpl {
     ///
     /// true if given build variant includes the enterprise module.
     fn is_enterprise_build_variant(&self, build_variant: &BuildVariant) -> bool {
-        let pattern = Regex::new(r"--enableEnterpriseTests\s*=?\s*off").unwrap();
+        // assumed to be true, unless explicitly disabled
+        let pattern = Regex::new(r"--modules\s*=?\s*none").unwrap();
         if let Some(expansions_map) = &build_variant.expansions {
             for (_key, value) in expansions_map.iter() {
                 if pattern.is_match(value) {
@@ -1783,9 +1784,16 @@ mod tests {
     }
 
     // tests for is_enterprise_build_variant.
-    #[test]
-    fn test_build_variant_with_enterprise_module_should_return_true() {
+    #[rstest]
+    #[case(None)]
+    // this flag is no longer supported: it should return true in either case
+    #[case(Some(vec!["--enableEnterpriseTests=on".to_string()]))]
+    #[case(Some(vec!["--enableEnterpriseTests=off".to_string()]))]
+    fn test_build_variant_with_enterprise_module_should_return_true(
+        #[case] modules: Option<Vec<String>>
+    ) {
         let build_variant = BuildVariant {
+            modules,
             ..Default::default()
         };
         let evg_config_utils = EvgConfigUtilsImpl::new();
@@ -1793,18 +1801,12 @@ mod tests {
         assert!(evg_config_utils.is_enterprise_build_variant(&build_variant));
     }
 
-    #[rstest]
-    #[case(Some(vec![]))]
-    #[case(Some(vec!["Another Module".to_string(), "Not Enterprise".to_string()]))]
-    #[case(None)]
-    fn test_build_variant_with_out_enterprise_module_should_return_false(
-        #[case] _modules: Option<Vec<String>>,
-    ) {
+    #[test]
+    fn test_build_variant_with_out_enterprise_module_should_return_false() {
         let build_variant = BuildVariant {
-            expansions: Some(BTreeMap::from([(
-                "enterprise_test_flag".to_string(),
-                "--enableEnterpriseTests=off".to_string(),
-            )])),
+            expansions: Some(btreemap! {
+                "expansion".to_string() => "--modules=none".to_string(),
+            }),
             ..Default::default()
         };
         let evg_config_utils = EvgConfigUtilsImpl::new();
