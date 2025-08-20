@@ -1,4 +1,8 @@
 # Changelog
+
+## 3.5.0 - 2025-8-20
+* Uses new module logic to determine if tasks are in enterprise mode
+
 ## 3.4.2 - 2025-07-16
 * Fixes a bug where Bazel-based multiversion tasks did not generate the correct number of subtasks.
 
