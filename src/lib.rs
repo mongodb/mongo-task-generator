@@ -48,7 +48,7 @@ use task_types::{
     resmoke_tasks::{GenResmokeConfig, GenResmokeTaskService, GenResmokeTaskServiceImpl},
 };
 use tokio::{runtime::Handle, task::JoinHandle, time};
-use tracing::{event, Level};
+use tracing::{error, event, Level};
 use utils::fs_service::FsServiceImpl;
 
 use crate::resmoke::resmoke_proxy::BazelConfigs;
@@ -948,10 +948,21 @@ fn create_task_worker(
     let generated_tasks = generated_tasks.clone();
 
     tokio::spawn(async move {
-        let generated_task = generate_task_service
+        let generated_task = match generate_task_service
             .generate_task(&task_def, &build_variant)
             .await
-            .unwrap();
+        {
+            Ok(task) => task,
+            Err(e) => {
+                error!(
+                    task_name = &task_def.name,
+                    build_variant = &build_variant.name,
+                    error = %e,
+                    "Failed to generate task"
+                );
+                return;
+            }
+        };
 
         let is_enterprise = evg_config_utils.is_enterprise_build_variant(&build_variant);
         let platform = evg_config_utils.infer_build_variant_platform(&build_variant);
@@ -996,9 +1007,20 @@ fn create_burn_in_worker(
     let generated_tasks = generated_tasks.clone();
 
     tokio::spawn(async move {
-        let generated_task = burn_in_service
+        let generated_task = match burn_in_service
             .generate_burn_in_suite(&build_variant, &run_build_variant_name, task_map)
-            .unwrap();
+        {
+            Ok(task) => task,
+            Err(e) => {
+                error!(
+                    build_variant = &build_variant.name,
+                    run_build_variant_name = &run_build_variant_name,
+                    error = %e,
+                    "Failed to generate burn_in suite"
+                );
+                return;
+            }
+        };
 
         let task_name = format!("{}-{}", BURN_IN_TESTS_PREFIX, run_build_variant_name);
 
@@ -1032,9 +1054,19 @@ fn create_burn_in_tasks_worker(
     let generated_tasks = generated_tasks.clone();
 
     tokio::spawn(async move {
-        let generated_task = burn_in_service
+        let generated_task = match burn_in_service
             .generate_burn_in_tasks_suite(&build_variant, task_map)
-            .unwrap();
+        {
+            Ok(task) => task,
+            Err(e) => {
+                error!(
+                    build_variant = &build_variant.name,
+                    error = %e,
+                    "Failed to generate burn_in tasks suite"
+                );
+                return;
+            }
+        };
 
         let task_name = format!("{}-{}", BURN_IN_TASKS_PREFIX, build_variant.name);
 

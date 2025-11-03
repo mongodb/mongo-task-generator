@@ -147,46 +147,56 @@ impl TestDiscovery for ResmokeProxy {
             suite_name
         };
 
-        let mut cmd = vec![&*self.resmoke_cmd];
-        cmd.append(&mut self.resmoke_script.iter().map(|s| s.as_str()).collect());
-        cmd.append(&mut vec!["test-discovery", "--suite", suite_config]);
-
-        // When running in a patch build, we use the --skipTestsCoveredByMoreComplexSuites
-        // flag to tell Resmoke to exclude any tests in the given suite that will
-        // also be run on a more complex suite.
-        if self.skip_covered_tests {
-            cmd.append(&mut vec!["--skipTestsCoveredByMoreComplexSuites"]);
-        }
-
-        if self.include_fully_disabled_feature_tests {
-            cmd.append(&mut vec!["--includeFullyDisabledFeatureTests"]);
-        }
-
+        use std::process::Command;
+        
+        let dust_binary_path = "buildscripts/resmokelib/dust/target/debug/dust";
+        
         let start = Instant::now();
-        let cmd_output = run_command(&cmd).unwrap();
-
-        event!(
-            Level::INFO,
-            suite_config,
-            duration_ms = start.elapsed().as_millis() as u64,
-            "Resmoke test discovery finished"
-        );
-
-        let output: Result<TestDiscoveryOutput, serde_yaml::Error> =
-            serde_yaml::from_str(&cmd_output);
-        if output.is_err() {
-            error!(
-                command = cmd.join(" "),
-                command_output = &cmd_output,
-                "Failed to parse yaml from discover tests command output",
-            );
+        // println!("Running dust for test discovery: {} --discover {}", dust_binary_path, suite_config);
+        match Command::new(dust_binary_path)
+            .arg("--discover")
+            .arg(suite_config)
+            .arg("--discover-directory")
+            .arg("./buildscripts")
+            .output()
+        {
+            Ok(cmd_output) => {
+                if cmd_output.status.success() {
+                    let stdout = String::from_utf8_lossy(&cmd_output.stdout);
+                    
+                    event!(
+                        Level::INFO,
+                        suite_config,
+                        duration_ms = start.elapsed().as_millis() as u64,
+                        "Dust test discovery finished"
+                    );
+                    
+                    let output: Result<TestDiscoveryOutput, serde_yaml::Error> =
+                        serde_yaml::from_str(&stdout);
+                    Ok(output?
+                        .tests
+                        .into_iter()
+                        .filter(|f| Path::new(f).exists())
+                        .collect())
+                } else {
+                    let stderr = String::from_utf8_lossy(&cmd_output.stderr);
+                    error!(
+                        command = format!("{} --discover {}", dust_binary_path, suite_config),
+                        command_output = stderr.as_ref(),
+                        "Failed to run dust binary for test discovery",
+                    );
+                    anyhow::bail!("Dust command failed: {}", stderr);
+                }
+            }
+            Err(e) => {
+                error!(
+                    command = format!("{} --discover {}", dust_binary_path, suite_config),
+                    error = e.to_string(),
+                    "Failed to execute dust binary",
+                );
+                anyhow::bail!("Failed to execute dust binary at {}: {}", dust_binary_path, e);
+            }
         }
-
-        Ok(output?
-            .tests
-            .into_iter()
-            .filter(|f| Path::new(f).exists())
-            .collect())
     }
 
     /// Get the configuration for the given suite.
@@ -205,12 +215,52 @@ impl TestDiscovery for ResmokeProxy {
             suite_name
         };
 
-        let mut cmd = vec![&*self.resmoke_cmd];
-        cmd.append(&mut self.resmoke_script.iter().map(|s| s.as_str()).collect());
-        cmd.append(&mut vec!["suiteconfig", "--suite", suite_config]);
-        let cmd_output = run_command(&cmd).unwrap();
+        use std::process::Command;
+        
+        let dust_binary_path = "buildscripts/resmokelib/dust/target/debug/dust";
+        
+        let start = Instant::now();
+        // println!("Running dust for test discovery: {} --discover {}", dust_binary_path, suite_config);
+        match Command::new(dust_binary_path)
+            .arg("--suiteconfig")
+            .arg(suite_config)
+            .arg("--discover-directory")
+            .arg("./buildscripts")
+            .output()
+        {
+            Ok(cmd_output) => {
+                if cmd_output.status.success() {
+                    let stdout = String::from_utf8_lossy(&cmd_output.stdout);
+                    
+                    event!(
+                        Level::INFO,
+                        suite_config,
+                        duration_ms = start.elapsed().as_millis() as u64,
+                        "Dust suiteconfig finished"
+                    );
+                    
+                    // println!("dust!");
+                    Ok(ResmokeSuiteConfig::from_str(&stdout)?)
+                } else {
+                    let stderr = String::from_utf8_lossy(&cmd_output.stderr);
+                    error!(
+                        command = format!("{} --suiteconfig {}", dust_binary_path, suite_config),
+                        command_output = stderr.as_ref(),
+                        "Failed to run dust binary for test discovery",
+                    );
+                    anyhow::bail!("Dust command failed: {}", stderr);
+                }
+            }
+            Err(e) => {
+                error!(
+                    command = format!("{} --suiteconfig {}", dust_binary_path, suite_config),
+                    error = e.to_string(),
+                    "Failed to execute dust binary",
+                );
+                anyhow::bail!("Failed to execute dust binary at {}: {}", dust_binary_path, e);
+            }
+        }
 
-        Ok(ResmokeSuiteConfig::from_str(&cmd_output)?)
     }
 
     /// Get the multiversion configuration to generate against.

@@ -156,6 +156,18 @@ struct Args {
     /// YAML file mapping mapping bazel target names of suite configs to their file location location
     #[clap(long, value_parser)]
     bazel_suite_configs: Option<PathBuf>,
+
+    /// Take a string and print it in capital letters
+    #[clap(long)]
+    discover: Option<String>,
+
+    /// Directory to search in when using the discover flag
+    #[clap(long, default_value = ".")]
+    discover_directory: String,
+
+    /// Call discover_tests function with the given suite name
+    #[clap(long)]
+    discover_tests: Option<String>,
 }
 
 /// Configure logging for the command execution.
@@ -170,6 +182,41 @@ fn configure_logging() {
 async fn main() {
     let args = Args::parse();
     configure_logging();
+
+    // Handle discover flag
+    // if let Some(text) = args.discover {
+    //     discover::handle_discover(&text, &args.discover_directory);
+    //     return;
+    // }
+
+    // Handle discover_tests flag
+    if let Some(suite_name) = args.discover_tests {
+        use std::process::Command;
+        
+        let dust_binary_path = "buildscripts/resmokelib/dust/target/debug/dust";
+        
+        match Command::new(dust_binary_path)
+            .arg("--discover")
+            .arg(&suite_name)
+            .output()
+        {
+            Ok(output) => {
+                if output.status.success() {
+                    let stdout = String::from_utf8_lossy(&output.stdout);
+                    print!("{}", stdout);
+                } else {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    eprintln!("Error running {} --discover {}: {}", dust_binary_path, suite_name, stderr);
+                    exit(1);
+                }
+            }
+            Err(e) => {
+                eprintln!("Failed to execute dust binary at {}: {}", dust_binary_path, e);
+                exit(1);
+            }
+        }
+        return;
+    }
 
     let gen_sub_tasks_config_file = &args.generate_sub_tasks_config.map(|p| expand_path(&p));
     let evg_expansions = EvgExpansions::from_yaml_file(&args.expansion_file)
