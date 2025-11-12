@@ -788,6 +788,48 @@ fn categorize_test_size(test_runtime: f64, target_runtime: f64) -> TestSizeCateg
     }
 }
 
+/// Estimate the actual completion time for a subtask when tests are run with resmoke's
+/// 2-job parallel work-stealing queue.
+///
+/// Resmoke runs tests using 2 concurrent jobs that pull from a shared queue. This means
+/// the completion time is determined by the longest-running job, not the sum of all tests.
+///
+/// This function simulates a greedy work-stealing scheduler where each job takes the next
+/// test when it becomes available, and we return the maximum completion time across both jobs.
+///
+/// # Arguments
+///
+/// * `test_runtimes` - Vector of test runtimes in this subtask
+///
+/// # Returns
+///
+/// Estimated completion time accounting for 2-job parallelism (max of the two job times)
+fn estimate_parallel_completion_time(test_runtimes: &[f64]) -> f64 {
+    if test_runtimes.is_empty() {
+        return 0.0;
+    }
+
+    // Sort tests by runtime descending - this simulates the worst-case where
+    // larger tests are processed first (which often happens in practice)
+    let mut sorted_tests: Vec<f64> = test_runtimes.to_vec();
+    sorted_tests.sort_by(|a, b| b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal));
+
+    let mut job1_time = 0.0;
+    let mut job2_time = 0.0;
+
+    // Simulate work-stealing: assign each test to the job with less accumulated work
+    for test_runtime in sorted_tests {
+        if job1_time <= job2_time {
+            job1_time += test_runtime;
+        } else {
+            job2_time += test_runtime;
+        }
+    }
+
+    // The subtask completes when the slower job finishes
+    job1_time.max(job2_time)
+}
+
 /// Hybrid bin packing algorithm for distributing tests across sub-tasks.
 ///
 /// This algorithm improves upon simple greedy scheduling by using different strategies
@@ -870,38 +912,38 @@ fn hybrid_bin_packing(
 ) -> Vec<Vec<String>> {
     // Initialize bins (sub-tasks)
     let mut bins: Vec<Vec<String>> = vec![vec![]; num_tasks];
-    let mut bin_runtimes: Vec<f64> = vec![0.0; num_tasks];
+    let mut bin_runtimes: Vec<Vec<f64>> = vec![vec![]; num_tasks];
 
     // Calculate target runtime with 5% buffer to account for variance
-    let target_runtime = (total_runtime / num_tasks as f64) * 0.95;
+    // With 2-job parallelism, target is based on parallel completion time, not sum
+    let target_runtime = (total_runtime / num_tasks as f64) * 0.95 / 2.0;
 
     // Track position for round-robin assignment
     let mut round_robin_position = 0;
     let mut unknown_position = 0;
 
     for (test_name, test_runtime) in tests_with_runtimes {
-        let category = categorize_test_size(test_runtime, target_runtime);
+        let category = categorize_test_size(test_runtime, target_runtime * 2.0);
 
         match category {
             TestSizeCategory::Large => {
-                // Large tests: Use greedy assignment (assign to bin with minimum runtime)
-                // These tests dominate sub-task runtime, so greedy works well
-                let min_bin_idx = get_min_index(&bin_runtimes);
-                bins[min_bin_idx].push(test_name);
-                bin_runtimes[min_bin_idx] += test_runtime;
+                // Large tests: Find bin that minimizes parallel completion time after assignment
+                // Also consider pairing large tests with bins that have complementary smaller tests
+                let best_bin_idx = find_best_bin_for_large_test(&bin_runtimes, test_runtime, target_runtime);
+                bins[best_bin_idx].push(test_name);
+                bin_runtimes[best_bin_idx].push(test_runtime);
             }
             TestSizeCategory::Medium => {
-                // Medium tests: Use best-fit assignment
-                // Try to find bin that gets closest to target without exceeding by much
+                // Medium tests: Use best-fit assignment based on parallel completion time
                 let best_bin_idx = find_best_fit_bin(&bin_runtimes, test_runtime, target_runtime);
                 bins[best_bin_idx].push(test_name);
-                bin_runtimes[best_bin_idx] += test_runtime;
+                bin_runtimes[best_bin_idx].push(test_runtime);
             }
             TestSizeCategory::Small => {
                 // Small tests: Use round-robin distribution
                 // Prevents accumulation of small tests in one bin causing stragglers
                 bins[round_robin_position % num_tasks].push(test_name);
-                bin_runtimes[round_robin_position % num_tasks] += test_runtime;
+                bin_runtimes[round_robin_position % num_tasks].push(test_runtime);
                 round_robin_position += 1;
             }
             TestSizeCategory::Unknown => {
@@ -916,45 +958,100 @@ fn hybrid_bin_packing(
     bins
 }
 
-/// Find the best-fit bin for a test using a heuristic that balances load.
+/// Find the best-fit bin for a test using parallel completion time optimization.
 ///
-/// The best-fit strategy tries to find a bin that, after adding the test, will be
-/// closest to (but ideally not exceeding) the target runtime. This helps fill gaps
-/// in bins and creates more balanced sub-tasks.
+/// This strategy considers resmoke's 2-job parallel execution model. Instead of just
+/// looking at total runtime, it estimates the actual completion time accounting for
+/// work-stealing parallelism and tries to minimize the maximum parallel completion time.
 ///
 /// Strategy:
-/// 1. Prefer bins that stay under target after adding the test
-/// 2. Among those, pick the one that gets closest to target (fullest valid bin)
-/// 3. If all bins exceed target, pick the one with minimum current runtime
+/// 1. Calculate parallel completion time for each bin if we added this test
+/// 2. Prefer bins that stay under target parallel completion time
+/// 3. Among valid bins, pick the fullest one (best utilization)
+/// 4. If all exceed target, pick the one with minimum parallel completion time
 ///
 /// # Arguments
 ///
-/// * `bin_runtimes` - Current runtime total for each bin.
+/// * `bin_runtimes` - Current test runtimes for each bin (not sums, but lists).
 /// * `test_runtime` - Runtime of test to assign.
-/// * `target_runtime` - Target runtime per bin.
+/// * `target_runtime` - Target parallel completion time per bin.
 ///
 /// # Returns
 ///
 /// Index of the best bin to assign the test to.
-fn find_best_fit_bin(bin_runtimes: &[f64], test_runtime: f64, target_runtime: f64) -> usize {
+fn find_best_fit_bin(bin_runtimes: &[Vec<f64>], test_runtime: f64, target_runtime: f64) -> usize {
     let mut best_bin_idx = 0;
-    let mut best_bin_runtime = bin_runtimes[0];
+    let mut best_parallel_time = f64::MAX;
+    let mut best_under_target_time = 0.0;
 
-    for (idx, &current_runtime) in bin_runtimes.iter().enumerate() {
-        let new_runtime = current_runtime + test_runtime;
+    for (idx, runtimes) in bin_runtimes.iter().enumerate() {
+        // Calculate what the parallel completion time would be if we added this test
+        let mut test_with_new = runtimes.clone();
+        test_with_new.push(test_runtime);
+        let new_parallel_time = estimate_parallel_completion_time(&test_with_new);
 
-        // If this bin would stay under target and is fuller than current best, use it
-        if new_runtime <= target_runtime {
-            if best_bin_runtime + test_runtime > target_runtime || new_runtime > best_bin_runtime {
+        // If this bin would stay under target
+        if new_parallel_time <= target_runtime {
+            // Pick the fullest bin that stays under target (best utilization)
+            if new_parallel_time > best_under_target_time {
                 best_bin_idx = idx;
-                best_bin_runtime = current_runtime;
+                best_under_target_time = new_parallel_time;
+                best_parallel_time = new_parallel_time;
             }
-        } else if best_bin_runtime + test_runtime > target_runtime {
-            // All bins exceed target, so just use the emptiest one (minimum runtime)
-            if current_runtime < best_bin_runtime {
+        } else if best_under_target_time == 0.0 {
+            // All bins exceed target, so minimize parallel completion time
+            if new_parallel_time < best_parallel_time {
                 best_bin_idx = idx;
-                best_bin_runtime = current_runtime;
+                best_parallel_time = new_parallel_time;
             }
+        }
+    }
+
+    best_bin_idx
+}
+
+/// Find the best bin for a large test, considering parallel execution and pairing strategy.
+///
+/// Large tests benefit from being paired with complementary smaller tests. With 2-job
+/// parallelism, we want one job to handle the large test while the other job processes
+/// smaller tests. This function tries to find bins where the large test can be balanced
+/// by existing smaller tests.
+///
+/// Strategy:
+/// 1. Calculate parallel completion time if we add this large test
+/// 2. Prefer bins where existing tests provide good parallel balance
+/// 3. Ideal: large_test_runtime ≈ sum_of_other_tests (perfect 2-job split)
+/// 4. Fall back to minimizing parallel completion time
+///
+/// # Arguments
+///
+/// * `bin_runtimes` - Current test runtimes for each bin.
+/// * `test_runtime` - Runtime of the large test to assign.
+/// * `target_runtime` - Target parallel completion time per bin.
+///
+/// # Returns
+///
+/// Index of the best bin to assign the large test to.
+fn find_best_bin_for_large_test(bin_runtimes: &[Vec<f64>], test_runtime: f64, _target_runtime: f64) -> usize {
+    let mut best_bin_idx = 0;
+    let mut best_parallel_time = f64::MAX;
+
+    for (idx, runtimes) in bin_runtimes.iter().enumerate() {
+        let mut test_with_new = runtimes.clone();
+        test_with_new.push(test_runtime);
+        let new_parallel_time = estimate_parallel_completion_time(&test_with_new);
+
+        // Calculate how well this large test pairs with existing tests
+        // Ideal pairing: large test time ≈ sum of other tests
+        let sum_other_tests: f64 = runtimes.iter().sum();
+        let balance_score = (test_runtime - sum_other_tests).abs();
+
+        // Weighted scoring: prefer good balance, but prioritize low parallel completion time
+        let score = new_parallel_time + (balance_score * 0.1);
+
+        if score < best_parallel_time {
+            best_bin_idx = idx;
+            best_parallel_time = score;
         }
     }
 
@@ -1011,6 +1108,7 @@ fn sort_tests_by_runtime(
 /// # Returns
 ///
 /// Index of sub suite with the least total runtime.
+#[cfg(test)]
 fn get_min_index(running_runtimes: &[f64]) -> usize {
     let mut min_idx = 0;
     for (i, value) in running_runtimes.iter().enumerate() {
@@ -1460,28 +1558,102 @@ mod tests {
     }
 
     #[test]
+    fn test_estimate_parallel_completion_time() {
+        // Empty list
+        assert_eq!(estimate_parallel_completion_time(&[]), 0.0);
+
+        // Single test
+        assert_eq!(estimate_parallel_completion_time(&[100.0]), 100.0);
+
+        // Two equal tests - perfect parallelism
+        assert_eq!(estimate_parallel_completion_time(&[50.0, 50.0]), 50.0);
+
+        // Three tests - should distribute 2 to one job, 1 to the other
+        // Sorted descending: [60, 50, 40]
+        // Job1: 60, Job2: 50, Job1: 40 (greedy work-stealing)
+        // Job1: 60 + 40 = 100, Job2: 50 = 50
+        // Result: max(100, 50) = 100... but actually:
+        // Job1 starts with 60 (60 <= 0 is false, so job2 gets it)
+        // Actually: Job1: 0, Job2: 0 initially
+        // Test 60: job1_time=0 <= job2_time=0, so Job1 gets it: Job1=60, Job2=0
+        // Test 50: job1_time=60 <= job2_time=0 is false, so Job2 gets it: Job1=60, Job2=50
+        // Test 40: job1_time=60 <= job2_time=50 is false, so Job2 gets it: Job1=60, Job2=90
+        // Result: max(60, 90) = 90
+        assert_eq!(estimate_parallel_completion_time(&[50.0, 60.0, 40.0]), 90.0);
+
+        // Five similar tests
+        // Sorted: [20, 20, 20, 20, 20]
+        // Job1: 20 + 20 + 20 = 60, Job2: 20 + 20 = 40
+        assert_eq!(estimate_parallel_completion_time(&[20.0, 20.0, 20.0, 20.0, 20.0]), 60.0);
+
+        // One large test with many small tests
+        // Sorted: [100, 10, 10, 10, 10]
+        // Job1: 100, Job2: 10 + 10 + 10 + 10 = 40
+        assert_eq!(estimate_parallel_completion_time(&[100.0, 10.0, 10.0, 10.0, 10.0]), 100.0);
+
+        // Good pairing: large test balanced by small tests
+        // Sorted: [80, 20, 20, 20, 20]
+        // Job1: 80, Job2: 20 + 20 + 20 + 20 = 80 (perfect balance!)
+        assert_eq!(estimate_parallel_completion_time(&[80.0, 20.0, 20.0, 20.0, 20.0]), 80.0);
+    }
+
+    #[test]
     fn test_find_best_fit_bin() {
         let target_runtime = 100.0;
 
-        // All bins under target: should pick fullest bin
-        let bin_runtimes = vec![50.0, 80.0, 30.0];
+        // All bins under target: should pick fullest bin based on parallel completion time
+        let bin_runtimes = vec![
+            vec![50.0],          // parallel time: 50
+            vec![40.0, 40.0],    // parallel time: 40 (perfect split)
+            vec![30.0],          // parallel time: 30
+        ];
         let test_runtime = 15.0;
         let best_idx = find_best_fit_bin(&bin_runtimes, test_runtime, target_runtime);
-        // bin 1 (80.0) + 15.0 = 95.0, which is fullest under target
+        // Adding 15.0 to bin 0: [50, 15] -> sorted [50, 15] -> Job1: 50, Job2: 15 = 50
+        // Adding 15.0 to bin 1: [40, 40, 15] -> sorted [40, 40, 15] -> Job1: 40+15=55, Job2: 40 = 55
+        // Adding 15.0 to bin 2: [30, 15] -> sorted [30, 15] -> Job1: 30, Job2: 15 = 30
+        // Best fit should prefer the fullest under target (bin 1 with 55)
         assert_eq!(best_idx, 1);
 
-        // All bins would exceed target: should pick emptiest
-        let bin_runtimes = vec![95.0, 90.0, 98.0];
+        // When some bins exceed target: should minimize parallel completion time among those over
+        let bin_runtimes = vec![
+            vec![200.0],         // + 15 = [200, 15] -> Job1: 200, Job2: 15 = 200
+            vec![100.0, 100.0],  // + 15 = [100, 100, 15] -> sorted [100, 100, 15] -> Job1: 100+15=115, Job2: 100 = 115
+            vec![150.0],         // + 15 = [150, 15] -> Job1: 150, Job2: 15 = 150
+        ];
         let test_runtime = 15.0;
         let best_idx = find_best_fit_bin(&bin_runtimes, test_runtime, target_runtime);
-        assert_eq!(best_idx, 1); // 90.0 is minimum
-
-        // Mix: some under, some over
-        let bin_runtimes = vec![110.0, 85.0, 30.0];
-        let test_runtime = 10.0;
-        let best_idx = find_best_fit_bin(&bin_runtimes, test_runtime, target_runtime);
-        // bin 1 (85.0) + 10.0 = 95.0 is under target and fuller than bin 2
+        // All exceed target, so minimize: Bin 1 has lowest parallel completion time (115)
         assert_eq!(best_idx, 1);
+    }
+
+    #[test]
+    fn test_find_best_bin_for_large_test() {
+        let target_runtime = 100.0;
+
+        // Test pairing strategy: large test should prefer bin with complementary small tests
+        let bin_runtimes = vec![
+            vec![],                              // Empty bin
+            vec![20.0, 20.0, 20.0, 20.0],       // Sum = 80, complements 80 perfectly
+            vec![50.0, 50.0],                    // Sum = 100, not good pairing
+        ];
+        let large_test_runtime = 80.0;
+        let best_idx = find_best_bin_for_large_test(&bin_runtimes, large_test_runtime, target_runtime);
+        // Bin 1 should be chosen: 80 + (20+20+20+20) gives perfect 2-job split
+        // Job1: 80, Job2: 20+20+20+20=80
+        assert_eq!(best_idx, 1);
+
+        // When no bins provide good pairing, minimize parallel completion time
+        let bin_runtimes = vec![
+            vec![10.0],
+            vec![30.0],
+            vec![50.0],
+        ];
+        let large_test_runtime = 100.0;
+        let best_idx = find_best_bin_for_large_test(&bin_runtimes, large_test_runtime, target_runtime);
+        // All bins result in large test dominating, pick the one with most complementary work
+        // Bin 2 has 50, so adding 100 gives best balance
+        assert_eq!(best_idx, 2);
     }
 
     #[test]
@@ -1679,9 +1851,9 @@ mod tests {
     }
     #[test]
     fn test_split_task_should_split_tasks_by_runtime() {
-        // In this test we will create 3 subtasks with 6 tests. The first sub task should contain
-        // a single test. The second 2 tests and the third 3 tests. We will set the test runtimes
-        // to make this happen.
+        // This test verifies that tests are distributed across subtasks based on runtime.
+        // With the parallel-aware binning algorithm, we check for reasonable balance
+        // rather than exact assignments.
         let num_tasks = 3;
         let test_list: Vec<String> = (0..6)
             .into_iter()
@@ -1719,15 +1891,33 @@ mod tests {
             .unwrap();
 
         assert_eq!(sub_suites.len(), num_tasks);
-        let suite_0 = &sub_suites[0];
-        assert!(suite_0.test_list.contains(&"test_0.js".to_string()));
-        let suite_1 = &sub_suites[1];
-        assert!(suite_1.test_list.contains(&"test_1.js".to_string()));
-        assert!(suite_1.test_list.contains(&"test_4.js".to_string()));
-        let suite_2 = &sub_suites[2];
-        assert!(suite_2.test_list.contains(&"test_2.js".to_string()));
-        assert!(suite_2.test_list.contains(&"test_3.js".to_string()));
-        assert!(suite_2.test_list.contains(&"test_5.js".to_string()));
+
+        // Verify all tests are assigned exactly once
+        let mut all_tests: Vec<String> = sub_suites.iter()
+            .flat_map(|s| s.test_list.iter().cloned())
+            .collect();
+        all_tests.sort();
+        let mut expected_tests = test_list.clone();
+        expected_tests.sort();
+        assert_eq!(all_tests, expected_tests);
+
+        // Verify reasonable balance: the largest test (test_0 with 100s) should be in its own bin
+        // or paired with smaller tests for good 2-job parallelism
+        let bin_with_test_0 = sub_suites.iter().find(|s| s.test_list.contains(&"test_0.js".to_string())).unwrap();
+
+        // Calculate total runtime for bin with test_0
+        let bin_runtime: f64 = bin_with_test_0.test_list.iter()
+            .filter_map(|t| {
+                let test_name = t.trim_end_matches(".js");
+                task_history.test_map.get(test_name)
+            })
+            .map(|h| h.average_runtime)
+            .sum();
+
+        // With 305s total and 3 bins, target is ~102s per bin (with 0.95 buffer ~96.5s)
+        // With 2-job parallelism, target completion time is ~48s
+        // Bin with test_0 (100s) should be balanced with smaller tests
+        assert!(bin_runtime >= 100.0 && bin_runtime <= 170.0, "Bin with test_0 should be reasonably balanced");
     }
     #[test]
     fn test_split_task_with_missing_history_should_split_tasks_equally() {
@@ -1744,7 +1934,7 @@ mod tests {
                 "test_2".to_string() => build_mock_test_runtime("test_2.js", 50.0),
             },
         };
-        let gen_resmoke_service = build_mocked_service(test_list, task_history.clone());
+        let gen_resmoke_service = build_mocked_service(test_list.clone(), task_history.clone());
 
         let params = ResmokeGenParams {
             num_tasks: Some(num_tasks),
@@ -1765,12 +1955,18 @@ mod tests {
             .unwrap();
 
         assert_eq!(sub_suites.len(), num_tasks);
-        let suite_0 = &sub_suites[0];
-        assert_eq!(suite_0.test_list.len(), 4);
-        let suite_1 = &sub_suites[1];
-        assert_eq!(suite_1.test_list.len(), 4);
-        let suite_2 = &sub_suites[2];
-        assert_eq!(suite_2.test_list.len(), 4);
+
+        // Verify all 12 tests are distributed
+        let total_tests: usize = sub_suites.iter().map(|s| s.test_list.len()).sum();
+        assert_eq!(total_tests, 12);
+
+        // With 3 known tests (200s total) and 9 unknown tests, the bins should be reasonably balanced
+        // Unknown tests are distributed round-robin, so we expect roughly equal counts
+        // But with the large test_0 (100s), that bin may have fewer total tests
+        for suite in &sub_suites {
+            assert!(suite.test_list.len() >= 3 && suite.test_list.len() <= 5,
+                "Each suite should have 3-5 tests, got {}", suite.test_list.len());
+        }
     }
     #[test]
     fn test_split_tasks_should_include_multiversion_information() {

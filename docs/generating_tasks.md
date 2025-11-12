@@ -77,57 +77,96 @@ bucket https://mongo-test-stats.s3.amazonaws.com/{evg-project-name}/{variant-nam
 and use those stats to divide up the tests into sub-suite with roughly even runtimes.
 It will then generate "sub-tasks" for each of the "sub-suites" to actually run the tests.
 
-#### Hybrid Bin Packing Algorithm
+#### Parallel-Aware Hybrid Bin Packing Algorithm
 
-The task generator uses a **hybrid bin packing algorithm** to intelligently distribute tests across
-sub-tasks. This approach significantly reduces the "straggler problem" where one sub-task finishes
-much later than others, wasting parallelization opportunities and increasing overall build time.
+The task generator uses a **parallel-aware hybrid bin packing algorithm** to intelligently distribute
+tests across sub-tasks, accounting for the reality that resmoke executes tests using 2 concurrent
+jobs with work-stealing scheduling. This approach significantly reduces the "straggler problem" where
+one sub-task finishes much later than others, wasting parallelization opportunities and increasing
+overall build time.
+
+**Key insight**: Since resmoke runs tests with 2 parallel jobs that pull from a shared queue, the
+actual completion time of a sub-task is determined by the longest-running job, not the sum of all
+test runtimes. The algorithm optimizes for this parallel execution model.
 
 **How it works:**
 
-1. **Calculate target runtime**: The algorithm computes a target runtime for each sub-task as
-   `(total_runtime / num_tasks) * 0.95`, where the 0.95 factor provides a 5% buffer to account
-   for natural runtime variance.
+1. **Calculate target parallel completion time**: The algorithm computes a target for each sub-task
+   as `(total_runtime / num_tasks) * 0.95 / 2.0`. The 0.95 factor provides a 5% buffer for runtime
+   variance, and division by 2 accounts for resmoke's 2-job parallelism. This targets the actual
+   wall-clock time rather than cumulative test time.
 
-2. **Categorize tests by size**: Tests are sorted by runtime (descending) and categorized relative
-   to the target runtime:
-   - **Large tests** (> 20% of target): Typically long-running integration or performance tests
-   - **Medium tests** (5-20% of target): Standard functional tests
-   - **Small tests** (< 5% of target): Quick unit tests or simple checks
+2. **Estimate parallel completion time**: For each potential bin assignment, the algorithm simulates
+   resmoke's work-stealing behavior:
+   - Tests are sorted by runtime (descending) to model worst-case ordering
+   - Tests are greedily assigned to whichever job has less accumulated work
+   - The completion time is the maximum of the two jobs' total runtimes
+
+   This gives an accurate prediction of how long a sub-task will actually take to complete.
+
+3. **Categorize tests by size**: Tests are categorized relative to the target runtime:
+   - **Large tests** (> 20% of total target): Long-running integration or performance tests
+   - **Medium tests** (5-20% of total target): Standard functional tests
+   - **Small tests** (< 5% of total target): Quick unit tests or simple checks
    - **Unknown tests** (no history): Newly added tests without historical runtime data
 
-3. **Apply optimal strategy per category**:
-   - **Large tests**: Use greedy assignment to the sub-task with minimum current runtime. Since
-     these tests dominate sub-task runtime, standard greedy works well.
-   - **Medium tests**: Use best-fit assignment to fill gaps in existing sub-tasks. This prevents
-     creating new load imbalances and keeps all sub-tasks closer to the target runtime.
+4. **Apply parallel-optimized strategy per category**:
+   - **Large tests**: Use smart pairing strategy that places large tests in bins with complementary
+     smaller tests. The ideal pairing has `large_test_runtime ≈ sum_of_other_tests`, creating a
+     perfect 2-job split where one job runs the large test while the other processes smaller tests
+     in parallel. Falls back to minimizing parallel completion time when perfect pairing isn't available.
+
+   - **Medium tests**: Use parallel-aware best-fit assignment that evaluates bins by their estimated
+     parallel completion time rather than total runtime. Prefers bins that stay under the target
+     parallel completion time, selecting the fullest valid bin for best utilization. If all bins
+     would exceed the target, picks the one with minimum parallel completion time.
+
    - **Small tests**: Use round-robin distribution to prevent accumulation of small tests in any
-     one sub-task, which could cause unexpected delays.
-   - **Unknown tests**: Use separate round-robin distribution to avoid clustering unknowns together,
-     which could create unpredictable runtime spikes.
+     one sub-task. This ensures even distribution regardless of parallel execution.
 
-**Benefits over simple greedy scheduling:**
+   - **Unknown tests**: Use separate round-robin distribution with offset to avoid clustering
+     unknowns together, which could create unpredictable runtime spikes.
 
-- **10-30% reduction** in maximum completion time in typical scenarios
-- **Better load balancing**: Medium tests fill gaps instead of creating new imbalances
-- **Fewer stragglers**: Round-robin distribution of small tests prevents pile-up effects
-- **Predictable behavior**: Runtime buffer and categorization handle variance more gracefully
+**Benefits of parallel-aware optimization:**
 
-**Example**: Given 3 sub-tasks with a target of ~95s each and tests of [100s, 90s, 30s, 25s, 5s, 5s, 5s]:
-- Simple greedy might produce: [100s, 5s, 5s, 5s] = 115s, [90s, 30s] = 120s, [25s] = 25s (max 120s, 70s wasted)
-- Hybrid packing produces: [100s, 5s] = 105s, [90s, 30s, 5s] = 125s, [25s, 5s] = 30s (max 125s, better balanced)
+- **Better parallelization efficiency**: Sub-tasks are balanced for actual completion time with
+  2-job execution, not just cumulative runtime
+- **Reduced idle time**: Large tests are strategically paired with smaller tests so both jobs
+  stay busy throughout execution
+- **Improved utilization**: A sub-task with [100s test + 4×20s tests] = 180s cumulative completes
+  in ~100s wall-clock time (Job1: 100s, Job2: 80s) rather than having one job sit idle
+- **Maintains existing benefits**: Still provides 10-30% reduction in maximum completion time,
+  better load balancing, and fewer stragglers from the hybrid approach
 
-With hundreds or thousands of tests of varying sizes, the hybrid approach shows even greater improvements.
+**Example comparing approaches**: Given 3 sub-tasks and tests [100s, 80s, 20s×4]:
 
-**Tunable parameters**: The algorithm uses the following thresholds that are optimized for typical
-MongoDB test workloads:
-- Large test threshold: 20% of target runtime
-- Medium test threshold: 5-20% of target runtime
-- Small test threshold: < 5% of target runtime
+- **Without parallel awareness** (optimizing cumulative time):
+  - Sub-task 1: [100s] = 100s cumulative → 100s completion (Job2 idle)
+  - Sub-task 2: [80s, 20s] = 100s cumulative → 80s completion (better!)
+  - Sub-task 3: [20s, 20s, 20s] = 60s cumulative → 40s completion
+  - **Result**: Max 100s completion time, significant idle time in sub-task 1
+
+- **With parallel awareness** (optimizing parallel completion time):
+  - Sub-task 1: [100s, 20s, 20s] = 140s cumulative → 100s completion (Job1: 100s, Job2: 40s)
+  - Sub-task 2: [80s, 20s] = 100s cumulative → 80s completion (Job1: 80s, Job2: 20s)
+  - Sub-task 3: [20s] = 20s cumulative → 20s completion
+  - **Result**: Max 100s completion time, better work distribution, more total work done in same time
+
+With hundreds or thousands of tests, the parallel-aware approach provides even greater improvements
+by ensuring every sub-task maximizes its 2-job parallelism.
+
+**Tunable parameters**: The algorithm uses the following thresholds optimized for typical MongoDB
+test workloads:
+- Large test threshold: 20% of total target runtime (40% of parallel target)
+- Medium test threshold: 5-20% of total target runtime (10-40% of parallel target)
+- Small test threshold: < 5% of total target runtime (< 10% of parallel target)
 - Runtime buffer: 5% (0.95 multiplier)
+- Parallel jobs: 2 (resmoke's work-stealing queue size)
 
-These values have been selected based on empirical analysis of test distributions and can be found
-in `src/task_types/resmoke_tasks.rs` in the `categorize_test_size()` and `hybrid_bin_packing()` functions.
+These values have been selected based on empirical analysis of test distributions and resmoke's
+execution model. The implementation can be found in `src/task_types/resmoke_tasks.rs` in the
+`estimate_parallel_completion_time()`, `find_best_fit_bin()`, `find_best_bin_for_large_test()`,
+and `hybrid_bin_packing()` functions.
 
 #### Handling Tests Without History
 
