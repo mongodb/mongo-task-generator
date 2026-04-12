@@ -752,10 +752,11 @@ impl EvgConfigUtils for EvgConfigUtilsImpl {
     /// true if given build variant includes the enterprise module.
     fn is_enterprise_build_variant(&self, build_variant: &BuildVariant) -> bool {
         // assumed to be true, unless explicitly disabled
+        let pre83_pattern = Regex::new(r"--enableEnterpriseTests\s*=?\s*off").unwrap();
         let pattern = Regex::new(r"--modules\s*=?\s*none").unwrap();
         if let Some(expansions_map) = &build_variant.expansions {
             for (_key, value) in expansions_map.iter() {
-                if pattern.is_match(value) {
+                if pre83_pattern.is_match(value) || pattern.is_match(value) {
                     return false;
                 }
             }
