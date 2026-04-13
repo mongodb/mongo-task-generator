@@ -302,6 +302,47 @@ impl GeneratedConfig {
     }
 }
 
+/// Check if a JSON object's `depends_on` array contains a dependency named "version_gen".
+fn has_version_gen_dependency(obj: &serde_json::Value) -> bool {
+    obj.get("depends_on")
+        .and_then(|d| d.as_array())
+        .map(|deps| {
+            deps.iter()
+                .any(|dep| dep.get("name").and_then(|n| n.as_str()) == Some("version_gen"))
+        })
+        .unwrap_or(false)
+}
+
+/// Walk the generated config JSON and add `omit_generated_tasks: true` to every task definition
+/// and task reference that has a "version_gen" dependency.
+fn add_omit_generated_tasks(config: &mut serde_json::Value) {
+    // Patch task definitions in the top-level "tasks" array.
+    if let Some(tasks) = config.get_mut("tasks").and_then(|t| t.as_array_mut()) {
+        for task in tasks.iter_mut() {
+            if has_version_gen_dependency(task) {
+                task.as_object_mut()
+                    .unwrap()
+                    .insert("omit_generated_tasks".to_string(), serde_json::Value::Bool(true));
+            }
+        }
+    }
+
+    // Patch task references inside each build variant.
+    if let Some(bvs) = config.get_mut("buildvariants").and_then(|b| b.as_array_mut()) {
+        for bv in bvs.iter_mut() {
+            if let Some(tasks) = bv.get_mut("tasks").and_then(|t| t.as_array_mut()) {
+                for task_ref in tasks.iter_mut() {
+                    if has_version_gen_dependency(task_ref) {
+                        task_ref.as_object_mut()
+                            .unwrap()
+                            .insert("omit_generated_tasks".to_string(), serde_json::Value::Bool(true));
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// Create 'generate.tasks' configuration for all generated tasks in the provided evergreen
 /// project configuration.
 ///
@@ -339,7 +380,9 @@ pub async fn generate_configuration(deps: &Dependencies, target_directory: &Path
 
     let mut config_file = target_directory.to_path_buf();
     config_file.push("evergreen_config.json");
-    std::fs::write(config_file, serde_json::to_string_pretty(&gen_evg_project)?)?;
+    let mut config_json = serde_json::to_value(&gen_evg_project)?;
+    add_omit_generated_tasks(&mut config_json);
+    std::fs::write(config_file, serde_json::to_string_pretty(&config_json)?)?;
     let mut resmoke_config_actor = deps.resmoke_config_actor.lock().await;
     let failures = resmoke_config_actor.flush().await?;
     if !failures.is_empty() {
