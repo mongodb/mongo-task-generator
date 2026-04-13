@@ -302,6 +302,30 @@ impl GeneratedConfig {
     }
 }
 
+/// Remove all "version_gen" entries from `depends_on` arrays throughout the generated config.
+fn strip_version_gen_dependencies(config: &mut serde_json::Value) {
+    fn strip_from_array(arr: &mut Vec<serde_json::Value>) {
+        for item in arr.iter_mut() {
+            if let Some(deps) = item.get_mut("depends_on").and_then(|d| d.as_array_mut()) {
+                deps.retain(|dep| {
+                    dep.get("name").and_then(|n| n.as_str()) != Some("version_gen")
+                });
+            }
+        }
+    }
+
+    if let Some(tasks) = config.get_mut("tasks").and_then(|t| t.as_array_mut()) {
+        strip_from_array(tasks);
+    }
+    if let Some(bvs) = config.get_mut("buildvariants").and_then(|b| b.as_array_mut()) {
+        for bv in bvs.iter_mut() {
+            if let Some(tasks) = bv.get_mut("tasks").and_then(|t| t.as_array_mut()) {
+                strip_from_array(tasks);
+            }
+        }
+    }
+}
+
 /// Create 'generate.tasks' configuration for all generated tasks in the provided evergreen
 /// project configuration.
 ///
@@ -339,7 +363,9 @@ pub async fn generate_configuration(deps: &Dependencies, target_directory: &Path
 
     let mut config_file = target_directory.to_path_buf();
     config_file.push("evergreen_config.json");
-    std::fs::write(config_file, serde_json::to_string_pretty(&gen_evg_project)?)?;
+    let mut config_json = serde_json::to_value(&gen_evg_project)?;
+    strip_version_gen_dependencies(&mut config_json);
+    std::fs::write(config_file, serde_json::to_string_pretty(&config_json)?)?;
     let mut resmoke_config_actor = deps.resmoke_config_actor.lock().await;
     let failures = resmoke_config_actor.flush().await?;
     if !failures.is_empty() {
