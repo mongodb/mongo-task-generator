@@ -1786,18 +1786,12 @@ mod tests {
 
     // tests for is_enterprise_build_variant.
     #[rstest]
-    #[case(None, None)]
-    // the modules field is not checked, so these should all return true
-    #[case(Some(vec!["--enableEnterpriseTests=on".to_string()]), None)]
-    #[case(Some(vec!["--enableEnterpriseTests=off".to_string()]), None)]
-    // enableEnterpriseTests=on in expansions should still be enterprise
-    #[case(None, Some(btreemap! { "resmoke_args".to_string() => "--enableEnterpriseTests=on".to_string() }))]
+    #[case(None)]
+    #[case(Some(btreemap! { "test_flags".to_string() => "--enableEnterpriseTests=on".to_string() }))]
     fn test_build_variant_with_enterprise_module_should_return_true(
-        #[case] modules: Option<Vec<String>>,
         #[case] expansions: Option<BTreeMap<String, String>>,
     ) {
         let build_variant = BuildVariant {
-            modules,
             expansions,
             ..Default::default()
         };
@@ -1807,18 +1801,19 @@ mod tests {
     }
 
     #[rstest]
-    #[case("--modules=none")]
-    #[case("--modules none")]
+    #[case("resmoke_args", "--modules=none")]
+    #[case("resmoke_args", "--modules none")]
     // pre-8.3 pattern for disabling enterprise
-    #[case("--enableEnterpriseTests=off")]
-    #[case("--enableEnterpriseTests off")]
-    #[case("--enableEnterpriseTests = off")]
+    #[case("test_flags", "--enableEnterpriseTests=off")]
+    #[case("test_flags", "--enableEnterpriseTests off")]
+    #[case("test_flags", "--enableEnterpriseTests = off")]
     fn test_build_variant_with_out_enterprise_module_should_return_false(
+        #[case] expansion_key: &str,
         #[case] expansion_value: &str,
     ) {
         let build_variant = BuildVariant {
             expansions: Some(btreemap! {
-                "resmoke_args".to_string() => expansion_value.to_string(),
+                expansion_key.to_string() => expansion_value.to_string(),
             }),
             ..Default::default()
         };
