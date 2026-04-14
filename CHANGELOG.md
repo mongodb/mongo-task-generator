@@ -1,5 +1,8 @@
 # Changelog
 
+## 3.5.2 - 2026-04-14
+* Updates module logic for determining if tasks are in enterprise mode to work on older branches of MongoDB.
+
 ## 3.5.0 - 2025-8-20
 * Uses new module logic to determine if tasks are in enterprise mode
 

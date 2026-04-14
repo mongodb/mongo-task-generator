@@ -1786,15 +1786,19 @@ mod tests {
 
     // tests for is_enterprise_build_variant.
     #[rstest]
-    #[case(None)]
-    // this flag is no longer supported: it should return true in either case
-    #[case(Some(vec!["--enableEnterpriseTests=on".to_string()]))]
-    #[case(Some(vec!["--enableEnterpriseTests=off".to_string()]))]
+    #[case(None, None)]
+    // the modules field is not checked, so these should all return true
+    #[case(Some(vec!["--enableEnterpriseTests=on".to_string()]), None)]
+    #[case(Some(vec!["--enableEnterpriseTests=off".to_string()]), None)]
+    // enableEnterpriseTests=on in expansions should still be enterprise
+    #[case(None, Some(btreemap! { "resmoke_args".to_string() => "--enableEnterpriseTests=on".to_string() }))]
     fn test_build_variant_with_enterprise_module_should_return_true(
         #[case] modules: Option<Vec<String>>,
+        #[case] expansions: Option<BTreeMap<String, String>>,
     ) {
         let build_variant = BuildVariant {
             modules,
+            expansions,
             ..Default::default()
         };
         let evg_config_utils = EvgConfigUtilsImpl::new();
@@ -1802,11 +1806,19 @@ mod tests {
         assert!(evg_config_utils.is_enterprise_build_variant(&build_variant));
     }
 
-    #[test]
-    fn test_build_variant_with_out_enterprise_module_should_return_false() {
+    #[rstest]
+    #[case("--modules=none")]
+    #[case("--modules none")]
+    // pre-8.3 pattern for disabling enterprise
+    #[case("--enableEnterpriseTests=off")]
+    #[case("--enableEnterpriseTests off")]
+    #[case("--enableEnterpriseTests = off")]
+    fn test_build_variant_with_out_enterprise_module_should_return_false(
+        #[case] expansion_value: &str,
+    ) {
         let build_variant = BuildVariant {
             expansions: Some(btreemap! {
-                "expansion".to_string() => "--modules=none".to_string(),
+                "resmoke_args".to_string() => expansion_value.to_string(),
             }),
             ..Default::default()
         };
