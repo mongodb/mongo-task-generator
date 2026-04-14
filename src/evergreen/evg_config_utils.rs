@@ -752,10 +752,11 @@ impl EvgConfigUtils for EvgConfigUtilsImpl {
     /// true if given build variant includes the enterprise module.
     fn is_enterprise_build_variant(&self, build_variant: &BuildVariant) -> bool {
         // assumed to be true, unless explicitly disabled
+        let pre83_pattern = Regex::new(r"--enableEnterpriseTests\s*=?\s*off").unwrap();
         let pattern = Regex::new(r"--modules\s*=?\s*none").unwrap();
         if let Some(expansions_map) = &build_variant.expansions {
             for (_key, value) in expansions_map.iter() {
-                if pattern.is_match(value) {
+                if pre83_pattern.is_match(value) || pattern.is_match(value) {
                     return false;
                 }
             }
@@ -1786,14 +1787,12 @@ mod tests {
     // tests for is_enterprise_build_variant.
     #[rstest]
     #[case(None)]
-    // this flag is no longer supported: it should return true in either case
-    #[case(Some(vec!["--enableEnterpriseTests=on".to_string()]))]
-    #[case(Some(vec!["--enableEnterpriseTests=off".to_string()]))]
+    #[case(Some(btreemap! { "test_flags".to_string() => "--enableEnterpriseTests=on".to_string() }))]
     fn test_build_variant_with_enterprise_module_should_return_true(
-        #[case] modules: Option<Vec<String>>,
+        #[case] expansions: Option<BTreeMap<String, String>>,
     ) {
         let build_variant = BuildVariant {
-            modules,
+            expansions,
             ..Default::default()
         };
         let evg_config_utils = EvgConfigUtilsImpl::new();
@@ -1801,11 +1800,20 @@ mod tests {
         assert!(evg_config_utils.is_enterprise_build_variant(&build_variant));
     }
 
-    #[test]
-    fn test_build_variant_with_out_enterprise_module_should_return_false() {
+    #[rstest]
+    #[case("resmoke_args", "--modules=none")]
+    #[case("resmoke_args", "--modules none")]
+    // pre-8.3 pattern for disabling enterprise
+    #[case("test_flags", "--enableEnterpriseTests=off")]
+    #[case("test_flags", "--enableEnterpriseTests off")]
+    #[case("test_flags", "--enableEnterpriseTests = off")]
+    fn test_build_variant_with_out_enterprise_module_should_return_false(
+        #[case] expansion_key: &str,
+        #[case] expansion_value: &str,
+    ) {
         let build_variant = BuildVariant {
             expansions: Some(btreemap! {
-                "expansion".to_string() => "--modules=none".to_string(),
+                expansion_key.to_string() => expansion_value.to_string(),
             }),
             ..Default::default()
         };
