@@ -47,7 +47,7 @@ For example, if `n_files=3` and `n_tasks=5`, a total of 15 files will be run in 
 ### What's the right channel to ask my question?
 
 If you have a question about _Mongo Task Generator_, please reach out on slack in #ask-devprod-test-infrastructure or #server-testing
-channel, or email us at devprod-correctness-team@mongodb.com.
+channel, or email us at devprod-test-infrastructure-team@mongodb.com.
 
 ### How can I request a change/report a bug in _Mongo Task Generator_?
 
