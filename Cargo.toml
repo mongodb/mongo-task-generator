@@ -4,7 +4,7 @@ description = "Dynamically split evergreen tasks into subtasks for testing the 1
 license = "Apache-2.0"
 version = "3.5.2"
 repository = "https://github.com/mongodb/mongo-task-generator"
-authors = ["DevProd Correctness Team <devprod-correctness-team@mongodb.com>"]
+authors = ["DevProd Test Infrastructure Team <devprod-test-infrastructure-team@mongodb.com>"]
 edition = "2018"
 rust-version = "1.81"
 
