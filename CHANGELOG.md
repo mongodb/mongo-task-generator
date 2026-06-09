@@ -1,5 +1,8 @@
 # Changelog
 
+## 3.6.0 - 2026-06-09
+* Recognize `last_patch` as a multiversion old-version value. Tasks whose `initialize multiversion tasks` variables target `last_patch` now generate sub-tasks when a build variant opts in via the `last_versions` expansion, reusing the default required-FCV exclude tags.
+
 ## 3.5.2 - 2026-04-14
 * Updates module logic for determining if tasks are in enterprise mode to work on older branches of MongoDB.
 

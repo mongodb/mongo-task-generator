@@ -138,6 +138,8 @@ pub const MULTIVERSION_EXCLUDE_TAGS_FILE: &str = "multiversion_exclude_tags.yml"
 pub const MULTIVERSION_LAST_LTS: &str = "last_lts";
 /// Name of last continuous configuration.
 pub const MULTIVERSION_LAST_CONTINUOUS: &str = "last_continuous";
+/// Name of last patch configuration.
+pub const MULTIVERSION_LAST_PATCH: &str = "last_patch";
 
 // Distro group names
 /// Windows distro group name.
