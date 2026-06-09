@@ -276,6 +276,14 @@ impl MultiversionConfig {
             self.requires_fcv_tag.clone()
         }
     }
+
+    /// Get the required FCV tag for the last patch version.
+    ///
+    /// `last_patch` runs against the latest patch release of the current version, whose FCV
+    /// matches the version under test, so the default `requires_fcv_tag` set applies.
+    pub fn get_fcv_tags_for_patch(&self) -> String {
+        self.requires_fcv_tag.clone()
+    }
 }
 
 #[cfg(test)]
