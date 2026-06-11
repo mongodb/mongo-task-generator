@@ -9,6 +9,8 @@
 //!
 //! - `lts` - Long-Term Support. This refers to the yearly, major release of MongoDB (e.g. 5.0, 6.0, ...).
 //! - `continuous` - Continuous release. This refers to the quarterly releases of MongoDB (e.g. 5.1, 5.2, 5.3, ...).
+//! - `last_patch` - The latest patch release of the current version. Its FCV matches the version
+//!   under test, so the default required-FCV exclude tags apply.
 //! - `old versions` - The previous releases on MongoDB to test against. If the previous release was
 //!   a `lts` release, only that needs to be tested against. If the previous release was not
 //!   a `lts` release, then we should test against both that release and the last `lts` release.
@@ -23,7 +25,7 @@ use crate::{
     evergreen::evg_config_utils::MultiversionGenerateTaskConfig,
     evergreen_names::{
         BACKPORT_REQUIRED_TAG, MULTIVERSION_INCOMPATIBLE, MULTIVERSION_LAST_CONTINUOUS,
-        MULTIVERSION_LAST_LTS,
+        MULTIVERSION_LAST_LTS, MULTIVERSION_LAST_PATCH,
     },
     resmoke::resmoke_proxy::MultiversionConfig,
 };
@@ -96,6 +98,7 @@ impl MultiversionService for MultiversionServiceImpl {
                 MULTIVERSION_LAST_CONTINUOUS => {
                     self.multiversion_config.get_fcv_tags_for_continuous()
                 }
+                MULTIVERSION_LAST_PATCH => self.multiversion_config.get_fcv_tags_for_patch(),
                 _ => panic!("Unknown multiversion mode: {}", &mode),
             }
         } else {
@@ -208,6 +211,58 @@ mod tests {
             multiversion_generate_tasks[1]
         );
     }
+    #[test]
+    fn test_multiversion_generate_tasks_last_patch_survives_filter() {
+        let multiversion_generate_tasks = vec![
+            MultiversionGenerateTaskConfig {
+                suite_name: "suite_last_lts".to_string(),
+                old_version: "last_lts".to_string(),
+                bazel_target: None,
+            },
+            MultiversionGenerateTaskConfig {
+                suite_name: "suite_last_patch".to_string(),
+                old_version: "last_patch".to_string(),
+                bazel_target: None,
+            },
+        ];
+        let multiversion_service = MultiversionServiceImpl {
+            multiversion_config: MultiversionConfig {
+                last_versions: vec!["last_lts".to_string(), "last_continuous".to_string()],
+                requires_fcv_tag: "requires_fcv_71".to_string(),
+                requires_fcv_tag_lts: Some("requires_fcv_71".to_string()),
+                requires_fcv_tag_continuous: Some("requires_fcv_71".to_string()),
+            },
+        };
+        // Only the variant-level `last_versions` override pulls last_patch into the filter set;
+        // the global default (last_lts, last_continuous) would otherwise drop it.
+        let filtered = multiversion_service
+            .filter_multiversion_generate_tasks(
+                Some(multiversion_generate_tasks.clone()),
+                Some("last_patch".to_string()),
+            )
+            .unwrap();
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0], multiversion_generate_tasks[1]);
+    }
+
+    #[test]
+    fn test_exclude_tags_for_last_patch_uses_default_fcv_tag() {
+        let multiversion_service = MultiversionServiceImpl {
+            multiversion_config: MultiversionConfig {
+                last_versions: vec!["last_lts".to_string()],
+                requires_fcv_tag: "requires_fcv_71".to_string(),
+                requires_fcv_tag_lts: Some("requires_fcv_lts".to_string()),
+                requires_fcv_tag_continuous: Some("requires_fcv_continuous".to_string()),
+            },
+        };
+        // last_patch reuses the default `requires_fcv_tag`, not the lts/continuous tag sets.
+        let exclude_tags =
+            multiversion_service.exclude_tags_for_task("my_task", Some("last_patch".to_string()));
+        assert!(exclude_tags.contains("requires_fcv_71"));
+        assert!(!exclude_tags.contains("requires_fcv_lts"));
+        assert!(!exclude_tags.contains("requires_fcv_continuous"));
+    }
+
     #[test]
     fn test_multiversion_generate_tasks_none() {
         let multiversion_service = MultiversionServiceImpl {
