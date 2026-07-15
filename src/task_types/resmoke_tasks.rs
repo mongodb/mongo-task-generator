@@ -956,6 +956,7 @@ mod tests {
         let test_vars = params.build_run_test_vars("my_suite_0", &sub_suite, "", None);
 
         assert_eq!(test_vars.len(), 3);
+        assert!(!test_vars.contains_key("gen_task_config_location"));
         assert!(!test_vars.contains_key("resmoke_jobs_max"));
         assert_eq!(
             test_vars.get("suite").unwrap(),
@@ -983,6 +984,7 @@ mod tests {
         let test_vars = params.build_run_test_vars("my_suite_0", &sub_suite, "", None);
 
         assert_eq!(test_vars.len(), 4);
+        assert!(!test_vars.contains_key("gen_task_config_location"));
         assert_eq!(
             test_vars.get("resmoke_jobs_max").unwrap(),
             &ParamValue::from(5)
@@ -1015,6 +1017,7 @@ mod tests {
             params.build_run_test_vars("my_suite_0", &sub_suite, "tag_0,tag_1,tag_2", None);
 
         assert_eq!(test_vars.len(), 4);
+        assert!(!test_vars.contains_key("gen_task_config_location"));
         assert_eq!(
             test_vars.get("multiversion_exclude_tags_version").unwrap(),
             &ParamValue::from("last_lts")
@@ -1044,6 +1047,7 @@ mod tests {
         let test_vars = params.build_run_test_vars("my_suite_0", &sub_suite, "", None);
 
         assert_eq!(test_vars.len(), 4);
+        assert!(!test_vars.contains_key("gen_task_config_location"));
         assert_eq!(
             test_vars.get("multiversion_exclude_tags_version").unwrap(),
             &ParamValue::from("last_lts")
@@ -1075,6 +1079,7 @@ mod tests {
         let test_vars = params.build_run_test_vars("my_suite_0", &sub_suite, "", None);
 
         assert_eq!(test_vars.len(), 4);
+        assert!(!test_vars.contains_key("gen_task_config_location"));
         assert_eq!(
             test_vars.get("multiversion_exclude_tags_version").unwrap(),
             &ParamValue::from("last_lts")
