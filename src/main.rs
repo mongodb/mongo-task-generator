@@ -144,6 +144,11 @@ struct Args {
     /// YAML file mapping mapping bazel target names of suite configs to their file location location
     #[clap(long, value_parser)]
     bazel_suite_configs: Option<PathBuf>,
+
+    /// Discover all suites up front with batched resmoke test-discovery invocations.
+    /// Requires a resmoke version whose test-discovery accepts repeated --suite arguments.
+    #[clap(long)]
+    batch_test_discovery: bool,
 }
 
 /// Configure logging for the command execution.
@@ -186,6 +191,7 @@ async fn main() {
             large_required_task_runtime_threshold: args.large_required_task_runtime_threshold,
         },
         bazel_suite_configs: args.bazel_suite_configs.as_ref().map(|p| expand_path(p)),
+        batch_test_discovery: args.batch_test_discovery,
     };
     let s3_client = build_s3_client().await;
     let deps = Dependencies::new(execution_config, s3_client).unwrap();
