@@ -139,8 +139,6 @@ pub struct ExecutionConfiguration<'a> {
     pub target_directory: &'a Path,
     /// Task generating the configuration.
     pub generating_task: &'a str,
-    /// Location in S3 where generated configuration will be uploaded.
-    pub config_location: &'a str,
     /// Should burn_in tasks be generated.
     pub gen_burn_in: bool,
     /// True if the generator should skip tests covered by more complex suites.
@@ -219,7 +217,6 @@ impl Dependencies {
             evg_config_utils.clone(),
             multiversion_service.clone(),
             execution_config.generating_task.to_string(),
-            execution_config.config_location.to_string(),
             gen_sub_tasks_config,
         ));
         let task_history_service = Arc::new(TaskHistoryServiceImpl::new(
@@ -1146,7 +1143,6 @@ mod tests {
                 evg_config_utils,
                 Arc::new(MockMultiversionService {}),
                 "generating_task".to_string(),
-                "config_location".to_string(),
                 None,
             )),
             false,
