@@ -155,13 +155,18 @@ impl TestDiscovery for ResmokeProxy {
     /// A list of tests belonging to given suite.
     fn discover_tests(&self, suite_name: &str) -> Result<Vec<String>> {
         let entry = {
-            let mut cache = self.discovery_cache.lock().unwrap();
+            // Recover from a poisoned lock (a panic in another discovery thread)
+            // rather than failing the whole generation over a cache optimization.
+            let mut cache = self
+                .discovery_cache
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
             cache
                 .entry(suite_name.to_string())
                 .or_insert_with(|| Arc::new(Mutex::new(None)))
                 .clone()
         };
-        let mut entry = entry.lock().unwrap();
+        let mut entry = entry.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(tests) = entry.as_ref() {
             return Ok(tests.clone());
         }
@@ -326,15 +331,22 @@ mod tests {
     // tests for discover_tests caching.
     #[test]
     fn test_discover_tests_only_runs_discovery_once_per_suite() {
-        let tmp_dir =
-            std::env::temp_dir().join(format!("resmoke_proxy_cache_test_{}", std::process::id()));
+        let tmp_dir = std::env::temp_dir().join(format!(
+            "resmoke_proxy_cache_test_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
         std::fs::create_dir_all(&tmp_dir).unwrap();
         let counter_file = tmp_dir.join("calls.txt");
+        let _ = std::fs::remove_file(&counter_file);
         let script_file = tmp_dir.join("fake_resmoke.sh");
         std::fs::write(
             &script_file,
             format!(
-                "echo called >> {}\necho 'suite_name: my_suite'\necho 'tests: []'\n",
+                "echo called >> \"{}\"\necho 'suite_name: my_suite'\necho 'tests: []'\n",
                 counter_file.display()
             ),
         )
