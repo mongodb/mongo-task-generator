@@ -194,7 +194,7 @@ impl TestDiscovery for ResmokeProxy {
         let mut cmd = vec![&*self.resmoke_cmd];
         cmd.append(&mut self.resmoke_script.iter().map(|s| s.as_str()).collect());
         cmd.append(&mut vec!["suiteconfig", "--suite", suite_config]);
-        let cmd_output = run_command(&cmd).unwrap();
+        let cmd_output = run_command(&cmd)?;
 
         Ok(ResmokeSuiteConfig::from_str(&cmd_output)?)
     }
@@ -230,7 +230,7 @@ impl ResmokeProxy {
         }
 
         let start = Instant::now();
-        let cmd_output = run_command(&cmd).unwrap();
+        let cmd_output = run_command(&cmd)?;
 
         event!(
             Level::INFO,
@@ -329,6 +329,8 @@ mod tests {
     use super::*;
 
     // tests for discover_tests caching.
+    // Uses `sh` and shell redirection, so restrict to Unix platforms.
+    #[cfg(unix)]
     #[test]
     fn test_discover_tests_only_runs_discovery_once_per_suite() {
         let tmp_dir = std::env::temp_dir().join(format!(
