@@ -60,8 +60,12 @@ pub struct ResmokeProxy {
     /// own lock so identical concurrent lookups wait for the first one instead of
     /// spawning duplicate resmoke processes, while lookups of different suites proceed
     /// in parallel.
-    discovery_cache: Arc<Mutex<HashMap<String, Arc<Mutex<Option<Vec<String>>>>>>>,
+    discovery_cache: DiscoveryCache,
 }
+
+/// Cache of test discovery results, keyed by suite name. Each entry has its own
+/// lock so identical concurrent lookups share one resmoke invocation.
+type DiscoveryCache = Arc<Mutex<HashMap<String, Arc<Mutex<Option<Vec<String>>>>>>>;
 
 impl ResmokeProxy {
     /// Create a new `ResmokeProxy` instance.
