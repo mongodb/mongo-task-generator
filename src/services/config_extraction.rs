@@ -84,7 +84,6 @@ pub struct ConfigExtractionServiceImpl {
     evg_config_utils: Arc<dyn EvgConfigUtils>,
     multiversion_service: Arc<dyn MultiversionService>,
     generating_task: String,
-    config_location: String,
     gen_sub_tasks_config: Option<GenerateSubTasksConfig>,
 }
 
@@ -95,21 +94,18 @@ impl ConfigExtractionServiceImpl {
     ///
     /// * `evg_config_utils` - Utilities for looking up evergreen project configuration.
     /// * `generating_task` - Name of task running task generation.
-    /// * `config_location` - Location where generated configuration will be stored.
     /// * `gen_sub_tasks_config` - Configuration for generating sub-tasks.
     ///
     pub fn new(
         evg_config_utils: Arc<dyn EvgConfigUtils>,
         multiversion_service: Arc<dyn MultiversionService>,
         generating_task: String,
-        config_location: String,
         gen_sub_tasks_config: Option<GenerateSubTasksConfig>,
     ) -> Self {
         Self {
             evg_config_utils,
             multiversion_service,
             generating_task,
-            config_location,
             gen_sub_tasks_config,
         }
     }
@@ -235,7 +231,6 @@ impl ConfigExtractionService for ConfigExtractionServiceImpl {
                     evg_config_utils.get_multiversion_generate_tasks(task_def),
                     last_versions_expansion,
                 ),
-            config_location: self.config_location.clone(),
             dependencies: self.determine_task_dependencies(task_def),
             is_enterprise,
             platform: Some(evg_config_utils.infer_build_variant_platform(build_variant)),
@@ -330,7 +325,6 @@ impl ConfigExtractionService for ConfigExtractionServiceImpl {
                         .get_multiversion_generate_tasks(task_def),
                     last_versions_expansion,
                 ),
-            config_location: self.config_location.clone(),
             dependencies: self.determine_task_dependencies(task_def),
             is_enterprise,
             pass_through_vars: self.evg_config_utils.get_gen_task_vars(task_def),
@@ -435,7 +429,6 @@ mod tests {
             Arc::new(EvgConfigUtilsImpl::new()),
             Arc::new(MockMultiversionService {}),
             "generating_task".to_string(),
-            "config_location".to_string(),
             None,
         )
     }

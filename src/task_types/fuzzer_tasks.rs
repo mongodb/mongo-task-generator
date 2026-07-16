@@ -13,10 +13,10 @@ use crate::{
     evergreen::evg_config_utils::MultiversionGenerateTaskConfig,
     evergreen_names::{
         ADD_GIT_TAG, CONFIGURE_EVG_API_CREDS, CONTINUE_ON_FAILURE, DO_MULTIVERSION_SETUP, DO_SETUP,
-        FUZZER_PARAMETERS, GEN_TASK_CONFIG_LOCATION, GET_PROJECT_WITH_NO_MODULES, IDLE_TIMEOUT,
-        MULTIVERSION_EXCLUDE_TAGS, NPM_COMMAND, REQUIRE_MULTIVERSION_SETUP, RESMOKE_ARGS,
-        RESMOKE_JOBS_MAX, RUN_FUZZER, RUN_GENERATED_TESTS, RUN_GENERATED_TESTS_VIA_BAZEL,
-        SETUP_JSTESTFUZZ, SHOULD_SHUFFLE_TESTS, SUITE_NAME, TASK_NAME,
+        FUZZER_PARAMETERS, GET_PROJECT_WITH_NO_MODULES, IDLE_TIMEOUT, MULTIVERSION_EXCLUDE_TAGS,
+        NPM_COMMAND, REQUIRE_MULTIVERSION_SETUP, RESMOKE_ARGS, RESMOKE_JOBS_MAX, RUN_FUZZER,
+        RUN_GENERATED_TESTS, RUN_GENERATED_TESTS_VIA_BAZEL, SETUP_JSTESTFUZZ, SHOULD_SHUFFLE_TESTS,
+        SUITE_NAME, TASK_NAME,
     },
     task_types::resmoke_tasks::replace_resmoke_args_with_bazel_args,
     utils::task_name::name_generated_task,
@@ -66,8 +66,6 @@ pub struct FuzzerGenTaskParams {
     pub require_multiversion_setup: bool,
     /// Should multiversion generate tasks exist for this.
     pub require_multiversion_generate_tasks: bool,
-    /// Location of generated task configuration.
-    pub config_location: String,
     /// List of tasks generated sub-tasks should depend on.
     pub dependencies: Vec<String>,
     /// Is this task for enterprise builds.
@@ -118,7 +116,6 @@ impl FuzzerGenTaskParams {
     ) -> HashMap<String, ParamValue> {
         let mut vars = hashmap! {
             CONTINUE_ON_FAILURE.to_string() => ParamValue::from(self.continue_on_failure),
-            GEN_TASK_CONFIG_LOCATION.to_string() => ParamValue::from(self.config_location.as_str()),
             REQUIRE_MULTIVERSION_SETUP.to_string() => ParamValue::from(self.is_multiversion()),
             RESMOKE_ARGS.to_string() => ParamValue::from(self.resmoke_args.as_str()),
             RESMOKE_JOBS_MAX.to_string() => ParamValue::from(self.resmoke_jobs_max),

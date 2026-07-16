@@ -28,9 +28,9 @@ use crate::{
     },
     evergreen_names::{
         ADD_GIT_TAG, CONFIGURE_EVG_API_CREDS, DO_MULTIVERSION_SETUP, DO_SETUP,
-        GEN_TASK_CONFIG_LOCATION, GET_PROJECT_WITH_NO_MODULES, MULTIVERSION_EXCLUDE_TAG,
-        MULTIVERSION_EXCLUDE_TAGS_FILE, REQUIRE_MULTIVERSION_SETUP, RESMOKE_ARGS, RESMOKE_JOBS_MAX,
-        RUN_GENERATED_TESTS, RUN_GENERATED_TESTS_VIA_BAZEL, SUITE_NAME,
+        GET_PROJECT_WITH_NO_MODULES, MULTIVERSION_EXCLUDE_TAG, MULTIVERSION_EXCLUDE_TAGS_FILE,
+        REQUIRE_MULTIVERSION_SETUP, RESMOKE_ARGS, RESMOKE_JOBS_MAX, RUN_GENERATED_TESTS,
+        RUN_GENERATED_TESTS_VIA_BAZEL, SUITE_NAME,
     },
     resmoke::resmoke_proxy::TestDiscovery,
     utils::{fs_service::FsService, task_name::name_generated_task},
@@ -70,8 +70,6 @@ pub struct ResmokeGenParams {
     pub bazel_args: Option<String>,
     /// Number of jobs to limit resmoke to.
     pub resmoke_jobs_max: Option<u64>,
-    /// Location where generated task configuration will be stored in S3.
-    pub config_location: String,
     /// List of tasks generated sub-tasks should depend on.
     pub dependencies: Vec<String>,
     /// Is this task for enterprise builds.
@@ -128,7 +126,6 @@ impl ResmokeGenParams {
             REQUIRE_MULTIVERSION_SETUP.to_string() => ParamValue::from(self.require_multiversion_setup),
             RESMOKE_ARGS.to_string() => ParamValue::from(resmoke_args.as_str()),
             SUITE_NAME.to_string() => ParamValue::from(suite.as_str()),
-            GEN_TASK_CONFIG_LOCATION.to_string() => ParamValue::from(self.config_location.as_str()),
         });
 
         if let Some(mv_exclude_tags) = &sub_suite.mv_exclude_tags {
@@ -958,7 +955,7 @@ mod tests {
 
         let test_vars = params.build_run_test_vars("my_suite_0", &sub_suite, "", None);
 
-        assert_eq!(test_vars.len(), 4);
+        assert_eq!(test_vars.len(), 3);
         assert!(!test_vars.contains_key("resmoke_jobs_max"));
         assert_eq!(
             test_vars.get("suite").unwrap(),
@@ -985,7 +982,7 @@ mod tests {
 
         let test_vars = params.build_run_test_vars("my_suite_0", &sub_suite, "", None);
 
-        assert_eq!(test_vars.len(), 5);
+        assert_eq!(test_vars.len(), 4);
         assert_eq!(
             test_vars.get("resmoke_jobs_max").unwrap(),
             &ParamValue::from(5)
@@ -1017,7 +1014,7 @@ mod tests {
         let test_vars =
             params.build_run_test_vars("my_suite_0", &sub_suite, "tag_0,tag_1,tag_2", None);
 
-        assert_eq!(test_vars.len(), 5);
+        assert_eq!(test_vars.len(), 4);
         assert_eq!(
             test_vars.get("multiversion_exclude_tags_version").unwrap(),
             &ParamValue::from("last_lts")
@@ -1046,7 +1043,7 @@ mod tests {
 
         let test_vars = params.build_run_test_vars("my_suite_0", &sub_suite, "", None);
 
-        assert_eq!(test_vars.len(), 5);
+        assert_eq!(test_vars.len(), 4);
         assert_eq!(
             test_vars.get("multiversion_exclude_tags_version").unwrap(),
             &ParamValue::from("last_lts")
@@ -1077,7 +1074,7 @@ mod tests {
 
         let test_vars = params.build_run_test_vars("my_suite_0", &sub_suite, "", None);
 
-        assert_eq!(test_vars.len(), 5);
+        assert_eq!(test_vars.len(), 4);
         assert_eq!(
             test_vars.get("multiversion_exclude_tags_version").unwrap(),
             &ParamValue::from("last_lts")

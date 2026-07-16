@@ -30,12 +30,8 @@ const DEFAULT_LARGE_REQUIRED_TASK_RUNTIME_THRESHOLD: &str = "7200";
 struct EvgExpansions {
     /// Evergreen project being run.
     pub project: String,
-    /// Git revision being run against.
-    pub revision: String,
     /// Name of task running generator.
     pub task_name: String,
-    /// ID of Evergreen version running.
-    pub version_id: String,
     /// True if the patch is a patch build.
     #[serde(default, deserialize_with = "deserialize_bool_string")]
     pub is_patch: bool,
@@ -78,14 +74,6 @@ impl EvgExpansions {
         }
 
         Ok(evg_expansions?)
-    }
-
-    /// File to store generated configuration under.
-    pub fn config_location(&self) -> String {
-        format!(
-            "{}/{}/generate_tasks/generated-config-{}.tgz",
-            self.project, self.revision, self.version_id
-        )
     }
 }
 
@@ -186,7 +174,6 @@ async fn main() {
         resmoke_command: &args.resmoke_command,
         target_directory: &expand_path(&args.target_directory),
         generating_task: &evg_expansions.task_name,
-        config_location: &evg_expansions.config_location(),
         gen_burn_in: args.burn_in,
         skip_covered_tests: evg_expansions.is_patch && !evg_expansions.run_covered_tests,
         include_fully_disabled_feature_tests: args.include_fully_disabled_feature_tests,

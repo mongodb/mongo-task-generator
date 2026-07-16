@@ -654,7 +654,6 @@ mod tests {
             Arc::new(EvgConfigUtilsImpl::new()),
             Arc::new(MockMultiversionService {}),
             "generating_task".to_string(),
-            "config_location".to_string(),
             None,
         )
     }

@@ -73,8 +73,6 @@ pub const RESMOKE_ARGS: &str = "resmoke_args";
 pub const BAZEL_ARGS: &str = "bazel_args";
 /// Name of suite being executed.
 pub const SUITE_NAME: &str = "suite";
-/// Location where generation task configuration is stored in S3.
-pub const GEN_TASK_CONFIG_LOCATION: &str = "gen_task_config_location";
 /// Maximum amount of resmoke jobs to execute in parallel.
 pub const RESMOKE_JOBS_MAX: &str = "resmoke_jobs_max";
 /// Number of times to repeat a given resmoke suite.
