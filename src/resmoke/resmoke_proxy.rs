@@ -1,4 +1,9 @@
-use std::{path::Path, str::FromStr, time::Instant};
+use std::{
+    path::Path,
+    str::FromStr,
+    sync::{Arc, Mutex},
+    time::Instant,
+};
 
 use anyhow::Result;
 use serde::Deserialize;
@@ -49,7 +54,18 @@ pub struct ResmokeProxy {
     /// True if test discovery should include tests that are tagged with fully disabled features.
     include_fully_disabled_feature_tests: bool,
     bazel_suite_configs: BazelConfigs,
+    /// Cache of test discovery results, keyed by suite name. The same suite is queried
+    /// several times per run (once per multiversion/variant combination) and discovery
+    /// shells out to resmoke, so repeat lookups are worth avoiding. Each entry has its
+    /// own lock so identical concurrent lookups wait for the first one instead of
+    /// spawning duplicate resmoke processes, while lookups of different suites proceed
+    /// in parallel.
+    discovery_cache: DiscoveryCache,
 }
+
+/// Cache of test discovery results, keyed by suite name. Each entry has its own
+/// lock so identical concurrent lookups share one resmoke invocation.
+type DiscoveryCache = Arc<Mutex<HashMap<String, Arc<Mutex<Option<Vec<String>>>>>>>;
 
 impl ResmokeProxy {
     /// Create a new `ResmokeProxy` instance.
@@ -75,6 +91,7 @@ impl ResmokeProxy {
             skip_covered_tests,
             include_fully_disabled_feature_tests,
             bazel_suite_configs,
+            discovery_cache: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 }
@@ -141,6 +158,60 @@ impl TestDiscovery for ResmokeProxy {
     ///
     /// A list of tests belonging to given suite.
     fn discover_tests(&self, suite_name: &str) -> Result<Vec<String>> {
+        let entry = {
+            // Recover from a poisoned lock (a panic in another discovery thread)
+            // rather than failing the whole generation over a cache optimization.
+            let mut cache = self
+                .discovery_cache
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            cache
+                .entry(suite_name.to_string())
+                .or_insert_with(|| Arc::new(Mutex::new(None)))
+                .clone()
+        };
+        let mut entry = entry.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(tests) = entry.as_ref() {
+            return Ok(tests.clone());
+        }
+        let tests = self.run_test_discovery(suite_name)?;
+        *entry = Some(tests.clone());
+        Ok(tests)
+    }
+
+    /// Get the configuration for the given suite.
+    ///
+    /// # Arguments
+    ///
+    /// * `suite_name` - Name of test suite to query.
+    ///
+    /// # Return
+    ///
+    /// Resmoke configuration for the given suite.
+    fn get_suite_config(&self, suite_name: &str) -> Result<ResmokeSuiteConfig> {
+        let suite_config = if is_bazel_suite(suite_name) {
+            self.bazel_suite_configs.get(suite_name)
+        } else {
+            suite_name
+        };
+
+        let mut cmd = vec![&*self.resmoke_cmd];
+        cmd.append(&mut self.resmoke_script.iter().map(|s| s.as_str()).collect());
+        cmd.append(&mut vec!["suiteconfig", "--suite", suite_config]);
+        let cmd_output = run_command(&cmd)?;
+
+        Ok(ResmokeSuiteConfig::from_str(&cmd_output)?)
+    }
+
+    /// Get the multiversion configuration to generate against.
+    fn get_multiversion_config(&self) -> Result<MultiversionConfig> {
+        MultiversionConfig::from_resmoke(&self.resmoke_cmd, &self.resmoke_script)
+    }
+}
+
+impl ResmokeProxy {
+    /// Query resmoke for the list of tests in the given suite.
+    fn run_test_discovery(&self, suite_name: &str) -> Result<Vec<String>> {
         let suite_config = if is_bazel_suite(suite_name) {
             self.bazel_suite_configs.get(suite_name)
         } else {
@@ -163,7 +234,7 @@ impl TestDiscovery for ResmokeProxy {
         }
 
         let start = Instant::now();
-        let cmd_output = run_command(&cmd).unwrap();
+        let cmd_output = run_command(&cmd)?;
 
         event!(
             Level::INFO,
@@ -187,35 +258,6 @@ impl TestDiscovery for ResmokeProxy {
             .into_iter()
             .filter(|f| Path::new(f).exists())
             .collect())
-    }
-
-    /// Get the configuration for the given suite.
-    ///
-    /// # Arguments
-    ///
-    /// * `suite_name` - Name of test suite to query.
-    ///
-    /// # Return
-    ///
-    /// Resmoke configuration for the given suite.
-    fn get_suite_config(&self, suite_name: &str) -> Result<ResmokeSuiteConfig> {
-        let suite_config = if is_bazel_suite(suite_name) {
-            self.bazel_suite_configs.get(suite_name)
-        } else {
-            suite_name
-        };
-
-        let mut cmd = vec![&*self.resmoke_cmd];
-        cmd.append(&mut self.resmoke_script.iter().map(|s| s.as_str()).collect());
-        cmd.append(&mut vec!["suiteconfig", "--suite", suite_config]);
-        let cmd_output = run_command(&cmd).unwrap();
-
-        Ok(ResmokeSuiteConfig::from_str(&cmd_output)?)
-    }
-
-    /// Get the multiversion configuration to generate against.
-    fn get_multiversion_config(&self) -> Result<MultiversionConfig> {
-        MultiversionConfig::from_resmoke(&self.resmoke_cmd, &self.resmoke_script)
     }
 }
 
@@ -289,6 +331,51 @@ impl MultiversionConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // tests for discover_tests caching.
+    // Uses `sh` and shell redirection, so restrict to Unix platforms.
+    #[cfg(unix)]
+    #[test]
+    fn test_discover_tests_only_runs_discovery_once_per_suite() {
+        let tmp_dir = std::env::temp_dir().join(format!(
+            "resmoke_proxy_cache_test_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&tmp_dir).unwrap();
+        let counter_file = tmp_dir.join("calls.txt");
+        let _ = std::fs::remove_file(&counter_file);
+        let script_file = tmp_dir.join("fake_resmoke.sh");
+        std::fs::write(
+            &script_file,
+            format!(
+                "echo called >> \"{}\"\necho 'suite_name: my_suite'\necho 'tests: []'\n",
+                counter_file.display()
+            ),
+        )
+        .unwrap();
+        let proxy = ResmokeProxy::new(
+            &format!("sh {}", script_file.display()),
+            false,
+            false,
+            BazelConfigs::default(),
+        );
+
+        for _ in 0..3 {
+            assert_eq!(
+                proxy.discover_tests("my_suite").unwrap(),
+                Vec::<String>::new()
+            );
+        }
+        proxy.discover_tests("other_suite").unwrap();
+
+        let calls = std::fs::read_to_string(&counter_file).unwrap();
+        assert_eq!(calls.lines().count(), 2);
+        std::fs::remove_dir_all(&tmp_dir).unwrap();
+    }
 
     // tests for get_fcv_tags_for_lts.
     #[test]
