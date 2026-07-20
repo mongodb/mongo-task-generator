@@ -222,10 +222,20 @@ impl TestDiscovery for ResmokeProxy {
             // Documents are expected in request order. If any document is missing or
             // fails to parse, discard the whole batch rather than risk seeding results
             // under the wrong suite name; those suites are discovered lazily instead.
-            let parsed: Vec<TestDiscoveryOutput> = serde_yaml::Deserializer::from_str(&output)
+            let parsed: Vec<TestDiscoveryOutput> = match serde_yaml::Deserializer::from_str(&output)
                 .map(TestDiscoveryOutput::deserialize)
                 .collect::<Result<_, _>>()
-                .unwrap_or_default();
+            {
+                Ok(parsed) => parsed,
+                Err(err) => {
+                    error!(
+                        error = err.to_string(),
+                        suites = batch.join(","),
+                        "Failed to parse batch test discovery output; falling back to per-suite discovery"
+                    );
+                    continue;
+                }
+            };
             if parsed.len() != batch.len() {
                 error!(
                     expected = batch.len(),
@@ -506,12 +516,21 @@ mod tests {
         std::fs::remove_dir_all(&tmp_dir).unwrap();
     }
 
+    // Uses `sh` and shell redirection, so restrict to Unix platforms.
+    #[cfg(unix)]
     #[test]
     fn test_prewarm_seeds_cache_from_batched_discovery() {
-        let tmp_dir =
-            std::env::temp_dir().join(format!("resmoke_proxy_prewarm_test_{}", std::process::id()));
+        let tmp_dir = std::env::temp_dir().join(format!(
+            "resmoke_proxy_prewarm_test_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
         std::fs::create_dir_all(&tmp_dir).unwrap();
         let counter_file = tmp_dir.join("calls.txt");
+        let _ = std::fs::remove_file(&counter_file);
         let script_file = tmp_dir.join("fake_resmoke.sh");
         std::fs::write(
             &script_file,
@@ -552,14 +571,21 @@ mod tests {
         std::fs::remove_dir_all(&tmp_dir).unwrap();
     }
 
+    // Uses `sh` and shell redirection, so restrict to Unix platforms.
+    #[cfg(unix)]
     #[test]
     fn test_get_suite_config_only_runs_suiteconfig_once_per_suite() {
         let tmp_dir = std::env::temp_dir().join(format!(
-            "resmoke_proxy_suiteconfig_test_{}",
-            std::process::id()
+            "resmoke_proxy_suiteconfig_test_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
         std::fs::create_dir_all(&tmp_dir).unwrap();
         let counter_file = tmp_dir.join("calls.txt");
+        let _ = std::fs::remove_file(&counter_file);
         let script_file = tmp_dir.join("fake_resmoke.sh");
         std::fs::write(
             &script_file,
