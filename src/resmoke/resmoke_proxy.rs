@@ -245,6 +245,22 @@ impl TestDiscovery for ResmokeProxy {
                 continue;
             }
 
+            // Verify each document lines up with the suite we requested at that position.
+            // Resmoke echoes back the `--suite` value as `suite_name`, so a mismatch means
+            // the output is out of order; discard the whole batch and discover lazily.
+            if let Some((suite_name, doc)) = batch
+                .iter()
+                .zip(&parsed)
+                .find(|(suite_name, doc)| self.suite_arg(suite_name) != doc.suite_name)
+            {
+                error!(
+                    expected = self.suite_arg(suite_name),
+                    actual = doc.suite_name,
+                    "Batch test discovery returned suites out of order; falling back to per-suite discovery"
+                );
+                continue;
+            }
+
             let mut seeded = 0;
             for (suite_name, doc) in batch.iter().zip(parsed) {
                 let tests: Vec<String> = doc
@@ -303,11 +319,7 @@ impl TestDiscovery for ResmokeProxy {
             return Ok(config.clone());
         }
 
-        let suite_config = if is_bazel_suite(suite_name) {
-            self.bazel_suite_configs.get(suite_name)
-        } else {
-            suite_name
-        };
+        let suite_config = self.suite_arg(suite_name);
 
         let mut cmd = vec![&*self.resmoke_cmd];
         cmd.append(&mut self.resmoke_script.iter().map(|s| s.as_str()).collect());
@@ -333,18 +345,23 @@ impl TestDiscovery for ResmokeProxy {
 }
 
 impl ResmokeProxy {
+    /// Resolve the value passed as resmoke's `--suite` argument for the given suite.
+    /// For bazel suites this is the generated suite config path; otherwise the suite name.
+    fn suite_arg<'a>(&'a self, suite_name: &'a str) -> &'a str {
+        if is_bazel_suite(suite_name) {
+            self.bazel_suite_configs.get(suite_name)
+        } else {
+            suite_name
+        }
+    }
+
     /// Build a `test-discovery` command line covering the given suites.
     fn test_discovery_command<'a>(&'a self, suite_names: &[&'a str]) -> Vec<&'a str> {
         let mut cmd = vec![&*self.resmoke_cmd];
         cmd.append(&mut self.resmoke_script.iter().map(|s| s.as_str()).collect());
         cmd.push("test-discovery");
         for suite_name in suite_names {
-            let suite_config = if is_bazel_suite(suite_name) {
-                self.bazel_suite_configs.get(suite_name)
-            } else {
-                suite_name
-            };
-            cmd.append(&mut vec!["--suite", suite_config]);
+            cmd.append(&mut vec!["--suite", self.suite_arg(suite_name)]);
         }
 
         // When running in a patch build, we use the --skipTestsCoveredByMoreComplexSuites
