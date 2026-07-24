@@ -25,8 +25,8 @@ use evergreen::{
 };
 use evergreen_names::{
     BURN_IN_TAGS, BURN_IN_TAG_COMPILE_TASK_DEPENDENCY, BURN_IN_TAG_INCLUDE_BUILD_VARIANTS,
-    BURN_IN_TASKS, BURN_IN_TESTS, ENTERPRISE_MODULE, GENERATOR_TASKS,
-    MULTIVERSION_BINARY_SELECTION, UNIQUE_GEN_SUFFIX_EXPANSION,
+    BURN_IN_TASKS, BURN_IN_TESTS, ENTERPRISE_MODULE, GENERATOR_TASKS, MULTIVERSION,
+    MULTIVERSION_BINARY_SELECTION, NO_MULTIVERSION_GENERATE_TASKS, UNIQUE_GEN_SUFFIX_EXPANSION,
 };
 use generate_sub_tasks_config::GenerateSubTasksConfig;
 use resmoke::{
@@ -151,6 +151,8 @@ pub struct ExecutionConfiguration<'a> {
     pub s3_test_stats_bucket: &'a str,
     pub subtask_limits: SubtaskLimits,
     pub bazel_suite_configs: Option<PathBuf>,
+    /// True if all suites should be discovered up front with batched resmoke calls.
+    pub batch_test_discovery: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -174,9 +176,12 @@ pub struct SubtaskLimits {
 #[derive(Clone)]
 pub struct Dependencies {
     evg_config_utils: Arc<dyn EvgConfigUtils>,
+    evg_config_service: Arc<dyn EvgConfigService>,
+    test_discovery: Arc<dyn TestDiscovery>,
     gen_task_service: Arc<dyn GenerateTasksService>,
     resmoke_config_actor: Arc<tokio::sync::Mutex<dyn ResmokeConfigActor>>,
     burn_in_service: Arc<dyn BurnInService>,
+    batch_test_discovery: bool,
 }
 
 impl Dependencies {
@@ -239,7 +244,7 @@ impl Dependencies {
             GenResmokeConfig::new(execution_config.use_task_split_fallback, enterprise_dir);
         let gen_resmoke_task_service = Arc::new(GenResmokeTaskServiceImpl::new(
             task_history_service,
-            discovery_service,
+            discovery_service.clone(),
             resmoke_config_actor.clone(),
             multiversion_service,
             fs_service,
@@ -252,7 +257,7 @@ impl Dependencies {
                 .to_string(),
         ));
         let gen_task_service = Arc::new(GenerateTasksServiceImpl::new(
-            evg_config_service,
+            evg_config_service.clone(),
             evg_config_utils.clone(),
             gen_fuzzer_service,
             gen_resmoke_task_service.clone(),
@@ -273,9 +278,12 @@ impl Dependencies {
 
         Ok(Self {
             evg_config_utils,
+            evg_config_service,
+            test_discovery: discovery_service,
             gen_task_service,
             resmoke_config_actor,
             burn_in_service,
+            batch_test_discovery: execution_config.batch_test_discovery,
         })
     }
 }
@@ -299,6 +307,54 @@ impl GeneratedConfig {
     }
 }
 
+/// Discover the tests of every resmoke-generated suite up front with batched resmoke
+/// invocations, seeding the test discovery cache.
+///
+/// Multiversion-specific suite names are not known at this point; they are discovered
+/// lazily (and deduplicated by the cache) during generation.
+fn prewarm_test_discovery(deps: &Dependencies) -> Result<()> {
+    let task_map = deps.evg_config_service.get_task_def_map();
+    let mut suites: Vec<String> = task_map
+        .values()
+        .filter(|task_def| {
+            // Fuzzer tasks share the "generate resmoke tasks" function but their "suite"
+            // var names a fuzzer configuration, not a resmoke suite, and fuzzer
+            // generation never runs test discovery. Multiversion-generate tasks only
+            // ever discover their per-old-version suite names, which are not known
+            // here; their base suite name may not exist as a resmoke suite at all.
+            if !deps.evg_config_utils.is_task_generated(task_def)
+                || deps.evg_config_utils.is_task_fuzzer(task_def)
+                || matches!(
+                    task_def.name.as_str(),
+                    BURN_IN_TESTS | BURN_IN_TASKS | BURN_IN_TAGS
+                )
+            {
+                return false;
+            }
+            let tags = deps.evg_config_utils.get_task_tags(task_def);
+            !tags.contains(MULTIVERSION) || tags.contains(NO_MULTIVERSION_GENERATE_TASKS)
+        })
+        .map(|task_def| {
+            // Bazel-based suites are discovered by their bazel target rather than the
+            // resolved suite name.
+            deps.evg_config_utils
+                .get_gen_task_var(task_def, "suite")
+                .filter(|suite| suite.starts_with("//"))
+                .unwrap_or_else(|| deps.evg_config_utils.find_suite_name(task_def))
+                .to_string()
+        })
+        .collect();
+    suites.sort();
+    suites.dedup();
+
+    event!(
+        Level::INFO,
+        num_suites = suites.len(),
+        "Prewarming test discovery cache with batched discovery"
+    );
+    deps.test_discovery.prewarm(&suites)
+}
+
 /// Create 'generate.tasks' configuration for all generated tasks in the provided evergreen
 /// project configuration.
 ///
@@ -309,6 +365,10 @@ impl GeneratedConfig {
 pub async fn generate_configuration(deps: &Dependencies, target_directory: &Path) -> Result<()> {
     let generate_tasks_service = deps.gen_task_service.clone();
     std::fs::create_dir_all(target_directory)?;
+
+    if deps.batch_test_discovery {
+        prewarm_test_discovery(deps)?;
+    }
 
     // We are going to do 2 passes through the project build variants. In this first pass, we
     // are actually going to create all the generated tasks that we discover.
@@ -1365,14 +1425,37 @@ mod tests {
         }
     }
 
+    struct MockTestDiscovery {}
+    impl TestDiscovery for MockTestDiscovery {
+        fn discover_tests(&self, _suite_name: &str) -> Result<Vec<String>> {
+            Ok(vec![])
+        }
+
+        fn get_suite_config(
+            &self,
+            _suite_name: &str,
+        ) -> Result<crate::resmoke::resmoke_suite::ResmokeSuiteConfig> {
+            todo!()
+        }
+
+        fn get_multiversion_config(
+            &self,
+        ) -> Result<crate::resmoke::resmoke_proxy::MultiversionConfig> {
+            todo!()
+        }
+    }
+
     fn build_mocked_dependencies(burn_in_service: MockBurnInService) -> Dependencies {
         Dependencies {
             evg_config_utils: Arc::new(MockEvgConfigUtils {}),
+            evg_config_service: Arc::new(MockConfigService {}),
+            test_discovery: Arc::new(MockTestDiscovery {}),
             gen_task_service: Arc::new(build_mock_generate_tasks_service()),
             resmoke_config_actor: Arc::new(tokio::sync::Mutex::new(
                 MockResmokeConfigActorService {},
             )),
             burn_in_service: Arc::new(burn_in_service),
+            batch_test_discovery: false,
         }
     }
 
