@@ -41,7 +41,8 @@ pub trait TestDiscovery: Send + Sync {
     /// Get the multiversion configuration to generate against.
     fn get_multiversion_config(&self) -> Result<MultiversionConfig>;
 
-    /// Discover the given suites ahead of time so later `discover_tests` calls are cheap.
+    /// Warm the given suites ahead of time so later `discover_tests` and `get_suite_config`
+    /// calls are cheap, using batched resmoke invocations.
     ///
     /// Best-effort: implementations may ignore this, and failures should fall back to
     /// per-suite discovery rather than failing generation.
@@ -163,6 +164,17 @@ struct TestDiscoveryOutput {
 
     /// Name of tests comprising suite.
     pub tests: Vec<String>,
+}
+
+/// One document from a batched `suiteconfig` invocation: the suite config wrapped
+/// with its name so results can be validated against the requested order.
+#[derive(Debug, Deserialize)]
+struct SuiteConfigOutput {
+    /// Name of the suite this config belongs to.
+    pub suite_name: String,
+
+    /// Resmoke configuration for the suite.
+    pub config: ResmokeSuiteConfig,
 }
 
 impl TestDiscovery for ResmokeProxy {
@@ -291,6 +303,8 @@ impl TestDiscovery for ResmokeProxy {
             );
         }
 
+        self.prewarm_suite_configs(suite_names);
+
         Ok(())
     }
 
@@ -383,6 +397,111 @@ impl ResmokeProxy {
         let suite_refs: Vec<&str> = suite_names.iter().map(|s| s.as_str()).collect();
         let cmd = self.test_discovery_command(&suite_refs);
         run_command(&cmd)
+    }
+
+    /// Run a single batched `suiteconfig` invocation covering the given suites.
+    fn run_batch_suite_config(&self, suite_names: &[String]) -> Result<String> {
+        let mut cmd = vec![&*self.resmoke_cmd];
+        cmd.append(&mut self.resmoke_script.iter().map(|s| s.as_str()).collect());
+        cmd.push("suiteconfig");
+        for suite_name in suite_names {
+            cmd.append(&mut vec!["--suite", self.suite_arg(suite_name)]);
+        }
+        run_command(&cmd)
+    }
+
+    /// Discover the given suites' configs with batched `suiteconfig` invocations and seed
+    /// the suite config cache. Best-effort: any batch that fails to run, parse, or that
+    /// comes back out of order is skipped and those suites are resolved lazily later.
+    ///
+    /// Requires resmoke's `suiteconfig` to accept repeated `--suite` arguments and to emit
+    /// a multi-document YAML stream (one `{suite_name, config}` document per suite) when more
+    /// than one suite is requested.
+    fn prewarm_suite_configs(&self, suite_names: &[String]) {
+        const BATCH_SIZE: usize = 100;
+
+        for batch in suite_names.chunks(BATCH_SIZE) {
+            // A single suite yields the historical raw (unwrapped) config document, which
+            // does not carry a suite_name to validate against; skip warming a lone suite.
+            if batch.len() < 2 {
+                continue;
+            }
+
+            let start = Instant::now();
+            let output = match self.run_batch_suite_config(batch) {
+                Ok(output) => output,
+                Err(err) => {
+                    error!(
+                        error = err.to_string(),
+                        suites = batch.join(","),
+                        "Batch suiteconfig failed; falling back to per-suite suiteconfig"
+                    );
+                    continue;
+                }
+            };
+
+            let parsed: Vec<SuiteConfigOutput> = match serde_yaml::Deserializer::from_str(&output)
+                .map(SuiteConfigOutput::deserialize)
+                .collect::<Result<_, _>>()
+            {
+                Ok(parsed) => parsed,
+                Err(err) => {
+                    error!(
+                        error = err.to_string(),
+                        suites = batch.join(","),
+                        "Failed to parse batch suiteconfig output; falling back to per-suite suiteconfig"
+                    );
+                    continue;
+                }
+            };
+            if parsed.len() != batch.len() {
+                error!(
+                    expected = batch.len(),
+                    parsed = parsed.len(),
+                    "Batch suiteconfig output did not match request; falling back to per-suite suiteconfig"
+                );
+                continue;
+            }
+
+            // Verify each document lines up with the suite requested at that position; a
+            // mismatch means the output is out of order, so discard the whole batch.
+            if let Some((suite_name, doc)) = batch
+                .iter()
+                .zip(&parsed)
+                .find(|(suite_name, doc)| self.suite_arg(suite_name) != doc.suite_name)
+            {
+                error!(
+                    expected = self.suite_arg(suite_name),
+                    actual = doc.suite_name,
+                    "Batch suiteconfig returned suites out of order; falling back to per-suite suiteconfig"
+                );
+                continue;
+            }
+
+            let mut seeded = 0;
+            for (suite_name, doc) in batch.iter().zip(parsed) {
+                let entry = {
+                    let mut cache = self
+                        .suite_config_cache
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner());
+                    cache
+                        .entry(suite_name.to_string())
+                        .or_insert_with(|| Arc::new(Mutex::new(None)))
+                        .clone()
+                };
+                *entry.lock().unwrap_or_else(|e| e.into_inner()) = Some(doc.config);
+                seeded += 1;
+            }
+
+            event!(
+                Level::INFO,
+                batch_size = batch.len(),
+                seeded,
+                duration_ms = start.elapsed().as_millis() as u64,
+                "Batch resmoke suiteconfig finished"
+            );
+        }
     }
 
     /// Query resmoke for the list of tests in the given suite.
@@ -549,18 +668,29 @@ mod tests {
         let counter_file = tmp_dir.join("calls.txt");
         let _ = std::fs::remove_file(&counter_file);
         let script_file = tmp_dir.join("fake_resmoke.sh");
+        // `prewarm` invokes both `test-discovery` and `suiteconfig`; only count the
+        // `test-discovery` calls so this test isolates discovery, but still emit a valid
+        // response for `suiteconfig` so its prewarm pass does not log a spurious error.
         std::fs::write(
             &script_file,
             format!(
                 concat!(
-                    "echo called >> {}\n",
-                    "echo 'suite_name: suite_a'\n",
-                    "echo 'tests: []'\n",
-                    "echo '---'\n",
-                    "echo 'suite_name: suite_b'\n",
-                    "echo 'tests: []'\n",
+                    "if [ \"$1\" = 'test-discovery' ]; then\n",
+                    "  echo called >> {counter}\n",
+                    "  echo 'suite_name: suite_a'\n",
+                    "  echo 'tests: []'\n",
+                    "  echo '---'\n",
+                    "  echo 'suite_name: suite_b'\n",
+                    "  echo 'tests: []'\n",
+                    "else\n",
+                    "  echo 'suite_name: suite_a'\n",
+                    "  echo 'config: {{test_kind: js_test, selector: {{roots: []}}, executor: {{}}}}'\n",
+                    "  echo '---'\n",
+                    "  echo 'suite_name: suite_b'\n",
+                    "  echo 'config: {{test_kind: js_test, selector: {{roots: []}}, executor: {{}}}}'\n",
+                    "fi\n",
                 ),
-                counter_file.display()
+                counter = counter_file.display()
             ),
         )
         .unwrap();
@@ -582,6 +712,67 @@ mod tests {
             proxy.discover_tests("suite_b").unwrap(),
             Vec::<String>::new()
         );
+
+        let calls = std::fs::read_to_string(&counter_file).unwrap();
+        assert_eq!(calls.lines().count(), 1);
+        std::fs::remove_dir_all(&tmp_dir).unwrap();
+    }
+
+    // Uses `sh` and shell redirection, so restrict to Unix platforms.
+    #[cfg(unix)]
+    #[test]
+    fn test_prewarm_seeds_suite_config_cache_from_batched_suiteconfig() {
+        let tmp_dir = std::env::temp_dir().join(format!(
+            "resmoke_proxy_prewarm_cfg_test_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&tmp_dir).unwrap();
+        let counter_file = tmp_dir.join("calls.txt");
+        let _ = std::fs::remove_file(&counter_file);
+        let script_file = tmp_dir.join("fake_resmoke.sh");
+        // Emit the batched multi-document `{suite_name, config}` stream for suiteconfig, and
+        // a matching discovery stream so prewarm's discovery pass also succeeds. Only count
+        // suiteconfig calls to prove get_suite_config is seeded from prewarm.
+        std::fs::write(
+            &script_file,
+            format!(
+                concat!(
+                    "if [ \"$1\" = 'suiteconfig' ]; then\n",
+                    "  echo called >> {counter}\n",
+                    "  echo 'suite_name: suite_a'\n",
+                    "  echo 'config: {{test_kind: js_test, selector: {{roots: []}}, executor: {{}}}}'\n",
+                    "  echo '---'\n",
+                    "  echo 'suite_name: suite_b'\n",
+                    "  echo 'config: {{test_kind: js_test, selector: {{roots: []}}, executor: {{}}}}'\n",
+                    "else\n",
+                    "  echo 'suite_name: suite_a'\n",
+                    "  echo 'tests: []'\n",
+                    "  echo '---'\n",
+                    "  echo 'suite_name: suite_b'\n",
+                    "  echo 'tests: []'\n",
+                    "fi\n",
+                ),
+                counter = counter_file.display()
+            ),
+        )
+        .unwrap();
+        let proxy = ResmokeProxy::new(
+            &format!("sh {}", script_file.display()),
+            false,
+            false,
+            BazelConfigs::default(),
+        );
+
+        proxy
+            .prewarm(&["suite_a".to_string(), "suite_b".to_string()])
+            .unwrap();
+        // Both suite configs should now be served from cache without new suiteconfig calls.
+        proxy.get_suite_config("suite_a").unwrap();
+        proxy.get_suite_config("suite_b").unwrap();
 
         let calls = std::fs::read_to_string(&counter_file).unwrap();
         assert_eq!(calls.lines().count(), 1);
