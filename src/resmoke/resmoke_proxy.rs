@@ -668,22 +668,29 @@ mod tests {
         let counter_file = tmp_dir.join("calls.txt");
         let _ = std::fs::remove_file(&counter_file);
         let script_file = tmp_dir.join("fake_resmoke.sh");
-        // `prewarm` invokes both `test-discovery` and `suiteconfig`; only count and
-        // respond to the `test-discovery` calls so this test isolates discovery.
+        // `prewarm` invokes both `test-discovery` and `suiteconfig`; only count the
+        // `test-discovery` calls so this test isolates discovery, but still emit a valid
+        // response for `suiteconfig` so its prewarm pass does not log a spurious error.
         std::fs::write(
             &script_file,
             format!(
                 concat!(
                     "if [ \"$1\" = 'test-discovery' ]; then\n",
-                    "  echo called >> {}\n",
+                    "  echo called >> {counter}\n",
                     "  echo 'suite_name: suite_a'\n",
                     "  echo 'tests: []'\n",
                     "  echo '---'\n",
                     "  echo 'suite_name: suite_b'\n",
                     "  echo 'tests: []'\n",
+                    "else\n",
+                    "  echo 'suite_name: suite_a'\n",
+                    "  echo 'config: {{test_kind: js_test, selector: {{roots: []}}, executor: {{}}}}'\n",
+                    "  echo '---'\n",
+                    "  echo 'suite_name: suite_b'\n",
+                    "  echo 'config: {{test_kind: js_test, selector: {{roots: []}}, executor: {{}}}}'\n",
                     "fi\n",
                 ),
-                counter_file.display()
+                counter = counter_file.display()
             ),
         )
         .unwrap();
