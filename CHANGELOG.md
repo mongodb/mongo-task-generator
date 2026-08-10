@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.7.0 - 2026-08-10
+* Adds a `--batch-test-discovery` flag and caches resmoke test discovery and suiteconfig results per suite.
+* Batches resmoke suiteconfig requests during prewarm.
+* Stops emitting `gen_task_config_location` in generated tasks.
+
 ## 3.6.0 - 2026-06-09
 * Recognize `last_patch` as a multiversion old-version value. Tasks whose `initialize multiversion tasks` variables target `last_patch` now generate sub-tasks when a build variant opts in via the `last_versions` expansion, reusing the default required-FCV exclude tags.
 
