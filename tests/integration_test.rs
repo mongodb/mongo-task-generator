@@ -1,5 +1,6 @@
 use assert_cmd::Command;
 use rstest::rstest;
+use serde_json::{json, Value};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use tempdir::TempDir;
@@ -34,6 +35,46 @@ fn test_end2end_execution() {
 
     let files = std::fs::read_dir(tmp_dir_path).unwrap();
     assert_eq!(688, files.into_iter().collect::<Vec<_>>().len());
+
+    // `auth_gen` in tests/data/evergreen.yml is tagged with both team ownership tag flavors, plus
+    // an unrelated `auth` tag. Only the ownership tags should reach the generated sub-tasks.
+    let config: Value =
+        serde_json::from_reader(File::open(tmp_dir_path.join("evergreen_config.json")).unwrap())
+            .unwrap();
+    let tasks = config["tasks"].as_array().unwrap();
+
+    // Sub-tasks of `auth_gen` are named `auth_<index>...`; `auth_audit_gen` is a different,
+    // untagged `_gen` task, so match on the index to avoid picking it up.
+    let is_auth_sub_task = |t: &Value| {
+        let name = t["name"].as_str().unwrap();
+        name.strip_prefix("auth_")
+            .and_then(|rest| rest.chars().next())
+            .is_some_and(|c| c.is_ascii_digit())
+    };
+
+    let auth_sub_tasks: Vec<&Value> = tasks.iter().filter(|t| is_auth_sub_task(t)).collect();
+    assert!(!auth_sub_tasks.is_empty());
+    for sub_task in &auth_sub_tasks {
+        assert_eq!(
+            sub_task["tags"].as_array().unwrap(),
+            &vec![
+                json!("assigned_to_jira_team_a_team"),
+                json!("assigned_to_mothra_team_b_team"),
+            ],
+            "unexpected tags on {}",
+            sub_task["name"]
+        );
+    }
+
+    // Tasks generated from "_gen" definitions with no ownership tags must stay untagged, so that
+    // this change does not grow the generated configuration for every other task.
+    assert!(
+        tasks
+            .iter()
+            .filter(|t| !is_auth_sub_task(t))
+            .all(|t| t["tags"].is_null()),
+        "team tags leaked onto tasks whose _gen definition had none"
+    );
 }
 
 #[test]

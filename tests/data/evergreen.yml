@@ -4237,7 +4237,7 @@ tasks:
 
 - <<: *gen_task_template
   name: auth_gen
-  tags: ["auth"]
+  tags: ["auth", "assigned_to_jira_team_a_team", "assigned_to_mothra_team_b_team"]
   commands:
   - func: "generate resmoke tasks"
     vars:

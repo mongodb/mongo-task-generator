@@ -74,6 +74,8 @@ pub struct FuzzerGenTaskParams {
     pub platform: Option<String>,
     /// Name of variant specific suffix to add to tasks
     pub gen_task_suffix: Option<String>,
+    /// Team ownership tags to apply to the generated sub-tasks.
+    pub tags: Vec<String>,
 }
 
 impl FuzzerGenTaskParams {
@@ -161,6 +163,19 @@ impl FuzzerGenTaskParams {
                     })
                     .collect(),
             )
+        }
+    }
+
+    /// Build the team ownership tags to apply to the generated sub-tasks.
+    ///
+    /// # Returns
+    ///
+    /// Tags to set on generated tasks, or None if the "_gen" task had no ownership tags.
+    fn get_tags(&self) -> Option<Vec<String>> {
+        if self.tags.is_empty() {
+            None
+        } else {
+            Some(self.tags.clone())
         }
     }
 }
@@ -357,6 +372,7 @@ fn build_fuzzer_sub_task(
         name: formatted_name,
         commands: Some(commands),
         depends_on: params.get_dependencies(),
+        tags: params.get_tags(),
         ..Default::default()
     }
 }
@@ -547,6 +563,34 @@ mod tests {
             sub_task.depends_on.unwrap()[0].name,
             "archive_dist_test_debug"
         )
+    }
+
+    #[test]
+    fn test_build_fuzzer_sub_task_should_propagate_team_tags() {
+        let params = FuzzerGenTaskParams {
+            task_name: "some task".to_string(),
+            tags: vec!["assigned_to_jira_team_a_team".to_string()],
+            ..Default::default()
+        };
+
+        let sub_task = build_fuzzer_sub_task("my_task", 0, &params, None, None, None);
+
+        assert_eq!(
+            sub_task.tags,
+            Some(vec!["assigned_to_jira_team_a_team".to_string()])
+        );
+    }
+
+    #[test]
+    fn test_build_fuzzer_sub_task_with_no_team_tags_should_not_set_tags() {
+        let params = FuzzerGenTaskParams {
+            task_name: "some task".to_string(),
+            ..Default::default()
+        };
+
+        let sub_task = build_fuzzer_sub_task("my_task", 0, &params, None, None, None);
+
+        assert_eq!(sub_task.tags, None);
     }
 
     #[test]

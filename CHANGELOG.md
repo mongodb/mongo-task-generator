@@ -1,5 +1,8 @@
 # Changelog
 
+## 3.8.0 - 2026-08-26
+* Propagates team ownership tags (`assigned_to_jira_team_*`, `assigned_to_mothra_team_*`) from a `_gen` task definition onto the resmoke and fuzzer sub-tasks generated from it. Other tags on the `_gen` task are not propagated.
+
 ## 3.7.0 - 2026-08-10
 * Adds a `--batch-test-discovery` flag and caches resmoke test discovery and suiteconfig results per suite.
 * Batches resmoke suiteconfig requests during prewarm.

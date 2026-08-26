@@ -124,6 +124,9 @@ pub const UNIQUE_GEN_SUFFIX_EXPANSION: &str = "unique_gen_suffix";
 pub const MULTIVERSION: &str = "multiversion";
 /// Tag to indicate multiversion combination should not be created.
 pub const NO_MULTIVERSION_GENERATE_TASKS: &str = "no_multiversion_generate_tasks";
+/// Prefixes of tags that assign team ownership of a task.
+pub const TEAM_ASSIGNMENT_TAG_PREFIXES: [&str; 2] =
+    ["assigned_to_jira_team_", "assigned_to_mothra_team_"];
 
 // Multiversion values
 /// Tag to include required backport.

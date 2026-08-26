@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 
 use anyhow::{bail, Result};
 use shrub_rs::models::{task::EvgTask, variant::BuildVariant};
@@ -10,7 +10,8 @@ use crate::{
         LAST_VERSIONS_EXPANSION, MULTIVERSION, MULTIVERSION_BINARY_SELECTION,
         NO_MULTIVERSION_GENERATE_TASKS, NPM_COMMAND, NUM_FUZZER_FILES, NUM_FUZZER_TASKS,
         REPEAT_SUITES, RESMOKE_ARGS, RESMOKE_JOBS_MAX, SHOULD_SHUFFLE_TESTS,
-        UNIQUE_GEN_SUFFIX_EXPANSION, USE_LARGE_DISTRO, USE_XLARGE_DISTRO, XLARGE_DISTRO_EXPANSION,
+        TEAM_ASSIGNMENT_TAG_PREFIXES, UNIQUE_GEN_SUFFIX_EXPANSION, USE_LARGE_DISTRO,
+        USE_XLARGE_DISTRO, XLARGE_DISTRO_EXPANSION,
     },
     generate_sub_tasks_config::GenerateSubTasksConfig,
     task_types::{
@@ -140,6 +141,33 @@ impl ConfigExtractionServiceImpl {
     }
 }
 
+/// Select the tags from a "_gen" task definition that should be propagated to its sub-tasks.
+///
+/// Only team ownership tags are propagated. Other tags (`default`, `large`, `bazel://...`, etc.)
+/// describe the generator task itself, and applying them to sub-tasks would misreport what those
+/// sub-tasks are.
+///
+/// # Arguments
+///
+/// * `task_tags` - All tags found on the "_gen" task definition.
+///
+/// # Returns
+///
+/// Sorted list of team ownership tags. Sorted to keep generated configuration deterministic.
+fn filter_team_assignment_tags(task_tags: &HashSet<String>) -> Vec<String> {
+    let mut tags: Vec<String> = task_tags
+        .iter()
+        .filter(|tag| {
+            TEAM_ASSIGNMENT_TAG_PREFIXES
+                .iter()
+                .any(|prefix| tag.starts_with(prefix))
+        })
+        .cloned()
+        .collect();
+    tags.sort();
+    tags
+}
+
 impl ConfigExtractionService for ConfigExtractionServiceImpl {
     /// Build the configuration for generated a fuzzer based on the evergreen task definition.
     ///
@@ -240,6 +268,7 @@ impl ConfigExtractionService for ConfigExtractionServiceImpl {
                 .evg_config_utils
                 .get_gen_task_var(task_def, BAZEL_ARGS)
                 .map(|s| s.to_string()),
+            tags: filter_team_assignment_tags(&task_tags),
         })
     }
 
@@ -332,6 +361,7 @@ impl ConfigExtractionService for ConfigExtractionServiceImpl {
             gen_task_suffix,
             num_tasks,
             bazel_target,
+            tags: filter_team_assignment_tags(&task_tags),
         })
     }
 
@@ -468,6 +498,34 @@ mod tests {
             expected_deps
                 .into_iter()
                 .map(|d| d.to_string())
+                .collect::<Vec<String>>()
+        );
+    }
+
+    // Tests for filter_team_assignment_tags.
+    #[rstest]
+    #[case(vec![], vec![])]
+    #[case(vec!["default", "large", "bazel://some/target:suite"], vec![])]
+    #[case(vec!["assigned_to_jira_team_a_team"], vec!["assigned_to_jira_team_a_team"])]
+    #[case(vec!["assigned_to_mothra_team_b_team"], vec!["assigned_to_mothra_team_b_team"])]
+    #[case(
+        vec!["default", "assigned_to_jira_team_a_team", "large", "multiversion"],
+        vec!["assigned_to_jira_team_a_team"]
+    )]
+    #[case(
+        vec!["assigned_to_mothra_team_b_team", "assigned_to_jira_team_a_team"],
+        vec!["assigned_to_jira_team_a_team", "assigned_to_mothra_team_b_team"]
+    )]
+    fn test_filter_team_assignment_tags(#[case] tags: Vec<&str>, #[case] expected: Vec<&str>) {
+        let task_tags: HashSet<String> = tags.into_iter().map(|t| t.to_string()).collect();
+
+        let filtered = filter_team_assignment_tags(&task_tags);
+
+        assert_eq!(
+            filtered,
+            expected
+                .into_iter()
+                .map(|t| t.to_string())
                 .collect::<Vec<String>>()
         );
     }

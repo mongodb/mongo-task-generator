@@ -82,6 +82,8 @@ pub struct ResmokeGenParams {
     pub gen_task_suffix: Option<String>,
     /// Number of sub-tasks requested in the task's Evergreen YAML definition.
     pub num_tasks: Option<usize>,
+    /// Team ownership tags to apply to the generated sub-tasks.
+    pub tags: Vec<String>,
 }
 
 impl ResmokeGenParams {
@@ -195,6 +197,19 @@ impl ResmokeGenParams {
                     })
                     .collect(),
             )
+        }
+    }
+
+    /// Build the team ownership tags to apply to the generated sub-tasks.
+    ///
+    /// # Returns
+    ///
+    /// Tags to set on generated tasks, or None if the "_gen" task had no ownership tags.
+    fn get_tags(&self) -> Option<Vec<String>> {
+        if self.tags.is_empty() {
+            None
+        } else {
+            Some(self.tags.clone())
         }
     }
 }
@@ -862,6 +877,7 @@ impl GenResmokeTaskService for GenResmokeTaskServiceImpl {
                 name: formatted_name,
                 commands,
                 depends_on: params.get_dependencies(),
+                tags: params.get_tags(),
                 ..Default::default()
             },
             use_large_distro: params.use_large_distro,
@@ -1099,6 +1115,52 @@ mod tests {
         assert!(resmoke_args.contains("--originSuite=my_origin_suite"));
         assert!(resmoke_args.contains("--args to --pass to resmoke"));
         assert!(resmoke_args.contains("--repeatSuites=3"));
+    }
+
+    // `build_resmoke_sub_task` tag propagation tests.
+    #[rstest]
+    #[case(vec![], None)]
+    #[case(
+        vec!["assigned_to_jira_team_a_team".to_string()],
+        Some(vec!["assigned_to_jira_team_a_team".to_string()])
+    )]
+    #[case(
+        vec![
+            "assigned_to_jira_team_a_team".to_string(),
+            "assigned_to_mothra_team_b_team".to_string(),
+        ],
+        Some(vec![
+            "assigned_to_jira_team_a_team".to_string(),
+            "assigned_to_mothra_team_b_team".to_string(),
+        ])
+    )]
+    fn test_build_resmoke_sub_task_should_propagate_team_tags(
+        #[case] tags: Vec<String>,
+        #[case] expected_tags: Option<Vec<String>>,
+    ) {
+        let gen_resmoke_service = build_mocked_service(
+            vec![],
+            TaskRuntimeHistory {
+                task_name: "my_task".to_string(),
+                test_map: hashmap! {},
+            },
+        );
+        let params = ResmokeGenParams {
+            task_name: "my_task".to_string(),
+            suite_name: "my_suite".to_string(),
+            tags,
+            ..Default::default()
+        };
+        let sub_suite = SubSuite {
+            index: 0,
+            name: "my_suite".to_string(),
+            origin_suite: "my_suite".to_string(),
+            ..Default::default()
+        };
+
+        let sub_task = gen_resmoke_service.build_resmoke_sub_task(&sub_suite, 1, &params, None);
+
+        assert_eq!(sub_task.evg_task.tags, expected_tags);
     }
 
     // GeneratedResmokeSuite tests
