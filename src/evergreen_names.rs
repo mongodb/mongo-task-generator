@@ -62,6 +62,11 @@ pub const NUM_FUZZER_FILES: &str = "num_files";
 pub const NUM_FUZZER_TASKS: &str = "num_tasks";
 /// Tag to exclude multiversion version.
 pub const MULTIVERSION_EXCLUDE_TAG: &str = "multiversion_exclude_tags_version";
+/// Old binary version a multiversion task tests against, passed to the multiversion setup
+/// function so it can download only that binary rather than every version the build variant
+/// resolved. Same value as MULTIVERSION_EXCLUDE_TAG; named separately because the setup step is
+/// choosing downloads, not computing exclude tags.
+pub const MULTIVERSION_SETUP_OLD_VERSION: &str = "multiversion_setup_old_version";
 
 // Parameters
 // Shared parameters between fuzzers and resmoke.

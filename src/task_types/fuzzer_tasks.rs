@@ -15,7 +15,8 @@ use crate::{
         ADD_GIT_TAG, CONFIGURE_EVG_API_CREDS, CONTINUE_ON_FAILURE, DO_MULTIVERSION_SETUP, DO_SETUP,
         FUZZER_PARAMETERS, GET_PROJECT_WITH_NO_MODULES, IDLE_TIMEOUT, MULTIVERSION_EXCLUDE_TAGS,
         NPM_COMMAND, REQUIRE_MULTIVERSION_SETUP, RESMOKE_ARGS, RESMOKE_JOBS_MAX, RUN_FUZZER,
-        RUN_GENERATED_TESTS, RUN_GENERATED_TESTS_VIA_BAZEL, SETUP_JSTESTFUZZ, SHOULD_SHUFFLE_TESTS,
+        MULTIVERSION_SETUP_OLD_VERSION, RUN_GENERATED_TESTS, RUN_GENERATED_TESTS_VIA_BAZEL,
+        SETUP_JSTESTFUZZ, SHOULD_SHUFFLE_TESTS,
         SUITE_NAME, TASK_NAME,
     },
     task_types::resmoke_tasks::replace_resmoke_args_with_bazel_args,
@@ -317,7 +318,17 @@ fn build_fuzzer_sub_task(
     commands.extend(vec![fn_call(DO_SETUP), fn_call(CONFIGURE_EVG_API_CREDS)]);
 
     if params.is_multiversion() {
-        commands.push(fn_call(DO_MULTIVERSION_SETUP));
+        // Pass the old version through so the setup step downloads only that binary. See
+        // multiversion_setup_call in resmoke_tasks.rs for why.
+        commands.push(match old_version {
+            Some(old_version) => fn_call_with_params(
+                DO_MULTIVERSION_SETUP,
+                hashmap! {
+                    MULTIVERSION_SETUP_OLD_VERSION.to_string() => ParamValue::from(old_version),
+                },
+            ),
+            None => fn_call(DO_MULTIVERSION_SETUP),
+        });
     }
 
     commands.extend(vec![
