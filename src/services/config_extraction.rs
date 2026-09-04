@@ -8,7 +8,8 @@ use crate::{
     evergreen_names::{
         BAZEL_ARGS, CONTINUE_ON_FAILURE, FUZZER_PARAMETERS, IDLE_TIMEOUT, LARGE_DISTRO_EXPANSION,
         LAST_VERSIONS_EXPANSION, MULTIVERSION, MULTIVERSION_BINARY_SELECTION,
-        NO_MULTIVERSION_GENERATE_TASKS, NPM_COMMAND, NUM_FUZZER_FILES, NUM_FUZZER_TASKS,
+        MULTIVERSION_SETUP_VERSIONS, NO_MULTIVERSION_GENERATE_TASKS, NPM_COMMAND,
+        NUM_FUZZER_FILES, NUM_FUZZER_TASKS,
         REPEAT_SUITES, RESMOKE_ARGS, RESMOKE_JOBS_MAX, SHOULD_SHUFFLE_TESTS,
         UNIQUE_GEN_SUFFIX_EXPANSION, USE_LARGE_DISTRO, USE_XLARGE_DISTRO, XLARGE_DISTRO_EXPANSION,
     },
@@ -190,8 +191,17 @@ impl ConfigExtractionService for ConfigExtractionServiceImpl {
             .filter(|s| s.starts_with("//"))
             .map(|s| s.to_string());
 
+        // Tasks that test against several old versions have no single one to derive, so they can
+        // declare the list on their generator call. Left unset for the usual case, where the
+        // sub-task's own old version is used instead.
+        let multiversion_setup_versions = self
+            .evg_config_utils
+            .get_gen_task_var(task_def, MULTIVERSION_SETUP_VERSIONS)
+            .map(|s| s.to_string());
+
         Ok(FuzzerGenTaskParams {
             task_name,
+            multiversion_setup_versions,
             variant: build_variant.name.to_string(),
             suite,
             use_large_distro: self.evg_config_utils.lookup_default_param_bool(
@@ -286,6 +296,13 @@ impl ConfigExtractionService for ConfigExtractionServiceImpl {
             .get_gen_task_var(task_def, "suite")
             .filter(|s| s.starts_with("//"))
             .map(|s| s.to_string());
+        // Tasks that test against several old versions have no single one to derive, so they can
+        // declare the list on their generator call. Left unset for the usual case, where the
+        // sub-task's own old version is used instead.
+        let multiversion_setup_versions = self
+            .evg_config_utils
+            .get_gen_task_var(task_def, MULTIVERSION_SETUP_VERSIONS)
+            .map(|s| s.to_string());
 
         Ok(ResmokeGenParams {
             task_name,
@@ -301,6 +318,7 @@ impl ConfigExtractionService for ConfigExtractionServiceImpl {
                 false,
             )?,
             require_multiversion_setup,
+            multiversion_setup_versions,
             require_multiversion_generate_tasks: require_multiversion_setup
                 && !no_multiversion_generate_tasks,
             repeat_suites: self

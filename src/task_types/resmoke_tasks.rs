@@ -29,7 +29,7 @@ use crate::{
     evergreen_names::{
         ADD_GIT_TAG, CONFIGURE_EVG_API_CREDS, DO_MULTIVERSION_SETUP, DO_SETUP,
         GET_PROJECT_WITH_NO_MODULES, MULTIVERSION_EXCLUDE_TAG, MULTIVERSION_EXCLUDE_TAGS_FILE,
-        MULTIVERSION_SETUP_OLD_VERSION, REQUIRE_MULTIVERSION_SETUP, RESMOKE_ARGS,
+        MULTIVERSION_SETUP_VERSIONS, REQUIRE_MULTIVERSION_SETUP, RESMOKE_ARGS,
         RESMOKE_JOBS_MAX, RUN_GENERATED_TESTS,
         RUN_GENERATED_TESTS_VIA_BAZEL, SUITE_NAME,
     },
@@ -77,6 +77,11 @@ pub struct ResmokeGenParams {
     pub is_enterprise: bool,
     /// Arguments to pass to 'run tests' function.
     pub pass_through_vars: Option<HashMap<String, ParamValue>>,
+
+    /// Explicit space-delimited list of old versions this task needs, declared on the generator
+    /// call. Set for tasks that test against several versions and therefore have no single old
+    /// version to derive one from. Takes precedence over the sub-task's own old version.
+    pub multiversion_setup_versions: Option<String>,
     /// Name of platform the task will run on.
     pub platform: Option<String>,
     /// Name of variant specific suffix to add to tasks
@@ -891,7 +896,11 @@ impl GenResmokeTaskService for GenResmokeTaskServiceImpl {
             run_test_fn_name,
             run_test_vars,
             params.require_multiversion_setup,
-            sub_suite.mv_exclude_tags.clone(),
+            // An explicit declaration wins; otherwise this sub-task's single old version.
+            params
+                .multiversion_setup_versions
+                .clone()
+                .or_else(|| sub_suite.mv_exclude_tags.clone()),
         ));
 
         GeneratedSubTask {
@@ -942,17 +951,17 @@ pub fn replace_resmoke_args_with_bazel_args(
 ///
 /// # Arguments
 ///
-/// * `old_version` - Old binary version this task tests against, if any.
+/// * `setup_versions` - Space-delimited old versions this task needs, if known.
 ///
 /// # Returns
 ///
 /// Evergreen command calling the multiversion setup function.
-fn multiversion_setup_call(old_version: Option<String>) -> EvgCommand {
-    match old_version {
-        Some(old_version) => fn_call_with_params(
+fn multiversion_setup_call(setup_versions: Option<String>) -> EvgCommand {
+    match setup_versions {
+        Some(setup_versions) => fn_call_with_params(
             DO_MULTIVERSION_SETUP,
             hashmap! {
-                MULTIVERSION_SETUP_OLD_VERSION.to_string() => ParamValue::from(old_version.as_str()),
+                MULTIVERSION_SETUP_VERSIONS.to_string() => ParamValue::from(setup_versions.as_str()),
             },
         ),
         None => fn_call(DO_MULTIVERSION_SETUP),
@@ -972,7 +981,7 @@ fn resmoke_commands(
     run_test_fn_name: &str,
     run_test_vars: HashMap<String, ParamValue>,
     requires_multiversion_setup: bool,
-    old_version: Option<String>,
+    setup_versions: Option<String>,
 ) -> Vec<EvgCommand> {
     let mut commands = vec![];
 
@@ -985,7 +994,7 @@ fn resmoke_commands(
     commands.push(fn_call(CONFIGURE_EVG_API_CREDS));
 
     if requires_multiversion_setup {
-        commands.push(multiversion_setup_call(old_version));
+        commands.push(multiversion_setup_call(setup_versions));
     }
 
     commands.push(fn_call_with_params(run_test_fn_name, run_test_vars));
@@ -2059,19 +2068,18 @@ mod tests {
         assert_eq!(get_evg_fn_name(&commands[5]), Some("run test"));
     }
 
-    #[test]
-    fn test_multiversion_setup_receives_old_version() {
-        let commands = resmoke_commands(
-            "run test",
-            hashmap! {},
-            true,
-            Some("last_lts".to_string()),
-        );
+    #[rstest]
+    #[case("last_lts")]
+    #[case("last_continuous")]
+    // Tasks testing against several versions declare the whole list; the setup step splits it.
+    #[case("last_lts last_continuous 7.0 8.0")]
+    fn test_multiversion_setup_receives_versions(#[case] versions: &str) {
+        let commands = resmoke_commands("run test", hashmap! {}, true, Some(versions.to_string()));
         assert_eq!(get_evg_fn_name(&commands[4]), Some("do multiversion setup"));
         assert_eq!(
             get_evg_fn_vars(&commands[4])
-                .and_then(|vars| vars.get("multiversion_setup_old_version").cloned()),
-            Some(ParamValue::from("last_lts"))
+                .and_then(|vars| vars.get("multiversion_setup_versions").cloned()),
+            Some(ParamValue::from(versions))
         );
     }
 

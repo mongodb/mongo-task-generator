@@ -65,6 +65,11 @@ pub struct FuzzerGenTaskParams {
     pub timeout_secs: u64,
     /// Requires downloading multiversion binaries.
     pub require_multiversion_setup: bool,
+
+    /// Explicit space-delimited list of old versions this task needs, declared on the generator
+    /// call. Takes precedence over the sub-task's own old version, for tasks that test against
+    /// several versions and have no single one.
+    pub multiversion_setup_versions: Option<String>,
     /// Should multiversion generate tasks exist for this.
     pub require_multiversion_generate_tasks: bool,
     /// List of tasks generated sub-tasks should depend on.
