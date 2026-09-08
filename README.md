@@ -140,7 +140,7 @@ Options:
       --batch-test-discovery
           Discover all suites up front with batched resmoke test-discovery invocations. Requires a resmoke version whose test-discovery accepts repeated --suite arguments
       --max-tasks <MAX_TASKS>
-          Stop generation early once this many tasks have been generated. Intended for local testing/debugging, not for real patch generation
+          Limit the total number of generated tasks (including sub-tasks). Intended for local testing/debugging, not for real patch generation
       --target-variant <TARGET_VARIANT>
           Only generate tasks for the given build variant. Intended for local testing/debugging
       --target-task <TARGET_TASK>

@@ -330,7 +330,7 @@ fn prewarm_test_discovery(deps: &Dependencies) -> Result<()> {
         .filter(|task_def| {
             // When a target task is specified, only prewarm discovery for that suite.
             if let Some(target_task) = &deps.target_task {
-                if &task_def.name != target_task {
+                if !task_name_matches(target_task, &task_def.name) {
                     return false;
                 }
             }
@@ -580,6 +580,9 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
         let mut thread_handles = vec![];
 
         let generated_tasks = Arc::new(Mutex::new(HashMap::new()));
+        // Remaining budget of generated sub-tasks before `max_tasks` is reached. When no
+        // cap is set this is usize::MAX, so it never limits generation.
+        let task_budget = Arc::new(Mutex::new(self.max_tasks.unwrap_or(usize::MAX)));
         let mut seen_tasks = HashSet::new();
         let mut num_tasks_generated = 0usize;
         'build_variants: for build_variant in &build_variant_list {
@@ -592,9 +595,11 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                 .infer_build_variant_platform(build_variant);
             for task in &build_variant.tasks {
                 // When a target task is specified, only generate that task to keep
-                // generation fast during local testing.
+                // generation fast during local testing. The target matches the generated
+                // task's name (e.g. `sharding_auth_audit` for the `sharding_auth_audit_gen`
+                // task).
                 if let Some(target_task) = &self.target_task {
-                    if &task.name != target_task {
+                    if !task_name_matches(target_task, &task.name) {
                         continue;
                     }
                 }
@@ -609,6 +614,7 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                             build_variant,
                             build_variant.name.clone(),
                             generated_tasks.clone(),
+                            task_budget.clone(),
                         ));
                     }
 
@@ -626,6 +632,7 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                                 base_build_variant,
                                 run_build_variant_name,
                                 generated_tasks.clone(),
+                                task_budget.clone(),
                             ));
                         }
                     }
@@ -636,6 +643,7 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                             task_map.clone(),
                             build_variant,
                             generated_tasks.clone(),
+                            task_budget.clone(),
                         ));
                     }
 
@@ -671,6 +679,7 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                             task_def,
                             build_variant,
                             generated_tasks.clone(),
+                            task_budget.clone(),
                         ));
                         num_tasks_generated += 1;
                         if let Some(max_tasks) = self.max_tasks {
@@ -1051,6 +1060,7 @@ impl Drop for RemainingTaskMonitor {
 /// * `task_def` - Evergreen task definition to base generated task off.
 /// * `build_variant` - Build variant to query timing information from.
 /// * `generated_tasks` - Map to stored generated to in.
+/// * `task_budget` - Remaining budget of generated sub-tasks before `max_tasks` is hit.
 ///
 /// # Returns
 ///
@@ -1060,6 +1070,7 @@ fn create_task_worker(
     task_def: &EvgTask,
     build_variant: &BuildVariant,
     generated_tasks: Arc<Mutex<GenTaskCollection>>,
+    task_budget: Arc<Mutex<usize>>,
 ) -> tokio::task::JoinHandle<()> {
     let generate_task_service = deps.gen_task_service.clone();
     let evg_config_utils = deps.evg_config_utils.clone();
@@ -1085,8 +1096,7 @@ fn create_task_worker(
         );
 
         if let Some(generated_task) = generated_task {
-            let mut generated_tasks = generated_tasks.lock().unwrap();
-            generated_tasks.insert(task_name, generated_task);
+            insert_generated_task(&generated_tasks, &task_budget, task_name, generated_task);
         }
     })
 }
@@ -1100,6 +1110,7 @@ fn create_task_worker(
 /// * `build_variant` - Build variant to query timing information from.
 /// * `run_build_variant_name` - Build variant name to run burn_in_tests task on.
 /// * `generated_tasks` - Map to stored generated tasks in.
+/// * `task_budget` - Remaining budget of generated sub-tasks before `max_tasks` is hit.
 ///
 /// # Returns
 ///
@@ -1110,6 +1121,7 @@ fn create_burn_in_worker(
     build_variant: &BuildVariant,
     run_build_variant_name: String,
     generated_tasks: Arc<Mutex<GenTaskCollection>>,
+    task_budget: Arc<Mutex<usize>>,
 ) -> tokio::task::JoinHandle<()> {
     let burn_in_service = deps.burn_in_service.clone();
     let build_variant = build_variant.clone();
@@ -1123,8 +1135,7 @@ fn create_burn_in_worker(
         let task_name = format!("{}-{}", BURN_IN_TESTS_PREFIX, run_build_variant_name);
 
         if !generated_task.sub_tasks().is_empty() {
-            let mut generated_tasks = generated_tasks.lock().unwrap();
-            generated_tasks.insert(task_name, generated_task);
+            insert_generated_task(&generated_tasks, &task_budget, task_name, generated_task);
         }
     })
 }
@@ -1137,6 +1148,7 @@ fn create_burn_in_worker(
 /// * `task_map` - Map of task definitions in evergreen project configuration.
 /// * `build_variant` - Build variant to query timing information from.
 /// * `generated_tasks` - Map to stored generated tasks in.
+/// * `task_budget` - Remaining budget of generated sub-tasks before `max_tasks` is hit.
 ///
 /// # Returns
 ///
@@ -1146,6 +1158,7 @@ fn create_burn_in_tasks_worker(
     task_map: Arc<HashMap<String, EvgTask>>,
     build_variant: &BuildVariant,
     generated_tasks: Arc<Mutex<GenTaskCollection>>,
+    task_budget: Arc<Mutex<usize>>,
 ) -> tokio::task::JoinHandle<()> {
     let burn_in_service = deps.burn_in_service.clone();
     let build_variant = build_variant.clone();
@@ -1159,10 +1172,47 @@ fn create_burn_in_tasks_worker(
         let task_name = format!("{}-{}", BURN_IN_TASKS_PREFIX, build_variant.name);
 
         if !generated_task.sub_tasks().is_empty() {
-            let mut generated_tasks = generated_tasks.lock().unwrap();
-            generated_tasks.insert(task_name, generated_task);
+            insert_generated_task(&generated_tasks, &task_budget, task_name, generated_task);
         }
     })
+}
+
+/// Insert a generated task into the collection, respecting the `max_tasks` budget of
+/// total generated sub-tasks.
+///
+/// When a generated suite has more sub-tasks than remain in the budget, only the first
+/// `budget` sub-tasks are kept so the total number of generated tasks never exceeds
+/// `max_tasks`. Suites with no sub-tasks are never inserted.
+fn insert_generated_task(
+    generated_tasks: &Mutex<GenTaskCollection>,
+    task_budget: &Mutex<usize>,
+    task_name: String,
+    generated_task: Box<dyn GeneratedSuite>,
+) {
+    let mut generated_tasks = generated_tasks.lock().unwrap();
+    let mut remaining = task_budget.lock().unwrap();
+    let num_sub_tasks = generated_task.sub_tasks().len();
+    if num_sub_tasks == 0 {
+        return;
+    }
+    if num_sub_tasks > *remaining {
+        if *remaining == 0 {
+            return;
+        }
+        generated_tasks.insert(task_name, generated_task.truncate_sub_tasks(*remaining));
+        *remaining = 0;
+    } else {
+        *remaining -= num_sub_tasks;
+        generated_tasks.insert(task_name, generated_task);
+    }
+}
+
+/// Check whether a user-supplied target task matches a task definition name.
+///
+/// Generated tasks are named `<task>_gen` in the project config but produce generated
+/// tasks named `<task>`, so either form is accepted.
+fn task_name_matches(target: &str, task_name: &str) -> bool {
+    task_name == target || task_name.strip_suffix("_gen") == Some(target)
 }
 
 pub async fn build_s3_client() -> aws_sdk_s3::Client {
@@ -1547,6 +1597,7 @@ mod tests {
             },
             "run_bv_name".to_string(),
             generated_tasks.clone(),
+            Arc::new(Mutex::new(usize::MAX)),
         );
         thread_handle.await.unwrap();
 
@@ -1574,6 +1625,7 @@ mod tests {
             },
             "run_bv_name".to_string(),
             generated_tasks.clone(),
+            Arc::new(Mutex::new(usize::MAX)),
         );
         thread_handle.await.unwrap();
 
@@ -1584,6 +1636,73 @@ mod tests {
                 .contains_key(&format!("{}-{}", BURN_IN_TESTS_PREFIX, "run_bv_name")),
             false
         );
+    }
+
+    // tests for task_name_matches.
+    #[rstest]
+    #[case("sharding_auth_audit", "sharding_auth_audit_gen", true)]
+    #[case("sharding_auth_audit_gen", "sharding_auth_audit_gen", true)]
+    #[case("other_task", "sharding_auth_audit_gen", false)]
+    #[case("foo", "bar", false)]
+    fn test_task_name_matches(
+        #[case] target: &str,
+        #[case] task_name: &str,
+        #[case] expected: bool,
+    ) {
+        assert_eq!(task_name_matches(target, task_name), expected);
+    }
+
+    // tests for insert_generated_task.
+    #[tokio::test]
+    async fn test_insert_generated_task_truncates_to_budget() {
+        let generated_tasks = Arc::new(Mutex::new(HashMap::new()));
+        let task_budget = Arc::new(Mutex::new(2usize));
+        let generated_task: Box<dyn GeneratedSuite> = Box::new(GeneratedResmokeSuite {
+            task_name: "my_task".to_string(),
+            sub_suites: vec![
+                GeneratedSubTask {
+                    ..Default::default()
+                },
+                GeneratedSubTask {
+                    ..Default::default()
+                },
+                GeneratedSubTask {
+                    ..Default::default()
+                },
+            ],
+        });
+
+        insert_generated_task(
+            &generated_tasks,
+            &task_budget,
+            "my_task".to_string(),
+            generated_task,
+        );
+
+        let generated_tasks = generated_tasks.lock().unwrap();
+        let inserted = generated_tasks.get("my_task").unwrap();
+        assert_eq!(inserted.sub_tasks().len(), 2);
+        assert_eq!(*task_budget.lock().unwrap(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_insert_generated_task_skips_empty_suite() {
+        let generated_tasks = Arc::new(Mutex::new(HashMap::new()));
+        let task_budget = Arc::new(Mutex::new(1usize));
+        let generated_task: Box<dyn GeneratedSuite> = Box::new(GeneratedResmokeSuite {
+            task_name: "my_task".to_string(),
+            sub_suites: vec![],
+        });
+
+        insert_generated_task(
+            &generated_tasks,
+            &task_budget,
+            "my_task".to_string(),
+            generated_task,
+        );
+
+        assert!(!generated_tasks.lock().unwrap().contains_key("my_task"));
+        assert_eq!(*task_budget.lock().unwrap(), 1);
     }
 
     // tests for create_burn_in_tasks_worker.
@@ -1607,6 +1726,7 @@ mod tests {
                 ..Default::default()
             },
             generated_tasks.clone(),
+            Arc::new(Mutex::new(usize::MAX)),
         );
         thread_handle.await.unwrap();
 
@@ -1634,6 +1754,7 @@ mod tests {
                 ..Default::default()
             },
             generated_tasks.clone(),
+            Arc::new(Mutex::new(usize::MAX)),
         );
         thread_handle.await.unwrap();
 

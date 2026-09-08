@@ -268,6 +268,14 @@ impl GeneratedSuite for GeneratedResmokeSuite {
     fn sub_tasks(&self) -> Vec<GeneratedSubTask> {
         self.sub_suites.clone()
     }
+
+    /// Return a copy of this generated suite containing only the first `count` sub-tasks.
+    fn truncate_sub_tasks(&self, count: usize) -> Box<dyn GeneratedSuite> {
+        Box::new(GeneratedResmokeSuite {
+            task_name: self.task_name.clone(),
+            sub_suites: self.sub_suites.iter().take(count).cloned().collect(),
+        })
+    }
 }
 
 /// A service for generating resmoke tasks.

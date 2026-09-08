@@ -150,7 +150,7 @@ struct Args {
     #[clap(long)]
     batch_test_discovery: bool,
 
-    /// Stop generation early once this many tasks have been generated. Intended for local
+    /// Limit the total number of generated tasks (including sub-tasks). Intended for local
     /// testing/debugging, not for real patch generation.
     #[clap(long)]
     max_tasks: Option<usize>,

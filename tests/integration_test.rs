@@ -119,13 +119,49 @@ fn test_end2end_max_tasks() {
     let config_file = tmp_dir_path.join("evergreen_config.json");
     assert!(config_file.exists());
 
-    let num_files = std::fs::read_dir(tmp_dir_path).unwrap().count();
-    // Generation should stop early after one task, far fewer than the full 688 files.
-    assert!(num_files > 0);
+    // max_tasks caps the total number of generated tasks (including sub-tasks), so a run
+    // with max_tasks=1 must emit exactly one task definition even though the first suite
+    // would otherwise split into multiple sub-tasks.
+    let config: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(config_file).unwrap()).unwrap();
+    assert_eq!(config["tasks"].as_array().unwrap().len(), 1);
+}
+
+#[test]
+fn test_end2end_target_task_matches_generated_name() {
+    let mut cmd = Command::cargo_bin("mongo-task-generator").unwrap();
+    let tmp_dir = TempDir::new("generated_resmoke_config").unwrap();
+
+    // The target task name matches the generated task's name (without the `_gen` suffix),
+    // not the `unittest_shell_hang_analyzer_gen` task definition name.
+    cmd.args(&[
+        "--target-directory",
+        tmp_dir.path().to_str().unwrap(),
+        "--expansion-file",
+        "tests/data/sample_expansions.yml",
+        "--evg-project-file",
+        "tests/data/evergreen.yml",
+        "--evg-auth-file",
+        "tests/data/sample_evergreen_auth.yml",
+        "--resmoke-command",
+        "python3 tests/mocks/resmoke.py",
+        "--use-task-split-fallback",
+        "--generate-sub-tasks-config",
+        "tests/data/sample_generate_subtasks_config.yml",
+        "--bazel-suite-configs",
+        "tests/data/sample_bazel_suite_configs.yml",
+        "--target-task",
+        "unittest_shell_hang_analyzer",
+    ])
+    .assert()
+    .success();
+
+    let config_file = tmp_dir.path().join("evergreen_config.json");
+    assert!(config_file.exists());
+    let config = std::fs::read_to_string(config_file).unwrap();
     assert!(
-        num_files < 688,
-        "expected capped generation but found {} files",
-        num_files
+        config.contains("unittest_shell_hang_analyzer"),
+        "expected targeted generated task in config"
     );
 }
 
