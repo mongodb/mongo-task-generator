@@ -153,8 +153,8 @@ pub struct ExecutionConfiguration<'a> {
     pub bazel_suite_configs: Option<PathBuf>,
     /// True if all suites should be discovered up front with batched resmoke calls.
     pub batch_test_discovery: bool,
-    /// Stop generation early once this many tasks have been generated.
-    pub max_tasks: Option<usize>,
+    /// Limit the number of sub-tasks generated for each task.
+    pub max_sub_tasks: Option<usize>,
     /// Only generate tasks for the given build variant.
     pub target_variant: Option<String>,
     /// Only generate tasks matching this base task name.
@@ -249,11 +249,6 @@ impl Dependencies {
         let enterprise_dir = evg_config_service.get_module_dir(ENTERPRISE_MODULE);
         let gen_resmoke_config =
             GenResmokeConfig::new(execution_config.use_task_split_fallback, enterprise_dir);
-        // Shared budget of generated sub-tasks remaining before `max_tasks` is reached.
-        // Only enforced by the resmoke task service when `max_tasks` is set.
-        let task_budget = Arc::new(tokio::sync::Mutex::new(
-            execution_config.max_tasks.unwrap_or(usize::MAX),
-        ));
         let gen_resmoke_task_service = Arc::new(GenResmokeTaskServiceImpl::new(
             task_history_service,
             discovery_service.clone(),
@@ -267,8 +262,7 @@ impl Dependencies {
                 .to_str()
                 .unwrap_or("")
                 .to_string(),
-            task_budget,
-            execution_config.max_tasks,
+            execution_config.max_sub_tasks,
         ));
         let gen_task_service = Arc::new(GenerateTasksServiceImpl::new(
             evg_config_service.clone(),
@@ -277,7 +271,6 @@ impl Dependencies {
             gen_resmoke_task_service.clone(),
             config_extraction_service.clone(),
             execution_config.gen_burn_in,
-            execution_config.max_tasks,
             execution_config.target_variant.clone(),
             execution_config.target_task.clone(),
         ));
@@ -508,7 +501,6 @@ struct GenerateTasksServiceImpl {
     gen_resmoke_service: Arc<dyn GenResmokeTaskService>,
     config_extraction_service: Arc<dyn ConfigExtractionService>,
     gen_burn_in: bool,
-    max_tasks: Option<usize>,
     target_variant: Option<String>,
     target_task: Option<String>,
 }
@@ -524,7 +516,6 @@ impl GenerateTasksServiceImpl {
     /// * `gen_resmoke_service` - Service for generating resmoke tasks.
     /// * `config_extraction_service` - Service to extraction configuration from evergreen config.
     /// * `gen_burn_in` - True if burn_in tasks should be generated.
-    /// * `max_tasks` - Stop generation early once this many tasks have been generated.
     /// * `target_variant` - If set, only generate tasks for this build variant.
     /// * `target_task` - If set, only generate tasks matching this base task name.
     #[allow(clippy::too_many_arguments)]
@@ -535,7 +526,6 @@ impl GenerateTasksServiceImpl {
         gen_resmoke_service: Arc<dyn GenResmokeTaskService>,
         config_extraction_service: Arc<dyn ConfigExtractionService>,
         gen_burn_in: bool,
-        max_tasks: Option<usize>,
         target_variant: Option<String>,
         target_task: Option<String>,
     ) -> Self {
@@ -546,7 +536,6 @@ impl GenerateTasksServiceImpl {
             gen_resmoke_service,
             config_extraction_service,
             gen_burn_in,
-            max_tasks,
             target_variant,
             target_task,
         }
@@ -588,8 +577,7 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
 
         let generated_tasks = Arc::new(Mutex::new(HashMap::new()));
         let mut seen_tasks = HashSet::new();
-        let mut num_tasks_generated = 0usize;
-        'build_variants: for build_variant in &build_variant_list {
+        for build_variant in &build_variant_list {
             let build_variant = build_variant_map.get(build_variant).unwrap();
             let is_enterprise = self
                 .evg_config_utils
@@ -681,12 +669,6 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                             build_variant,
                             generated_tasks.clone(),
                         ));
-                        num_tasks_generated += 1;
-                        if let Some(max_tasks) = self.max_tasks {
-                            if num_tasks_generated >= max_tasks {
-                                break 'build_variants;
-                            }
-                        }
                     }
                 }
             }
@@ -1173,9 +1155,9 @@ fn create_burn_in_tasks_worker(
 
 /// Insert a generated task into the collection. Suites with no sub-tasks are skipped.
 ///
-/// The `max_tasks` budget is enforced upstream by the resmoke task service, which sizes
-/// each suite to the remaining budget and drops it entirely once the budget is exhausted,
-/// so suites inserted here are always consistent with the resmoke config files written.
+/// Suite sizing is handled upstream by the resmoke task service (e.g. `max_sub_tasks`
+/// limits the sub-tasks per task), so suites inserted here are always consistent with the
+/// resmoke config files written.
 fn insert_generated_task(
     generated_tasks: &Mutex<GenTaskCollection>,
     task_name: String,
@@ -1301,7 +1283,6 @@ mod tests {
                 None,
             )),
             false,
-            None,
             None,
             None,
         )

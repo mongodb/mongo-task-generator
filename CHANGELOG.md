@@ -1,9 +1,9 @@
 # Changelog
 
 ## 3.8.0 - 2026-09-08
-* Adds `--target-variant`, `--target-task`, and `--max-tasks` flags to restrict generation to a specific build variant/task or cap the number of generated tasks, for faster iteration.
+* Adds `--target-variant`, `--target-task`, and `--max-subtasks` flags to restrict generation to a specific build variant/task or limit the number of sub-tasks per task, for faster iteration.
 * `--target-task` matches the generated task's name (e.g. `sharding_auth_audit` for `sharding_auth_audit_gen`).
-* `--max-tasks` caps the total number of generated tasks (including sub-tasks); capped suites keep all of their tests in a single suite file with no orphaned slice files.
+* `--max-subtasks` limits the number of sub-tasks generated for each task; capped suites keep all of their tests in a single suite file with no orphaned slice files.
 
 ## 3.7.0 - 2026-08-10
 * Adds a `--batch-test-discovery` flag and caches resmoke test discovery and suiteconfig results per suite.

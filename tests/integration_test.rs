@@ -88,7 +88,7 @@ fn test_end2end_target_variant_and_task() {
 }
 
 #[test]
-fn test_end2end_max_tasks() {
+fn test_end2end_max_sub_tasks() {
     let mut cmd = Command::cargo_bin("mongo-task-generator").unwrap();
     let tmp_dir = TempDir::new("generated_resmoke_config").unwrap();
 
@@ -108,7 +108,9 @@ fn test_end2end_max_tasks() {
         "tests/data/sample_generate_subtasks_config.yml",
         "--bazel-suite-configs",
         "tests/data/sample_bazel_suite_configs.yml",
-        "--max-tasks",
+        "--target-task",
+        "unittest_shell_hang_analyzer",
+        "--max-subtasks",
         "1",
     ])
     .assert()
@@ -119,10 +121,9 @@ fn test_end2end_max_tasks() {
     let config_file = tmp_dir_path.join("evergreen_config.json");
     assert!(config_file.exists());
 
-    // max_tasks caps the total number of generated tasks (including sub-tasks), so a run
-    // with max_tasks=1 must emit exactly one task definition even though the first suite
-    // would otherwise split into multiple sub-tasks. All tests land in the single suite file
-    // rather than being scattered across orphaned slice files.
+    // max_sub_tasks limits the number of sub-tasks per generated task. The targeted suite
+    // would otherwise split into multiple sub-tasks, but with max-subtasks=1 it emits exactly
+    // one task and one suite file containing all of its tests.
     let config: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(config_file).unwrap()).unwrap();
     assert_eq!(config["tasks"].as_array().unwrap().len(), 1);

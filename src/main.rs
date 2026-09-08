@@ -150,9 +150,9 @@ struct Args {
     #[clap(long)]
     batch_test_discovery: bool,
 
-    /// Limit the total number of generated tasks (including sub-tasks).
-    #[clap(long)]
-    max_tasks: Option<usize>,
+    /// Limit the number of sub-tasks generated for each task.
+    #[clap(long = "max-subtasks")]
+    max_sub_tasks: Option<usize>,
 
     /// Only generate tasks for the given build variant, for faster iteration on a specific variant.
     #[clap(long)]
@@ -204,7 +204,7 @@ async fn main() {
         },
         bazel_suite_configs: args.bazel_suite_configs.as_ref().map(|p| expand_path(p)),
         batch_test_discovery: args.batch_test_discovery,
-        max_tasks: args.max_tasks,
+        max_sub_tasks: args.max_sub_tasks,
         target_variant: args.target_variant,
         target_task: args.target_task,
     };

@@ -364,12 +364,8 @@ pub struct GenResmokeTaskServiceImpl {
     /// Directory to place generated configuration files.
     pub target_directory: String,
 
-    /// Remaining budget of generated sub-tasks before `max_tasks` is reached. Only enforced
-    /// when `max_tasks` is set.
-    task_budget: Arc<Mutex<usize>>,
-
-    /// If set, cap the total number of generated sub-tasks across all resmoke tasks.
-    max_tasks: Option<usize>,
+    /// If set, limit the number of sub-tasks generated for each task.
+    max_sub_tasks: Option<usize>,
 }
 
 impl GenResmokeTaskServiceImpl {
@@ -381,8 +377,7 @@ impl GenResmokeTaskServiceImpl {
     /// * `test_discovery` - An instance of the service to query tests belonging to a task.
     /// * `fs_service` - An instance of the service too work with the file system.
     /// * `gen_resmoke_config` - Configuration for how resmoke tasks should be generated.
-    /// * `task_budget` - Remaining budget of generated sub-tasks before `max_tasks` is reached.
-    /// * `max_tasks` - If set, cap the total number of generated sub-tasks.
+    /// * `max_sub_tasks` - If set, limit the number of sub-tasks generated for each task.
     ///
     /// # Returns
     ///
@@ -397,8 +392,7 @@ impl GenResmokeTaskServiceImpl {
         config: GenResmokeConfig,
         subtask_limits: SubtaskLimits,
         target_directory: String,
-        task_budget: Arc<Mutex<usize>>,
-        max_tasks: Option<usize>,
+        max_sub_tasks: Option<usize>,
     ) -> Self {
         Self {
             task_history_service,
@@ -409,8 +403,7 @@ impl GenResmokeTaskServiceImpl {
             config,
             subtask_limits,
             target_directory,
-            task_budget,
-            max_tasks,
+            max_sub_tasks,
         }
     }
 }
@@ -802,47 +795,14 @@ impl GenResmokeTaskService for GenResmokeTaskServiceImpl {
         params: &ResmokeGenParams,
         build_variant: &BuildVariant,
     ) -> Result<Box<dyn GeneratedSuite>> {
-        // When `max_tasks` is set, limit this task to the remaining sub-task budget. Fewer
-        // sub-suites are produced (so all tests still land in kept suite files) and the task
-        // is dropped entirely once the budget is exhausted, keeping the generated evergreen
-        // config and the resmoke suite files in sync.
-        let (sub_suites, _budget_guard) = if self.max_tasks.is_some() {
-            let mut budget = self.task_budget.lock().await;
-            if *budget == 0 {
-                return Ok(Box::new(GeneratedResmokeSuite {
-                    task_name: params.task_name.to_string(),
-                    sub_suites: vec![],
-                }));
-            }
-            let sub_suites = if params.require_multiversion_generate_tasks {
-                let mut suites = self
-                    .create_multiversion_tasks(params, build_variant, Some(*budget))
-                    .await?;
-                if suites.len() > *budget {
-                    suites.truncate(*budget);
-                }
-                suites
-            } else {
-                self.create_tasks(params, build_variant, None, None, Some(*budget))
-                    .await?
-            };
-            if sub_suites.is_empty() {
-                return Ok(Box::new(GeneratedResmokeSuite {
-                    task_name: params.task_name.to_string(),
-                    sub_suites: vec![],
-                }));
-            }
-            *budget -= sub_suites.len();
-            (sub_suites, Some(budget))
+        // When `max_sub_tasks` is set, limit the number of sub-tasks generated for this task:
+        // fewer sub-suites are produced so all tests still land in the kept suite files.
+        let sub_suites = if params.require_multiversion_generate_tasks {
+            self.create_multiversion_tasks(params, build_variant, self.max_sub_tasks)
+                .await?
         } else {
-            let sub_suites = if params.require_multiversion_generate_tasks {
-                self.create_multiversion_tasks(params, build_variant, None)
-                    .await?
-            } else {
-                self.create_tasks(params, build_variant, None, None, None)
-                    .await?
-            };
-            (sub_suites, None)
+            self.create_tasks(params, build_variant, None, None, self.max_sub_tasks)
+                .await?
         };
 
         let sub_task_total = sub_suites.len();
@@ -1314,15 +1274,14 @@ mod tests {
                 max_subtasks_per_task: 10,
             },
             "generated_resmoke_config".to_string(),
-            Arc::new(Mutex::new(usize::MAX)),
             None,
         )
     }
 
-    fn build_mocked_service_with_budget(
+    fn build_mocked_service_with_max_sub_tasks(
         test_list: Vec<String>,
         task_history: TaskRuntimeHistory,
-        max_tasks: usize,
+        max_sub_tasks: usize,
     ) -> GenResmokeTaskServiceImpl {
         let test_discovery = MockTestDiscovery { test_list };
         let multiversion_service = MockMultiversionService {};
@@ -1348,8 +1307,7 @@ mod tests {
                 max_subtasks_per_task: 10,
             },
             "generated_resmoke_config".to_string(),
-            Arc::new(Mutex::new(max_tasks)),
-            Some(max_tasks),
+            Some(max_sub_tasks),
         )
     }
 
@@ -1770,9 +1728,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_generate_resmoke_tasks_respects_max_tasks_budget() {
-        // With a max_tasks budget of 1, the task is capped to a single sub-suite containing all
-        // tests, and once the budget is exhausted no further tasks (or suite files) are produced.
+    async fn test_generate_resmoke_tasks_respects_max_sub_tasks() {
+        // With a max_sub_tasks of 1, the task is capped to a single sub-suite containing all
+        // tests. The cap applies per task, so a subsequent task is still generated normally.
         let num_tasks = 5;
         let test_list: Vec<String> = (0..10)
             .into_iter()
@@ -1782,7 +1740,8 @@ mod tests {
             task_name: "my_task".to_string(),
             test_map: hashmap! {},
         };
-        let gen_resmoke_service = build_mocked_service_with_budget(test_list, task_history, 1);
+        let gen_resmoke_service =
+            build_mocked_service_with_max_sub_tasks(test_list, task_history, 1);
         let params = ResmokeGenParams {
             task_name: "my_task".to_string(),
             require_multiversion_generate_tasks: false,
@@ -1800,12 +1759,12 @@ mod tests {
             .unwrap();
         assert_eq!(suite.sub_tasks().len(), 1);
 
-        // Budget exhausted: subsequent tasks produce nothing and write no suite files.
+        // The cap is per task, so a second task still produces its own sub-task.
         let suite = gen_resmoke_service
             .generate_resmoke_task(&params, &build_variant)
             .await
             .unwrap();
-        assert!(suite.sub_tasks().is_empty());
+        assert_eq!(suite.sub_tasks().len(), 1);
     }
 
     #[tokio::test]

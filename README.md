@@ -139,8 +139,8 @@ Options:
           YAML file mapping bazel target names of suite configs to their file location
       --batch-test-discovery
           Discover all suites up front with batched resmoke test-discovery invocations. Requires a resmoke version whose test-discovery accepts repeated --suite arguments
-      --max-tasks <MAX_TASKS>
-          Limit the total number of generated tasks (including sub-tasks)
+      --max-subtasks <MAX_SUBTASKS>
+          Limit the number of sub-tasks generated for each task
       --target-variant <TARGET_VARIANT>
           Only generate tasks for the given build variant, for faster iteration on a specific variant
       --target-task <TARGET_TASK>
