@@ -573,7 +573,7 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
 
         let build_variant_list = self.evg_config_service.sort_build_variants_by_required();
         // When a target build variant is specified, only iterate over that variant to
-        // keep generation fast during local testing.
+        // keep generation fast while iterating on a specific variant.
         let build_variant_list = match &self.target_variant {
             Some(target_variant) => build_variant_list
                 .into_iter()
@@ -599,7 +599,7 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                 .infer_build_variant_platform(build_variant);
             for task in &build_variant.tasks {
                 // When a target task is specified, only generate that task to keep
-                // generation fast during local testing. The target matches the generated
+                // generation fast while iterating on a specific task. The target matches the generated
                 // task's name (e.g. `sharding_auth_audit` for the `sharding_auth_audit_gen`
                 // task).
                 if let Some(target_task) = &self.target_task {
@@ -837,7 +837,7 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
         let build_variant_map = self.evg_config_service.get_build_variant_map();
         for (bv_name, build_variant) in &build_variant_map {
             // When a target build variant is specified, only generate configuration for that
-            // variant to keep generation fast during local testing.
+            // variant to keep generation fast while iterating on a specific variant.
             if let Some(target_variant) = &self.target_variant {
                 if bv_name != target_variant {
                     continue;

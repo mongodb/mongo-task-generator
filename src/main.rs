@@ -150,16 +150,15 @@ struct Args {
     #[clap(long)]
     batch_test_discovery: bool,
 
-    /// Limit the total number of generated tasks (including sub-tasks). Intended for local
-    /// testing/debugging, not for real patch generation.
+    /// Limit the total number of generated tasks (including sub-tasks).
     #[clap(long)]
     max_tasks: Option<usize>,
 
-    /// Only generate tasks for the given build variant. Intended for local testing/debugging.
+    /// Only generate tasks for the given build variant, for faster iteration on a specific variant.
     #[clap(long)]
     target_variant: Option<String>,
 
-    /// Only generate tasks matching this base task name. Intended for local testing/debugging.
+    /// Only generate tasks matching this base task name, for faster iteration on a specific task.
     #[clap(long)]
     target_task: Option<String>,
 }
