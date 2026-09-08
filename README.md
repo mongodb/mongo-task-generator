@@ -136,8 +136,15 @@ Options:
       --max-subtasks-per-task <MAX_SUBTASKS_PER_TASK>
           [default: 10]
       --bazel-suite-configs <BAZEL_SUITE_CONFIGS>
-          YAML file mapping mapping bazel target names of suite configs to their file location location
-      
+          YAML file mapping bazel target names of suite configs to their file location
+      --batch-test-discovery
+          Discover all suites up front with batched resmoke test-discovery invocations. Requires a resmoke version whose test-discovery accepts repeated --suite arguments
+      --max-subtasks <MAX_SUBTASKS>
+          Limit the number of sub-tasks generated for each task
+      --target-variant <TARGET_VARIANT>
+          Only generate tasks for the given build variant, for faster iteration on a specific variant
+      --target-task <TARGET_TASK>
+          Only generate tasks matching this base task name, for faster iteration on a specific task
   -h, --help
           Print help
 ```

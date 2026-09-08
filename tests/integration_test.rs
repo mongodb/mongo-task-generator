@@ -37,6 +37,183 @@ fn test_end2end_execution() {
 }
 
 #[test]
+fn test_end2end_target_variant_and_task() {
+    let mut cmd = Command::cargo_bin("mongo-task-generator").unwrap();
+    let tmp_dir = TempDir::new("generated_resmoke_config").unwrap();
+
+    cmd.args(&[
+        "--target-directory",
+        tmp_dir.path().to_str().unwrap(),
+        "--expansion-file",
+        "tests/data/sample_expansions.yml",
+        "--evg-project-file",
+        "tests/data/evergreen.yml",
+        "--evg-auth-file",
+        "tests/data/sample_evergreen_auth.yml",
+        "--resmoke-command",
+        "python3 tests/mocks/resmoke.py",
+        "--use-task-split-fallback",
+        "--generate-sub-tasks-config",
+        "tests/data/sample_generate_subtasks_config.yml",
+        "--bazel-suite-configs",
+        "tests/data/sample_bazel_suite_configs.yml",
+        "--target-variant",
+        "enterprise-rhel-80-64-bit-dynamic-required",
+        "--target-task",
+        "unittest_shell_hang_analyzer_gen",
+    ])
+    .assert()
+    .success();
+
+    let tmp_dir_path = tmp_dir.path();
+    assert!(tmp_dir_path.exists());
+
+    let files = std::fs::read_dir(tmp_dir_path).unwrap();
+    let num_files = files.into_iter().collect::<Vec<_>>().len();
+    // Only the targeted task should be generated, not all 688 files of the full run.
+    assert!(num_files > 0);
+    assert!(
+        num_files < 688,
+        "expected filtered generation but found {} files",
+        num_files
+    );
+
+    let config_file = tmp_dir_path.join("evergreen_config.json");
+    assert!(config_file.exists());
+    let config: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(config_file).unwrap()).unwrap();
+
+    // Exactly one build variant must be generated, both proving target_variant filters the
+    // output and that target_task is honored (a target-variant-only run would emit tasks for
+    // every generated task on the variant, not just the targeted suite).
+    let build_variants = config["buildvariants"].as_array().unwrap();
+    assert_eq!(build_variants.len(), 1);
+    assert_eq!(
+        build_variants[0]["name"],
+        "enterprise-rhel-80-64-bit-dynamic-required"
+    );
+
+    let tasks = config["tasks"].as_array().unwrap();
+    assert!(!tasks.is_empty());
+    for task in tasks {
+        assert!(
+            task["name"]
+                .as_str()
+                .unwrap()
+                .starts_with("unittest_shell_hang_analyzer_"),
+            "expected only targeted generated tasks in config, got {:?}",
+            task["name"]
+        );
+    }
+}
+
+#[test]
+fn test_end2end_max_sub_tasks() {
+    let mut cmd = Command::cargo_bin("mongo-task-generator").unwrap();
+    let tmp_dir = TempDir::new("generated_resmoke_config").unwrap();
+
+    cmd.args(&[
+        "--target-directory",
+        tmp_dir.path().to_str().unwrap(),
+        "--expansion-file",
+        "tests/data/sample_expansions.yml",
+        "--evg-project-file",
+        "tests/data/evergreen.yml",
+        "--evg-auth-file",
+        "tests/data/sample_evergreen_auth.yml",
+        "--resmoke-command",
+        "python3 tests/mocks/resmoke.py",
+        "--use-task-split-fallback",
+        "--generate-sub-tasks-config",
+        "tests/data/sample_generate_subtasks_config.yml",
+        "--bazel-suite-configs",
+        "tests/data/sample_bazel_suite_configs.yml",
+        "--target-task",
+        "unittest_shell_hang_analyzer",
+        "--max-subtasks",
+        "1",
+    ])
+    .assert()
+    .success();
+
+    let tmp_dir_path = tmp_dir.path();
+    assert!(tmp_dir_path.exists());
+    let config_file = tmp_dir_path.join("evergreen_config.json");
+    assert!(config_file.exists());
+
+    // max_sub_tasks limits the number of sub-tasks per generated task. The targeted suite
+    // would otherwise split into multiple sub-tasks, but with max-subtasks=1 it emits exactly
+    // one task and one suite file containing all of its tests.
+    let config: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(config_file).unwrap()).unwrap();
+    assert_eq!(config["tasks"].as_array().unwrap().len(), 1);
+
+    let suite_files: Vec<_> = std::fs::read_dir(tmp_dir_path)
+        .unwrap()
+        .filter_map(|entry| {
+            let path = entry.unwrap().path();
+            (path.extension().and_then(|e| e.to_str()) == Some("yml")).then_some(path)
+        })
+        .collect();
+    assert_eq!(
+        suite_files.len(),
+        1,
+        "expected one suite file, found {:#?}",
+        suite_files
+    );
+}
+
+#[test]
+fn test_end2end_target_task_matches_generated_name() {
+    let mut cmd = Command::cargo_bin("mongo-task-generator").unwrap();
+    let tmp_dir = TempDir::new("generated_resmoke_config").unwrap();
+
+    // The target task name matches the generated task's name (without the `_gen` suffix),
+    // not the `unittest_shell_hang_analyzer_gen` task definition name.
+    cmd.args(&[
+        "--target-directory",
+        tmp_dir.path().to_str().unwrap(),
+        "--expansion-file",
+        "tests/data/sample_expansions.yml",
+        "--evg-project-file",
+        "tests/data/evergreen.yml",
+        "--evg-auth-file",
+        "tests/data/sample_evergreen_auth.yml",
+        "--resmoke-command",
+        "python3 tests/mocks/resmoke.py",
+        "--use-task-split-fallback",
+        "--generate-sub-tasks-config",
+        "tests/data/sample_generate_subtasks_config.yml",
+        "--bazel-suite-configs",
+        "tests/data/sample_bazel_suite_configs.yml",
+        "--target-task",
+        "unittest_shell_hang_analyzer",
+    ])
+    .assert()
+    .success();
+
+    let config_file = tmp_dir.path().join("evergreen_config.json");
+    assert!(config_file.exists());
+    let config: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(config_file).unwrap()).unwrap();
+
+    // Matching the generated task's name (without the `_gen` suffix) must produce only
+    // sub-tasks of the targeted suite.
+    let tasks = config["tasks"].as_array().unwrap();
+    assert!(!tasks.is_empty());
+    for task in tasks {
+        assert!(
+            task["name"]
+                .as_str()
+                .unwrap()
+                .starts_with("unittest_shell_hang_analyzer_"),
+            "expected only targeted generated tasks in config, got {:?}",
+            task["name"]
+        );
+    }
+}
+
+#[test]
 fn test_end2end_burn_in_execution() {
     let mut cmd = Command::cargo_bin("mongo-task-generator").unwrap();
     let tmp_dir = TempDir::new("generated_resmoke_config").unwrap();

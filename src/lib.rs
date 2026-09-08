@@ -153,6 +153,12 @@ pub struct ExecutionConfiguration<'a> {
     pub bazel_suite_configs: Option<PathBuf>,
     /// True if all suites should be discovered up front with batched resmoke calls.
     pub batch_test_discovery: bool,
+    /// Limit the number of sub-tasks generated for each task.
+    pub max_sub_tasks: Option<usize>,
+    /// Only generate tasks for the given build variant.
+    pub target_variant: Option<String>,
+    /// Only generate tasks matching this base task name.
+    pub target_task: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -182,6 +188,8 @@ pub struct Dependencies {
     resmoke_config_actor: Arc<tokio::sync::Mutex<dyn ResmokeConfigActor>>,
     burn_in_service: Arc<dyn BurnInService>,
     batch_test_discovery: bool,
+    target_variant: Option<String>,
+    target_task: Option<String>,
 }
 
 impl Dependencies {
@@ -198,6 +206,9 @@ impl Dependencies {
         execution_config: ExecutionConfiguration,
         s3_client: aws_sdk_s3::Client,
     ) -> Result<Self> {
+        if execution_config.max_sub_tasks == Some(0) {
+            bail!("max-subtasks must be greater than 0");
+        }
         let fs_service = Arc::new(FsServiceImpl::new());
         let bazel_suite_configs = match execution_config.bazel_suite_configs {
             Some(path) => BazelConfigs::from_yaml_file(&path).unwrap_or_default(),
@@ -255,6 +266,7 @@ impl Dependencies {
                 .to_str()
                 .unwrap_or("")
                 .to_string(),
+            execution_config.max_sub_tasks,
         ));
         let gen_task_service = Arc::new(GenerateTasksServiceImpl::new(
             evg_config_service.clone(),
@@ -263,6 +275,8 @@ impl Dependencies {
             gen_resmoke_task_service.clone(),
             config_extraction_service.clone(),
             execution_config.gen_burn_in,
+            execution_config.target_variant.clone(),
+            execution_config.target_task.clone(),
         ));
 
         let burn_in_discovery = Arc::new(BurnInProxy::new(
@@ -284,6 +298,8 @@ impl Dependencies {
             resmoke_config_actor,
             burn_in_service,
             batch_test_discovery: execution_config.batch_test_discovery,
+            target_variant: execution_config.target_variant.clone(),
+            target_task: execution_config.target_task.clone(),
         })
     }
 }
@@ -314,9 +330,31 @@ impl GeneratedConfig {
 /// lazily (and deduplicated by the cache) during generation.
 fn prewarm_test_discovery(deps: &Dependencies) -> Result<()> {
     let task_map = deps.evg_config_service.get_task_def_map();
+    // When a target build variant is specified, only prewarm discovery for the suites that
+    // variant runs, so batch discovery doesn't negate the iteration speedup.
+    let target_variant_tasks: Option<HashSet<String>> = deps.target_variant.as_ref().map(|name| {
+        deps.evg_config_service
+            .get_build_variant_map()
+            .get(name)
+            .map(|bv| bv.tasks.iter().map(|t| t.name.clone()).collect())
+            .unwrap_or_default()
+    });
     let mut suites: Vec<String> = task_map
         .values()
         .filter(|task_def| {
+            if let Some(target_variant_tasks) = &target_variant_tasks {
+                if !target_variant_tasks.contains(&task_def.name) {
+                    return false;
+                }
+            }
+
+            // When a target task is specified, only prewarm discovery for that suite.
+            if let Some(target_task) = &deps.target_task {
+                if !task_name_matches(target_task, &task_def.name) {
+                    return false;
+                }
+            }
+
             // Fuzzer tasks share the "generate resmoke tasks" function but their "suite"
             // var names a fuzzer configuration, not a resmoke suite, and fuzzer
             // generation never runs test discovery. Multiversion-generate tasks only
@@ -483,6 +521,8 @@ struct GenerateTasksServiceImpl {
     gen_resmoke_service: Arc<dyn GenResmokeTaskService>,
     config_extraction_service: Arc<dyn ConfigExtractionService>,
     gen_burn_in: bool,
+    target_variant: Option<String>,
+    target_task: Option<String>,
 }
 
 impl GenerateTasksServiceImpl {
@@ -495,6 +535,10 @@ impl GenerateTasksServiceImpl {
     /// * `gen_fuzzer_service` - Service to generate fuzzer tasks.
     /// * `gen_resmoke_service` - Service for generating resmoke tasks.
     /// * `config_extraction_service` - Service to extraction configuration from evergreen config.
+    /// * `gen_burn_in` - True if burn_in tasks should be generated.
+    /// * `target_variant` - If set, only generate tasks for this build variant.
+    /// * `target_task` - If set, only generate tasks matching this base task name.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         evg_config_service: Arc<dyn EvgConfigService>,
         evg_config_utils: Arc<dyn EvgConfigUtils>,
@@ -502,6 +546,8 @@ impl GenerateTasksServiceImpl {
         gen_resmoke_service: Arc<dyn GenResmokeTaskService>,
         config_extraction_service: Arc<dyn ConfigExtractionService>,
         gen_burn_in: bool,
+        target_variant: Option<String>,
+        target_task: Option<String>,
     ) -> Self {
         Self {
             evg_config_service,
@@ -510,6 +556,8 @@ impl GenerateTasksServiceImpl {
             gen_resmoke_service,
             config_extraction_service,
             gen_burn_in,
+            target_variant,
+            target_task,
         }
     }
 }
@@ -533,6 +581,15 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
         let _monitor = RemainingTaskMonitor::new();
 
         let build_variant_list = self.evg_config_service.sort_build_variants_by_required();
+        // When a target build variant is specified, only iterate over that variant to
+        // keep generation fast while iterating on a specific variant.
+        let build_variant_list = match &self.target_variant {
+            Some(target_variant) => build_variant_list
+                .into_iter()
+                .filter(|name| name == target_variant)
+                .collect(),
+            None => build_variant_list,
+        };
         let build_variant_map = self.evg_config_service.get_build_variant_map();
         let task_map = Arc::new(self.evg_config_service.get_task_def_map());
 
@@ -549,6 +606,16 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                 .evg_config_utils
                 .infer_build_variant_platform(build_variant);
             for task in &build_variant.tasks {
+                // When a target task is specified, only generate that task to keep
+                // generation fast while iterating on a specific task. The target matches the generated
+                // task's name (e.g. `sharding_auth_audit` for the `sharding_auth_audit_gen`
+                // task).
+                if let Some(target_task) = &self.target_task {
+                    if !task_name_matches(target_task, &task.name) {
+                        continue;
+                    }
+                }
+
                 // Burn in tasks could be different for each build variant, so we will always
                 // handle them.
                 if self.gen_burn_in {
@@ -771,6 +838,13 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
 
         let build_variant_map = self.evg_config_service.get_build_variant_map();
         for (bv_name, build_variant) in &build_variant_map {
+            // When a target build variant is specified, only generate configuration for that
+            // variant to keep generation fast while iterating on a specific variant.
+            if let Some(target_variant) = &self.target_variant {
+                if bv_name != target_variant {
+                    continue;
+                }
+            }
             let is_enterprise = self
                 .evg_config_utils
                 .is_enterprise_build_variant(build_variant);
@@ -1022,8 +1096,7 @@ fn create_task_worker(
         );
 
         if let Some(generated_task) = generated_task {
-            let mut generated_tasks = generated_tasks.lock().unwrap();
-            generated_tasks.insert(task_name, generated_task);
+            insert_generated_task(&generated_tasks, task_name, generated_task);
         }
     })
 }
@@ -1059,10 +1132,7 @@ fn create_burn_in_worker(
 
         let task_name = format!("{}-{}", BURN_IN_TESTS_PREFIX, run_build_variant_name);
 
-        if !generated_task.sub_tasks().is_empty() {
-            let mut generated_tasks = generated_tasks.lock().unwrap();
-            generated_tasks.insert(task_name, generated_task);
-        }
+        insert_generated_task(&generated_tasks, task_name, generated_task);
     })
 }
 
@@ -1095,11 +1165,34 @@ fn create_burn_in_tasks_worker(
 
         let task_name = format!("{}-{}", BURN_IN_TASKS_PREFIX, build_variant.name);
 
-        if !generated_task.sub_tasks().is_empty() {
-            let mut generated_tasks = generated_tasks.lock().unwrap();
-            generated_tasks.insert(task_name, generated_task);
-        }
+        insert_generated_task(&generated_tasks, task_name, generated_task);
     })
+}
+
+/// Insert a generated task into the collection. Suites with no sub-tasks are skipped.
+///
+/// Suite sizing is handled upstream by the resmoke task service (e.g. `max_sub_tasks`
+/// limits the sub-tasks per task), so suites inserted here are always consistent with the
+/// resmoke config files written.
+fn insert_generated_task(
+    generated_tasks: &Mutex<GenTaskCollection>,
+    task_name: String,
+    generated_task: Box<dyn GeneratedSuite>,
+) {
+    if !generated_task.sub_tasks().is_empty() {
+        generated_tasks
+            .lock()
+            .unwrap()
+            .insert(task_name, generated_task);
+    }
+}
+
+/// Check whether a user-supplied target task matches a task definition name.
+///
+/// Generated tasks are named `<task>_gen` in the project config but produce generated
+/// tasks named `<task>`, so either form is accepted.
+fn task_name_matches(target: &str, task_name: &str) -> bool {
+    task_name == target || task_name.strip_suffix("_gen") == Some(target)
 }
 
 pub async fn build_s3_client() -> aws_sdk_s3::Client {
@@ -1206,6 +1299,8 @@ mod tests {
                 None,
             )),
             false,
+            None,
+            None,
         )
     }
 
@@ -1456,6 +1551,8 @@ mod tests {
             )),
             burn_in_service: Arc::new(burn_in_service),
             batch_test_discovery: false,
+            target_variant: None,
+            target_task: None,
         }
     }
 
@@ -1517,6 +1614,49 @@ mod tests {
                 .contains_key(&format!("{}-{}", BURN_IN_TESTS_PREFIX, "run_bv_name")),
             false
         );
+    }
+
+    // tests for task_name_matches.
+    #[rstest]
+    #[case("sharding_auth_audit", "sharding_auth_audit_gen", true)]
+    #[case("sharding_auth_audit_gen", "sharding_auth_audit_gen", true)]
+    #[case("other_task", "sharding_auth_audit_gen", false)]
+    #[case("foo", "bar", false)]
+    fn test_task_name_matches(
+        #[case] target: &str,
+        #[case] task_name: &str,
+        #[case] expected: bool,
+    ) {
+        assert_eq!(task_name_matches(target, task_name), expected);
+    }
+
+    // tests for insert_generated_task.
+    #[tokio::test]
+    async fn test_insert_generated_task_inserts_non_empty_suite() {
+        let generated_tasks = Arc::new(Mutex::new(HashMap::new()));
+        let generated_task: Box<dyn GeneratedSuite> = Box::new(GeneratedResmokeSuite {
+            task_name: "my_task".to_string(),
+            sub_suites: vec![GeneratedSubTask {
+                ..Default::default()
+            }],
+        });
+
+        insert_generated_task(&generated_tasks, "my_task".to_string(), generated_task);
+
+        assert!(generated_tasks.lock().unwrap().contains_key("my_task"));
+    }
+
+    #[tokio::test]
+    async fn test_insert_generated_task_skips_empty_suite() {
+        let generated_tasks = Arc::new(Mutex::new(HashMap::new()));
+        let generated_task: Box<dyn GeneratedSuite> = Box::new(GeneratedResmokeSuite {
+            task_name: "my_task".to_string(),
+            sub_suites: vec![],
+        });
+
+        insert_generated_task(&generated_tasks, "my_task".to_string(), generated_task);
+
+        assert!(!generated_tasks.lock().unwrap().contains_key("my_task"));
     }
 
     // tests for create_burn_in_tasks_worker.
