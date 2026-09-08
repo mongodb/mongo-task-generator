@@ -196,16 +196,6 @@ impl GeneratedSuite for FuzzerTask {
             })
             .collect()
     }
-
-    /// Return a copy of this generated suite containing only the first `count` sub-tasks.
-    fn truncate_sub_tasks(&self, count: usize) -> Box<dyn GeneratedSuite> {
-        Box::new(FuzzerTask {
-            task_name: self.task_name.clone(),
-            sub_tasks: self.sub_tasks.iter().take(count).cloned().collect(),
-            use_large_distro: self.use_large_distro,
-            use_xlarge_distro: self.use_xlarge_distro,
-        })
-    }
 }
 
 /// A service for generating fuzzer tasks.

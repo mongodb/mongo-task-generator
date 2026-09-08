@@ -24,9 +24,6 @@ pub trait GeneratedSuite: Sync + Send {
     /// Get the list of sub-tasks that comprise the generated task.
     fn sub_tasks(&self) -> Vec<GeneratedSubTask>;
 
-    /// Return a copy of this generated suite containing only the first `count` sub-tasks.
-    fn truncate_sub_tasks(&self, count: usize) -> Box<dyn GeneratedSuite>;
-
     /// Check whether any sub task requires large distro.
     fn use_large_distro(&self) -> bool {
         self.sub_tasks()

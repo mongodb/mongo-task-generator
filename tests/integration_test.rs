@@ -121,10 +121,25 @@ fn test_end2end_max_tasks() {
 
     // max_tasks caps the total number of generated tasks (including sub-tasks), so a run
     // with max_tasks=1 must emit exactly one task definition even though the first suite
-    // would otherwise split into multiple sub-tasks.
+    // would otherwise split into multiple sub-tasks. All tests land in the single suite file
+    // rather than being scattered across orphaned slice files.
     let config: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(config_file).unwrap()).unwrap();
     assert_eq!(config["tasks"].as_array().unwrap().len(), 1);
+
+    let suite_files: Vec<_> = std::fs::read_dir(tmp_dir_path)
+        .unwrap()
+        .filter_map(|entry| {
+            let path = entry.unwrap().path();
+            (path.extension().and_then(|e| e.to_str()) == Some("yml")).then_some(path)
+        })
+        .collect();
+    assert_eq!(
+        suite_files.len(),
+        1,
+        "expected one suite file, found {:#?}",
+        suite_files
+    );
 }
 
 #[test]
