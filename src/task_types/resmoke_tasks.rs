@@ -1729,8 +1729,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_generate_resmoke_tasks_respects_max_sub_tasks() {
-        // With a max_sub_tasks of 1, the task is capped to a single sub-suite containing all
-        // tests. The cap applies per task, so a subsequent task is still generated normally.
+        // With a max_sub_tasks of 1, every task is capped to a single sub-suite containing
+        // all of its tests. The cap applies per task and independently, so a second task with
+        // a different name still produces its own single sub-task.
         let num_tasks = 5;
         let test_list: Vec<String> = (0..10)
             .into_iter()
@@ -1742,26 +1743,33 @@ mod tests {
         };
         let gen_resmoke_service =
             build_mocked_service_with_max_sub_tasks(test_list, task_history, 1);
-        let params = ResmokeGenParams {
+        let build_variant = BuildVariant {
+            display_name: Some("build-variant".to_string()),
+            ..Default::default()
+        };
+        let first_params = ResmokeGenParams {
             task_name: "my_task".to_string(),
             require_multiversion_generate_tasks: false,
             num_tasks: Some(num_tasks),
             ..Default::default()
         };
-        let build_variant = BuildVariant {
-            display_name: Some("build-variant".to_string()),
-            ..Default::default()
-        };
 
         let suite = gen_resmoke_service
-            .generate_resmoke_task(&params, &build_variant)
+            .generate_resmoke_task(&first_params, &build_variant)
             .await
             .unwrap();
         assert_eq!(suite.sub_tasks().len(), 1);
 
-        // The cap is per task, so a second task still produces its own sub-task.
+        // A second, distinct task is also generated (capped to a single sub-task), showing
+        // the cap is per task rather than a global budget.
+        let second_params = ResmokeGenParams {
+            task_name: "my_task_2".to_string(),
+            require_multiversion_generate_tasks: false,
+            num_tasks: Some(num_tasks),
+            ..Default::default()
+        };
         let suite = gen_resmoke_service
-            .generate_resmoke_task(&params, &build_variant)
+            .generate_resmoke_task(&second_params, &build_variant)
             .await
             .unwrap();
         assert_eq!(suite.sub_tasks().len(), 1);

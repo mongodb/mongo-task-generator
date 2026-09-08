@@ -188,6 +188,7 @@ pub struct Dependencies {
     resmoke_config_actor: Arc<tokio::sync::Mutex<dyn ResmokeConfigActor>>,
     burn_in_service: Arc<dyn BurnInService>,
     batch_test_discovery: bool,
+    target_variant: Option<String>,
     target_task: Option<String>,
 }
 
@@ -205,6 +206,9 @@ impl Dependencies {
         execution_config: ExecutionConfiguration,
         s3_client: aws_sdk_s3::Client,
     ) -> Result<Self> {
+        if execution_config.max_sub_tasks == Some(0) {
+            bail!("max-subtasks must be greater than 0");
+        }
         let fs_service = Arc::new(FsServiceImpl::new());
         let bazel_suite_configs = match execution_config.bazel_suite_configs {
             Some(path) => BazelConfigs::from_yaml_file(&path).unwrap_or_default(),
@@ -294,6 +298,7 @@ impl Dependencies {
             resmoke_config_actor,
             burn_in_service,
             batch_test_discovery: execution_config.batch_test_discovery,
+            target_variant: execution_config.target_variant.clone(),
             target_task: execution_config.target_task.clone(),
         })
     }
@@ -325,9 +330,24 @@ impl GeneratedConfig {
 /// lazily (and deduplicated by the cache) during generation.
 fn prewarm_test_discovery(deps: &Dependencies) -> Result<()> {
     let task_map = deps.evg_config_service.get_task_def_map();
+    // When a target build variant is specified, only prewarm discovery for the suites that
+    // variant runs, so batch discovery doesn't negate the iteration speedup.
+    let target_variant_tasks: Option<HashSet<String>> = deps.target_variant.as_ref().map(|name| {
+        deps.evg_config_service
+            .get_build_variant_map()
+            .get(name)
+            .map(|bv| bv.tasks.iter().map(|t| t.name.clone()).collect())
+            .unwrap_or_default()
+    });
     let mut suites: Vec<String> = task_map
         .values()
         .filter(|task_def| {
+            if let Some(target_variant_tasks) = &target_variant_tasks {
+                if !target_variant_tasks.contains(&task_def.name) {
+                    return false;
+                }
+            }
+
             // When a target task is specified, only prewarm discovery for that suite.
             if let Some(target_task) = &deps.target_task {
                 if !task_name_matches(target_task, &task_def.name) {
@@ -1112,9 +1132,7 @@ fn create_burn_in_worker(
 
         let task_name = format!("{}-{}", BURN_IN_TESTS_PREFIX, run_build_variant_name);
 
-        if !generated_task.sub_tasks().is_empty() {
-            insert_generated_task(&generated_tasks, task_name, generated_task);
-        }
+        insert_generated_task(&generated_tasks, task_name, generated_task);
     })
 }
 
@@ -1147,9 +1165,7 @@ fn create_burn_in_tasks_worker(
 
         let task_name = format!("{}-{}", BURN_IN_TASKS_PREFIX, build_variant.name);
 
-        if !generated_task.sub_tasks().is_empty() {
-            insert_generated_task(&generated_tasks, task_name, generated_task);
-        }
+        insert_generated_task(&generated_tasks, task_name, generated_task);
     })
 }
 
@@ -1535,6 +1551,7 @@ mod tests {
             )),
             burn_in_service: Arc::new(burn_in_service),
             batch_test_discovery: false,
+            target_variant: None,
             target_task: None,
         }
     }

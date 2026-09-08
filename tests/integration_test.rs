@@ -80,11 +80,31 @@ fn test_end2end_target_variant_and_task() {
 
     let config_file = tmp_dir_path.join("evergreen_config.json");
     assert!(config_file.exists());
-    let config = std::fs::read_to_string(config_file).unwrap();
-    assert!(
-        config.contains("unittest_shell_hang_analyzer"),
-        "expected targeted task in generated config"
+    let config: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(config_file).unwrap()).unwrap();
+
+    // Exactly one build variant must be generated, both proving target_variant filters the
+    // output and that target_task is honored (a target-variant-only run would emit tasks for
+    // every generated task on the variant, not just the targeted suite).
+    let build_variants = config["buildvariants"].as_array().unwrap();
+    assert_eq!(build_variants.len(), 1);
+    assert_eq!(
+        build_variants[0]["name"],
+        "enterprise-rhel-80-64-bit-dynamic-required"
     );
+
+    let tasks = config["tasks"].as_array().unwrap();
+    assert!(!tasks.is_empty());
+    for task in tasks {
+        assert!(
+            task["name"]
+                .as_str()
+                .unwrap()
+                .starts_with("unittest_shell_hang_analyzer_"),
+            "expected only targeted generated tasks in config, got {:?}",
+            task["name"]
+        );
+    }
 }
 
 #[test]
@@ -174,11 +194,23 @@ fn test_end2end_target_task_matches_generated_name() {
 
     let config_file = tmp_dir.path().join("evergreen_config.json");
     assert!(config_file.exists());
-    let config = std::fs::read_to_string(config_file).unwrap();
-    assert!(
-        config.contains("unittest_shell_hang_analyzer"),
-        "expected targeted generated task in config"
-    );
+    let config: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(config_file).unwrap()).unwrap();
+
+    // Matching the generated task's name (without the `_gen` suffix) must produce only
+    // sub-tasks of the targeted suite.
+    let tasks = config["tasks"].as_array().unwrap();
+    assert!(!tasks.is_empty());
+    for task in tasks {
+        assert!(
+            task["name"]
+                .as_str()
+                .unwrap()
+                .starts_with("unittest_shell_hang_analyzer_"),
+            "expected only targeted generated tasks in config, got {:?}",
+            task["name"]
+        );
+    }
 }
 
 #[test]
