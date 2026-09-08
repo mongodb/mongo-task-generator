@@ -153,6 +153,12 @@ pub struct ExecutionConfiguration<'a> {
     pub bazel_suite_configs: Option<PathBuf>,
     /// True if all suites should be discovered up front with batched resmoke calls.
     pub batch_test_discovery: bool,
+    /// Stop generation early once this many tasks have been generated.
+    pub max_tasks: Option<usize>,
+    /// Only generate tasks for the given build variant.
+    pub target_variant: Option<String>,
+    /// Only generate tasks matching this base task name.
+    pub target_task: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -182,6 +188,7 @@ pub struct Dependencies {
     resmoke_config_actor: Arc<tokio::sync::Mutex<dyn ResmokeConfigActor>>,
     burn_in_service: Arc<dyn BurnInService>,
     batch_test_discovery: bool,
+    target_task: Option<String>,
 }
 
 impl Dependencies {
@@ -263,6 +270,9 @@ impl Dependencies {
             gen_resmoke_task_service.clone(),
             config_extraction_service.clone(),
             execution_config.gen_burn_in,
+            execution_config.max_tasks,
+            execution_config.target_variant.clone(),
+            execution_config.target_task.clone(),
         ));
 
         let burn_in_discovery = Arc::new(BurnInProxy::new(
@@ -284,6 +294,7 @@ impl Dependencies {
             resmoke_config_actor,
             burn_in_service,
             batch_test_discovery: execution_config.batch_test_discovery,
+            target_task: execution_config.target_task.clone(),
         })
     }
 }
@@ -317,6 +328,13 @@ fn prewarm_test_discovery(deps: &Dependencies) -> Result<()> {
     let mut suites: Vec<String> = task_map
         .values()
         .filter(|task_def| {
+            // When a target task is specified, only prewarm discovery for that suite.
+            if let Some(target_task) = &deps.target_task {
+                if &task_def.name != target_task {
+                    return false;
+                }
+            }
+
             // Fuzzer tasks share the "generate resmoke tasks" function but their "suite"
             // var names a fuzzer configuration, not a resmoke suite, and fuzzer
             // generation never runs test discovery. Multiversion-generate tasks only
@@ -483,6 +501,9 @@ struct GenerateTasksServiceImpl {
     gen_resmoke_service: Arc<dyn GenResmokeTaskService>,
     config_extraction_service: Arc<dyn ConfigExtractionService>,
     gen_burn_in: bool,
+    max_tasks: Option<usize>,
+    target_variant: Option<String>,
+    target_task: Option<String>,
 }
 
 impl GenerateTasksServiceImpl {
@@ -495,6 +516,11 @@ impl GenerateTasksServiceImpl {
     /// * `gen_fuzzer_service` - Service to generate fuzzer tasks.
     /// * `gen_resmoke_service` - Service for generating resmoke tasks.
     /// * `config_extraction_service` - Service to extraction configuration from evergreen config.
+    /// * `gen_burn_in` - True if burn_in tasks should be generated.
+    /// * `max_tasks` - Stop generation early once this many tasks have been generated.
+    /// * `target_variant` - If set, only generate tasks for this build variant.
+    /// * `target_task` - If set, only generate tasks matching this base task name.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         evg_config_service: Arc<dyn EvgConfigService>,
         evg_config_utils: Arc<dyn EvgConfigUtils>,
@@ -502,6 +528,9 @@ impl GenerateTasksServiceImpl {
         gen_resmoke_service: Arc<dyn GenResmokeTaskService>,
         config_extraction_service: Arc<dyn ConfigExtractionService>,
         gen_burn_in: bool,
+        max_tasks: Option<usize>,
+        target_variant: Option<String>,
+        target_task: Option<String>,
     ) -> Self {
         Self {
             evg_config_service,
@@ -510,6 +539,9 @@ impl GenerateTasksServiceImpl {
             gen_resmoke_service,
             config_extraction_service,
             gen_burn_in,
+            max_tasks,
+            target_variant,
+            target_task,
         }
     }
 }
@@ -533,6 +565,15 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
         let _monitor = RemainingTaskMonitor::new();
 
         let build_variant_list = self.evg_config_service.sort_build_variants_by_required();
+        // When a target build variant is specified, only iterate over that variant to
+        // keep generation fast during local testing.
+        let build_variant_list = match &self.target_variant {
+            Some(target_variant) => build_variant_list
+                .into_iter()
+                .filter(|name| name == target_variant)
+                .collect(),
+            None => build_variant_list,
+        };
         let build_variant_map = self.evg_config_service.get_build_variant_map();
         let task_map = Arc::new(self.evg_config_service.get_task_def_map());
 
@@ -540,7 +581,8 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
 
         let generated_tasks = Arc::new(Mutex::new(HashMap::new()));
         let mut seen_tasks = HashSet::new();
-        for build_variant in &build_variant_list {
+        let mut num_tasks_generated = 0usize;
+        'build_variants: for build_variant in &build_variant_list {
             let build_variant = build_variant_map.get(build_variant).unwrap();
             let is_enterprise = self
                 .evg_config_utils
@@ -549,6 +591,14 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                 .evg_config_utils
                 .infer_build_variant_platform(build_variant);
             for task in &build_variant.tasks {
+                // When a target task is specified, only generate that task to keep
+                // generation fast during local testing.
+                if let Some(target_task) = &self.target_task {
+                    if &task.name != target_task {
+                        continue;
+                    }
+                }
+
                 // Burn in tasks could be different for each build variant, so we will always
                 // handle them.
                 if self.gen_burn_in {
@@ -622,6 +672,12 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                             build_variant,
                             generated_tasks.clone(),
                         ));
+                        num_tasks_generated += 1;
+                        if let Some(max_tasks) = self.max_tasks {
+                            if num_tasks_generated >= max_tasks {
+                                break 'build_variants;
+                            }
+                        }
                     }
                 }
             }
@@ -771,6 +827,13 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
 
         let build_variant_map = self.evg_config_service.get_build_variant_map();
         for (bv_name, build_variant) in &build_variant_map {
+            // When a target build variant is specified, only generate configuration for that
+            // variant to keep generation fast during local testing.
+            if let Some(target_variant) = &self.target_variant {
+                if bv_name != target_variant {
+                    continue;
+                }
+            }
             let is_enterprise = self
                 .evg_config_utils
                 .is_enterprise_build_variant(build_variant);
@@ -1206,6 +1269,9 @@ mod tests {
                 None,
             )),
             false,
+            None,
+            None,
+            None,
         )
     }
 
@@ -1456,6 +1522,7 @@ mod tests {
             )),
             burn_in_service: Arc::new(burn_in_service),
             batch_test_discovery: false,
+            target_task: None,
         }
     }
 

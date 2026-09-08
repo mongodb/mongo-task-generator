@@ -37,6 +37,99 @@ fn test_end2end_execution() {
 }
 
 #[test]
+fn test_end2end_target_variant_and_task() {
+    let mut cmd = Command::cargo_bin("mongo-task-generator").unwrap();
+    let tmp_dir = TempDir::new("generated_resmoke_config").unwrap();
+
+    cmd.args(&[
+        "--target-directory",
+        tmp_dir.path().to_str().unwrap(),
+        "--expansion-file",
+        "tests/data/sample_expansions.yml",
+        "--evg-project-file",
+        "tests/data/evergreen.yml",
+        "--evg-auth-file",
+        "tests/data/sample_evergreen_auth.yml",
+        "--resmoke-command",
+        "python3 tests/mocks/resmoke.py",
+        "--use-task-split-fallback",
+        "--generate-sub-tasks-config",
+        "tests/data/sample_generate_subtasks_config.yml",
+        "--bazel-suite-configs",
+        "tests/data/sample_bazel_suite_configs.yml",
+        "--target-variant",
+        "enterprise-rhel-80-64-bit-dynamic-required",
+        "--target-task",
+        "unittest_shell_hang_analyzer_gen",
+    ])
+    .assert()
+    .success();
+
+    let tmp_dir_path = tmp_dir.path();
+    assert!(tmp_dir_path.exists());
+
+    let files = std::fs::read_dir(tmp_dir_path).unwrap();
+    let num_files = files.into_iter().collect::<Vec<_>>().len();
+    // Only the targeted task should be generated, not all 688 files of the full run.
+    assert!(num_files > 0);
+    assert!(
+        num_files < 688,
+        "expected filtered generation but found {} files",
+        num_files
+    );
+
+    let config_file = tmp_dir_path.join("evergreen_config.json");
+    assert!(config_file.exists());
+    let config = std::fs::read_to_string(config_file).unwrap();
+    assert!(
+        config.contains("unittest_shell_hang_analyzer"),
+        "expected targeted task in generated config"
+    );
+}
+
+#[test]
+fn test_end2end_max_tasks() {
+    let mut cmd = Command::cargo_bin("mongo-task-generator").unwrap();
+    let tmp_dir = TempDir::new("generated_resmoke_config").unwrap();
+
+    cmd.args(&[
+        "--target-directory",
+        tmp_dir.path().to_str().unwrap(),
+        "--expansion-file",
+        "tests/data/sample_expansions.yml",
+        "--evg-project-file",
+        "tests/data/evergreen.yml",
+        "--evg-auth-file",
+        "tests/data/sample_evergreen_auth.yml",
+        "--resmoke-command",
+        "python3 tests/mocks/resmoke.py",
+        "--use-task-split-fallback",
+        "--generate-sub-tasks-config",
+        "tests/data/sample_generate_subtasks_config.yml",
+        "--bazel-suite-configs",
+        "tests/data/sample_bazel_suite_configs.yml",
+        "--max-tasks",
+        "1",
+    ])
+    .assert()
+    .success();
+
+    let tmp_dir_path = tmp_dir.path();
+    assert!(tmp_dir_path.exists());
+    let config_file = tmp_dir_path.join("evergreen_config.json");
+    assert!(config_file.exists());
+
+    let num_files = std::fs::read_dir(tmp_dir_path).unwrap().count();
+    // Generation should stop early after one task, far fewer than the full 688 files.
+    assert!(num_files > 0);
+    assert!(
+        num_files < 688,
+        "expected capped generation but found {} files",
+        num_files
+    );
+}
+
+#[test]
 fn test_end2end_burn_in_execution() {
     let mut cmd = Command::cargo_bin("mongo-task-generator").unwrap();
     let tmp_dir = TempDir::new("generated_resmoke_config").unwrap();

@@ -149,6 +149,19 @@ struct Args {
     /// Requires a resmoke version whose test-discovery accepts repeated --suite arguments.
     #[clap(long)]
     batch_test_discovery: bool,
+
+    /// Stop generation early once this many tasks have been generated. Intended for local
+    /// testing/debugging, not for real patch generation.
+    #[clap(long)]
+    max_tasks: Option<usize>,
+
+    /// Only generate tasks for the given build variant. Intended for local testing/debugging.
+    #[clap(long)]
+    target_variant: Option<String>,
+
+    /// Only generate tasks matching this base task name. Intended for local testing/debugging.
+    #[clap(long)]
+    target_task: Option<String>,
 }
 
 /// Configure logging for the command execution.
@@ -192,6 +205,9 @@ async fn main() {
         },
         bazel_suite_configs: args.bazel_suite_configs.as_ref().map(|p| expand_path(p)),
         batch_test_discovery: args.batch_test_discovery,
+        max_tasks: args.max_tasks,
+        target_variant: args.target_variant,
+        target_task: args.target_task,
     };
     let s3_client = build_s3_client().await;
     let deps = Dependencies::new(execution_config, s3_client).unwrap();
