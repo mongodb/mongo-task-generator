@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.9.0 - 2026-09-08
+* Passes the old binary versions a task tests against to the `do multiversion setup` function as
+  `multiversion_setup_versions`, so the setup step can download only those rather than every
+  version the build variant resolved. Tasks that test against several versions can declare the
+  list themselves with a `multiversion_setup_versions` var on their `generate resmoke tasks` call;
+  tasks that declare nothing and have no old version are unchanged.
+
 ## 3.8.0 - 2026-09-08
 * Adds `--target-variant`, `--target-task`, and `--max-subtasks` flags to restrict generation to a specific build variant/task or limit the number of sub-tasks per task, for faster iteration.
 * `--target-task` matches the generated task's name (e.g. `sharding_auth_audit` for `sharding_auth_audit_gen`).

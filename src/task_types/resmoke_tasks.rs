@@ -29,8 +29,8 @@ use crate::{
     evergreen_names::{
         ADD_GIT_TAG, CONFIGURE_EVG_API_CREDS, DO_MULTIVERSION_SETUP, DO_SETUP,
         GET_PROJECT_WITH_NO_MODULES, MULTIVERSION_EXCLUDE_TAG, MULTIVERSION_EXCLUDE_TAGS_FILE,
-        REQUIRE_MULTIVERSION_SETUP, RESMOKE_ARGS, RESMOKE_JOBS_MAX, RUN_GENERATED_TESTS,
-        RUN_GENERATED_TESTS_VIA_BAZEL, SUITE_NAME,
+        MULTIVERSION_SETUP_VERSIONS, REQUIRE_MULTIVERSION_SETUP, RESMOKE_ARGS, RESMOKE_JOBS_MAX,
+        RUN_GENERATED_TESTS, RUN_GENERATED_TESTS_VIA_BAZEL, SUITE_NAME,
     },
     resmoke::resmoke_proxy::TestDiscovery,
     utils::{fs_service::FsService, task_name::name_generated_task},
@@ -76,6 +76,11 @@ pub struct ResmokeGenParams {
     pub is_enterprise: bool,
     /// Arguments to pass to 'run tests' function.
     pub pass_through_vars: Option<HashMap<String, ParamValue>>,
+
+    /// Explicit space-delimited list of old versions this task needs, declared on the generator
+    /// call. Set for tasks that test against several versions and therefore have no single old
+    /// version to derive one from. Takes precedence over the sub-task's own old version.
+    pub multiversion_setup_versions: Option<String>,
     /// Name of platform the task will run on.
     pub platform: Option<String>,
     /// Name of variant specific suffix to add to tasks
@@ -890,6 +895,11 @@ impl GenResmokeTaskService for GenResmokeTaskServiceImpl {
             run_test_fn_name,
             run_test_vars,
             params.require_multiversion_setup,
+            // An explicit declaration wins; otherwise this sub-task's single old version.
+            params
+                .multiversion_setup_versions
+                .clone()
+                .or_else(|| sub_suite.mv_exclude_tags.clone()),
         ));
 
         GeneratedSubTask {
@@ -927,6 +937,36 @@ pub fn replace_resmoke_args_with_bazel_args(
 
 /// Create a list of commands to run a resmoke task in evergreen.
 ///
+/// Build the call to the multiversion setup function.
+///
+/// When the task tests against a known old version, pass it along so the setup step can download
+/// just that binary. `multiversion-downloads.json` is resolved once per build variant and lists
+/// every version any suite on that variant might need, so without this the step downloads all of
+/// them regardless of what the task will run.
+///
+/// Tasks that opt out of multiversion generation (`no_multiversion_generate_tasks`) have no single
+/// old version -- they test against several -- so they get no parameter and the setup step keeps
+/// its existing behaviour of downloading everything.
+///
+/// # Arguments
+///
+/// * `setup_versions` - Space-delimited old versions this task needs, if known.
+///
+/// # Returns
+///
+/// Evergreen command calling the multiversion setup function.
+fn multiversion_setup_call(setup_versions: Option<String>) -> EvgCommand {
+    match setup_versions {
+        Some(setup_versions) => fn_call_with_params(
+            DO_MULTIVERSION_SETUP,
+            hashmap! {
+                MULTIVERSION_SETUP_VERSIONS.to_string() => ParamValue::from(setup_versions.as_str()),
+            },
+        ),
+        None => fn_call(DO_MULTIVERSION_SETUP),
+    }
+}
+
 /// # Arguments
 ///
 /// * `run_test_fn_name` - Name of function to run tests.
@@ -940,6 +980,7 @@ fn resmoke_commands(
     run_test_fn_name: &str,
     run_test_vars: HashMap<String, ParamValue>,
     requires_multiversion_setup: bool,
+    setup_versions: Option<String>,
 ) -> Vec<EvgCommand> {
     let mut commands = vec![];
 
@@ -952,7 +993,7 @@ fn resmoke_commands(
     commands.push(fn_call(CONFIGURE_EVG_API_CREDS));
 
     if requires_multiversion_setup {
-        commands.push(fn_call(DO_MULTIVERSION_SETUP));
+        commands.push(multiversion_setup_call(setup_versions));
     }
 
     commands.push(fn_call_with_params(run_test_fn_name, run_test_vars));
@@ -2002,20 +2043,52 @@ mod tests {
             None
         }
     }
+
+    fn get_evg_fn_vars(evg_command: &EvgCommand) -> Option<&HashMap<String, ParamValue>> {
+        if let EvgCommand::Function(func) = evg_command {
+            func.vars.as_ref()
+        } else {
+            None
+        }
+    }
     #[test]
     fn test_resmoke_commands() {
-        let commands = resmoke_commands("run test", hashmap! {}, false);
+        let commands = resmoke_commands("run test", hashmap! {}, false, None);
         assert_eq!(commands.len(), 3);
         assert_eq!(get_evg_fn_name(&commands[0]), Some("do setup"));
         assert_eq!(get_evg_fn_name(&commands[2]), Some("run test"));
     }
     #[test]
     fn test_resmoke_commands_should_include_multiversion() {
-        let commands = resmoke_commands("run test", hashmap! {}, true);
+        let commands = resmoke_commands("run test", hashmap! {}, true, None);
         assert_eq!(commands.len(), 6);
         assert_eq!(get_evg_fn_name(&commands[2]), Some("do setup"));
         assert_eq!(get_evg_fn_name(&commands[4]), Some("do multiversion setup"));
         assert_eq!(get_evg_fn_name(&commands[5]), Some("run test"));
+    }
+
+    #[rstest]
+    #[case("last_lts")]
+    #[case("last_continuous")]
+    // Tasks testing against several versions declare the whole list; the setup step splits it.
+    #[case("last_lts last_continuous 7.0 8.0")]
+    fn test_multiversion_setup_receives_versions(#[case] versions: &str) {
+        let commands = resmoke_commands("run test", hashmap! {}, true, Some(versions.to_string()));
+        assert_eq!(get_evg_fn_name(&commands[4]), Some("do multiversion setup"));
+        assert_eq!(
+            get_evg_fn_vars(&commands[4])
+                .and_then(|vars| vars.get("multiversion_setup_versions").cloned()),
+            Some(ParamValue::from(versions))
+        );
+    }
+
+    #[test]
+    fn test_multiversion_setup_without_old_version_passes_no_vars() {
+        // Tasks tagged no_multiversion_generate_tasks test against several versions, so the setup
+        // step must keep downloading everything.
+        let commands = resmoke_commands("run test", hashmap! {}, true, None);
+        assert_eq!(get_evg_fn_name(&commands[4]), Some("do multiversion setup"));
+        assert_eq!(get_evg_fn_vars(&commands[4]), None);
     }
     // sort_tests_by_runtime tests.
     #[rstest]

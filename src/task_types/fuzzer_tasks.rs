@@ -14,9 +14,9 @@ use crate::{
     evergreen_names::{
         ADD_GIT_TAG, CONFIGURE_EVG_API_CREDS, CONTINUE_ON_FAILURE, DO_MULTIVERSION_SETUP, DO_SETUP,
         FUZZER_PARAMETERS, GET_PROJECT_WITH_NO_MODULES, IDLE_TIMEOUT, MULTIVERSION_EXCLUDE_TAGS,
-        NPM_COMMAND, REQUIRE_MULTIVERSION_SETUP, RESMOKE_ARGS, RESMOKE_JOBS_MAX, RUN_FUZZER,
-        RUN_GENERATED_TESTS, RUN_GENERATED_TESTS_VIA_BAZEL, SETUP_JSTESTFUZZ, SHOULD_SHUFFLE_TESTS,
-        SUITE_NAME, TASK_NAME,
+        MULTIVERSION_SETUP_VERSIONS, NPM_COMMAND, REQUIRE_MULTIVERSION_SETUP, RESMOKE_ARGS,
+        RESMOKE_JOBS_MAX, RUN_FUZZER, RUN_GENERATED_TESTS, RUN_GENERATED_TESTS_VIA_BAZEL,
+        SETUP_JSTESTFUZZ, SHOULD_SHUFFLE_TESTS, SUITE_NAME, TASK_NAME,
     },
     task_types::resmoke_tasks::replace_resmoke_args_with_bazel_args,
     utils::task_name::name_generated_task,
@@ -64,6 +64,11 @@ pub struct FuzzerGenTaskParams {
     pub timeout_secs: u64,
     /// Requires downloading multiversion binaries.
     pub require_multiversion_setup: bool,
+
+    /// Explicit space-delimited list of old versions this task needs, declared on the generator
+    /// call. Takes precedence over the sub-task's own old version, for tasks that test against
+    /// several versions and have no single one.
+    pub multiversion_setup_versions: Option<String>,
     /// Should multiversion generate tasks exist for this.
     pub require_multiversion_generate_tasks: bool,
     /// List of tasks generated sub-tasks should depend on.
@@ -317,7 +322,23 @@ fn build_fuzzer_sub_task(
     commands.extend(vec![fn_call(DO_SETUP), fn_call(CONFIGURE_EVG_API_CREDS)]);
 
     if params.is_multiversion() {
-        commands.push(fn_call(DO_MULTIVERSION_SETUP));
+        // Tell the setup step which binaries this task needs so it downloads only those. An
+        // explicit declaration on the task wins; otherwise this sub-task's own old version. See
+        // multiversion_setup_call in resmoke_tasks.rs.
+        let setup_versions = params
+            .multiversion_setup_versions
+            .clone()
+            .or_else(|| old_version.map(|v| v.to_string()));
+        commands.push(match setup_versions {
+            Some(setup_versions) => fn_call_with_params(
+                DO_MULTIVERSION_SETUP,
+                hashmap! {
+                    MULTIVERSION_SETUP_VERSIONS.to_string()
+                        => ParamValue::from(setup_versions.as_str()),
+                },
+            ),
+            None => fn_call(DO_MULTIVERSION_SETUP),
+        });
     }
 
     commands.extend(vec![
