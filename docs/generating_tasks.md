@@ -180,6 +180,29 @@ the `"no_multiversion_generate_tasks"` tag should also be included. This is typi
 ```
 The `"initialize multiversion tasks"` function has all of the related suites to run as sub-tasks of this task as variable names and the "old" version to run against as the values. The absence of the `"no_multiversion_generate_tasks"` tag indicates to the task generator to generate sub-tasks for this task according to the `"initialize multiversion tasks"` function variables. Because the `suite` name is embedded in the `"initialize multiversion tasks"` variables, a `suite` variable passed to `"generate resmoke tasks"` will have no effect. Additionally, the variable/suite names in `"initialize multiversion tasks"` must be globally unique because these are ultimately going to become the sub-task name and evergreen requires task names to be unique.
 
+#### Selecting which binaries get downloaded
+
+The "old" version from `"initialize multiversion tasks"` is also passed to the
+`"do multiversion setup"` function as a `multiversion_setup_versions` variable, so that step can
+download only the binaries the sub-task tests against instead of every version the build variant
+resolved.
+
+Tasks that test against several versions at once -- typically those tagged
+`"no_multiversion_generate_tasks"`, which have no single "old" version to derive -- can declare the
+list themselves as a space-delimited `multiversion_setup_versions` variable on
+`"generate resmoke tasks"`. It takes precedence over the value derived from
+`"initialize multiversion tasks"`:
+
+```yaml
+- func: "generate resmoke tasks"
+  vars:
+    multiversion_setup_versions: "last_lts last_continuous 7.0 8.0"
+```
+
+Entries may be aliases (`last_lts`, `last_continuous`, `last_patch`) or exact versions (`7.0`,
+`8.0.16`). A task that declares nothing and has no "old" version gets no variable at all, and the
+setup step downloads every binary as before.
+
 ### Burn in tests, burn in tags and burn in tasks
 
 Newly added or modified tests might become flaky. In order to avoid that, those tests can be run
