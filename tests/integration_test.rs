@@ -299,6 +299,10 @@ fn test_end2end_burn_in_with_no_distro(#[case] config_location: String) {
     "tests/data/burn_in/evergreen_burn_in_tasks_with_requires_large_host_tag.yml",
     295
 )]
+#[case(
+    "tests/data/burn_in/evergreen_burn_in_tasks_with_requires_large_host_aubsan_tag.yml",
+    295
+)]
 fn test_end2end_burn_in_tasks(#[case] config_location: String, #[case] expected_num_lines: usize) {
     let mut cmd = Command::cargo_bin("mongo-task-generator").unwrap();
     let tmp_dir = TempDir::new("generated_resmoke_config").unwrap();

@@ -133,7 +133,9 @@ pub const UNIQUE_GEN_SUFFIX_EXPANSION: &str = "unique_gen_suffix";
 // Task Tags
 /// Tag to include multiversion setup is required.
 pub const MULTIVERSION: &str = "multiversion";
-/// Tag to indicate a task requires a large host to run on.
+/// Tag to indicate a task requires a large host to run on. Suffixed variants of this tag
+/// (e.g. `requires_large_host_aubsan`, `requires_large_host_tsan`) indicate the requirement only
+/// applies on variants honoring that suffix, and are treated the same.
 pub const REQUIRES_LARGE_HOST: &str = "requires_large_host";
 /// Tag to indicate multiversion combination should not be created.
 pub const NO_MULTIVERSION_GENERATE_TASKS: &str = "no_multiversion_generate_tasks";
