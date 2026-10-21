@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 
 use anyhow::{bail, Result};
 use shrub_rs::models::{task::EvgTask, variant::BuildVariant};
@@ -139,6 +139,28 @@ impl ConfigExtractionServiceImpl {
             .filter(|t| t != &self.generating_task)
             .collect()
     }
+}
+
+/// Determine if a suffixed `requires_large_host_*` tag (e.g. `requires_large_host_aubsan`) applies
+/// to the task on the given build variant.
+///
+/// Suffixed tags only apply to the variants that honor them. Those variants select the tagged
+/// task with a distro override, so the override is what tells us the tag applies here.
+fn requires_large_host_on_variant(
+    task_tags: &HashSet<String>,
+    task_def: &EvgTask,
+    build_variant: Option<&BuildVariant>,
+) -> bool {
+    let has_suffixed_tag = task_tags
+        .iter()
+        .any(|tag| tag.starts_with(&format!("{REQUIRES_LARGE_HOST}_")));
+    has_suffixed_tag
+        && build_variant.is_some_and(|variant| {
+            variant
+                .tasks
+                .iter()
+                .any(|task_ref| task_ref.name == task_def.name && task_ref.distros.is_some())
+        })
 }
 
 impl ConfigExtractionService for ConfigExtractionServiceImpl {
@@ -307,18 +329,15 @@ impl ConfigExtractionService for ConfigExtractionServiceImpl {
         Ok(ResmokeGenParams {
             task_name,
             suite_name: suite,
-            // A task tagged `requires_large_host` (or a suffixed variant of it, e.g.
-            // `requires_large_host_aubsan`) is routed to the large distro by the build variant's
-            // task selectors, but those selectors do not apply to generated tasks, so generated
-            // tasks must honor the tag themselves. Variants exclude suffixed tags they do not
-            // honor, so a variant selecting a tagged task implies the tag applies to it.
+            // A task tagged `requires_large_host` is routed to the large distro by the build
+            // variant's task selectors, but those selectors do not apply to generated tasks, so
+            // generated tasks must honor the tag themselves.
             use_large_distro: self.evg_config_utils.lookup_default_param_bool(
                 task_def,
                 USE_LARGE_DISTRO,
                 false,
-            )? || task_tags.iter().any(|tag| {
-                tag == REQUIRES_LARGE_HOST || tag.starts_with(&format!("{REQUIRES_LARGE_HOST}_"))
-            }),
+            )? || task_tags.contains(REQUIRES_LARGE_HOST)
+                || requires_large_host_on_variant(&task_tags, task_def, build_variant),
             use_xlarge_distro: self.evg_config_utils.lookup_default_param_bool(
                 task_def,
                 USE_XLARGE_DISTRO,
@@ -434,7 +453,7 @@ mod tests {
     };
     use maplit::{btreemap, hashset};
     use rstest::rstest;
-    use shrub_rs::models::task::TaskDependency;
+    use shrub_rs::models::task::{TaskDependency, TaskRef};
 
     struct MockMultiversionService {}
     impl MultiversionService for MockMultiversionService {
@@ -495,6 +514,35 @@ mod tests {
                 .map(|d| d.to_string())
                 .collect::<Vec<String>>()
         );
+    }
+
+    // Tests for requires_large_host_on_variant.
+    #[rstest]
+    #[case(vec!["requires_large_host_aubsan"], Some(vec!["xlarge"]), true)]
+    #[case(vec!["requires_large_host_aubsan"], None, false)]
+    #[case(vec!["other_tag"], Some(vec!["xlarge"]), false)]
+    fn test_requires_large_host_on_variant(
+        #[case] tags: Vec<&str>,
+        #[case] distros: Option<Vec<&str>>,
+        #[case] expected: bool,
+    ) {
+        let task_def = EvgTask {
+            name: "my_task".to_string(),
+            ..Default::default()
+        };
+        let build_variant = BuildVariant {
+            tasks: vec![TaskRef {
+                name: "my_task".to_string(),
+                distros: distros.map(|d| d.into_iter().map(String::from).collect()),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let task_tags = tags.into_iter().map(String::from).collect();
+
+        let result = requires_large_host_on_variant(&task_tags, &task_def, Some(&build_variant));
+
+        assert_eq!(result, expected);
     }
 
     // Tests for determine_large_distro.
