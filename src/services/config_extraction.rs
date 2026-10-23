@@ -307,18 +307,14 @@ impl ConfigExtractionService for ConfigExtractionServiceImpl {
         Ok(ResmokeGenParams {
             task_name,
             suite_name: suite,
-            // A task tagged `requires_large_host` (or a suffixed variant of it, e.g.
-            // `requires_large_host_aubsan`) is routed to the large distro by the build variant's
-            // task selectors, but those selectors do not apply to generated tasks, so generated
-            // tasks must honor the tag themselves. Variants exclude suffixed tags they do not
-            // honor, so a variant selecting a tagged task implies the tag applies to it.
+            // A task tagged `requires_large_host` is routed to the large distro by the build
+            // variant's task selectors, but those selectors do not apply to generated tasks, so
+            // generated tasks must honor the tag themselves.
             use_large_distro: self.evg_config_utils.lookup_default_param_bool(
                 task_def,
                 USE_LARGE_DISTRO,
                 false,
-            )? || task_tags.iter().any(|tag| {
-                tag == REQUIRES_LARGE_HOST || tag.starts_with(&format!("{REQUIRES_LARGE_HOST}_"))
-            }),
+            )? || task_tags.contains(REQUIRES_LARGE_HOST),
             use_xlarge_distro: self.evg_config_utils.lookup_default_param_bool(
                 task_def,
                 USE_XLARGE_DISTRO,

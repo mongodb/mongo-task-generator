@@ -1,11 +1,11 @@
 # Changelog
 
 ## 3.10.0 - 2026-10-21
-* Routes generated tasks tagged `requires_large_host` — or a suffixed variant of it, e.g.
-  `requires_large_host_aubsan` — to their build variant's large distro, matching the routing the
-  variant's task selectors give static tasks carrying those tags. Previously only the explicit
-  `use_large_distro` var was honored for generated tasks, so tag-only tasks (e.g. burn-in on
-  sanitizer variants) silently landed on the default distro and could OOM their hosts.
+* Routes generated tasks tagged `requires_large_host` to their build variant's large distro,
+  matching the routing the variant's task selectors give static tasks carrying that tag. Previously
+  only the explicit `use_large_distro` var was honored for generated tasks, so tag-only tasks
+  (e.g. burn-in on sanitizer variants) silently landed on the default distro and could OOM their
+  hosts.
 
 ## 3.9.0 - 2026-09-08
 * Passes the old binary versions a task tests against to the `do multiversion setup` function as
