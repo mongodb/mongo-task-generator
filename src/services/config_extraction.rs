@@ -9,8 +9,9 @@ use crate::{
         BAZEL_ARGS, CONTINUE_ON_FAILURE, FUZZER_PARAMETERS, IDLE_TIMEOUT, LARGE_DISTRO_EXPANSION,
         LAST_VERSIONS_EXPANSION, MULTIVERSION, MULTIVERSION_BINARY_SELECTION,
         MULTIVERSION_SETUP_VERSIONS, NO_MULTIVERSION_GENERATE_TASKS, NPM_COMMAND, NUM_FUZZER_FILES,
-        NUM_FUZZER_TASKS, REPEAT_SUITES, RESMOKE_ARGS, RESMOKE_JOBS_MAX, SHOULD_SHUFFLE_TESTS,
-        UNIQUE_GEN_SUFFIX_EXPANSION, USE_LARGE_DISTRO, USE_XLARGE_DISTRO, XLARGE_DISTRO_EXPANSION,
+        NUM_FUZZER_TASKS, REPEAT_SUITES, REQUIRES_LARGE_HOST, RESMOKE_ARGS, RESMOKE_JOBS_MAX,
+        SHOULD_SHUFFLE_TESTS, UNIQUE_GEN_SUFFIX_EXPANSION, USE_LARGE_DISTRO, USE_XLARGE_DISTRO,
+        XLARGE_DISTRO_EXPANSION,
     },
     generate_sub_tasks_config::GenerateSubTasksConfig,
     task_types::{
@@ -306,11 +307,14 @@ impl ConfigExtractionService for ConfigExtractionServiceImpl {
         Ok(ResmokeGenParams {
             task_name,
             suite_name: suite,
+            // A task tagged `requires_large_host` is routed to the large distro by the build
+            // variant's task selectors, but those selectors do not apply to generated tasks, so
+            // generated tasks must honor the tag themselves.
             use_large_distro: self.evg_config_utils.lookup_default_param_bool(
                 task_def,
                 USE_LARGE_DISTRO,
                 false,
-            )?,
+            )? || task_tags.contains(REQUIRES_LARGE_HOST),
             use_xlarge_distro: self.evg_config_utils.lookup_default_param_bool(
                 task_def,
                 USE_XLARGE_DISTRO,
