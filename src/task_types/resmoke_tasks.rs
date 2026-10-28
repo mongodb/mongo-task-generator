@@ -72,6 +72,8 @@ pub struct ResmokeGenParams {
     pub resmoke_jobs_max: Option<u64>,
     /// List of tasks generated sub-tasks should depend on.
     pub dependencies: Vec<String>,
+    /// Tags from the "_gen" task to add to the generated sub-tasks.
+    pub propagated_tags: Vec<String>,
     /// Is this task for enterprise builds.
     pub is_enterprise: bool,
     /// Arguments to pass to 'run tests' function.
@@ -201,6 +203,11 @@ impl ResmokeGenParams {
                     .collect(),
             )
         }
+    }
+
+    /// Tags to add to the generated sub-tasks, if any.
+    fn get_propagated_tags(&self) -> Option<Vec<String>> {
+        Some(self.propagated_tags.clone()).filter(|tags| !tags.is_empty())
     }
 }
 
@@ -907,6 +914,7 @@ impl GenResmokeTaskService for GenResmokeTaskServiceImpl {
                 name: formatted_name,
                 commands,
                 depends_on: params.get_dependencies(),
+                tags: params.get_propagated_tags(),
                 ..Default::default()
             },
             use_large_distro: params.use_large_distro,
@@ -1766,6 +1774,36 @@ mod tests {
 
         assert_eq!(suite.display_name(), "my_task".to_string());
         assert_eq!(suite.sub_tasks().len(), num_tasks);
+    }
+
+    #[rstest]
+    #[case(vec![], None)]
+    #[case(
+        vec!["assigned_to_jira_team_server_query".to_string()],
+        Some(vec!["assigned_to_jira_team_server_query".to_string()])
+    )]
+    fn test_build_resmoke_sub_task_adds_propagated_tags(
+        #[case] propagated_tags: Vec<String>,
+        #[case] expected_tags: Option<Vec<String>>,
+    ) {
+        let task_history = TaskRuntimeHistory {
+            task_name: "my_task".to_string(),
+            test_map: hashmap! {},
+        };
+        let gen_resmoke_service = build_mocked_service(vec![], task_history);
+        let params = ResmokeGenParams {
+            task_name: "my_task".to_string(),
+            propagated_tags,
+            ..Default::default()
+        };
+        let sub_suite = SubSuite {
+            name: "my_task".to_string(),
+            ..Default::default()
+        };
+
+        let sub_task = gen_resmoke_service.build_resmoke_sub_task(&sub_suite, 1, &params, None);
+
+        assert_eq!(sub_task.evg_task.tags, expected_tags);
     }
 
     #[tokio::test]
