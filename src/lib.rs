@@ -27,6 +27,7 @@ use evergreen_names::{
     BURN_IN_TAGS, BURN_IN_TAG_COMPILE_TASK_DEPENDENCY, BURN_IN_TAG_INCLUDE_BUILD_VARIANTS,
     BURN_IN_TASKS, BURN_IN_TESTS, ENTERPRISE_MODULE, GENERATOR_TASKS, MULTIVERSION,
     MULTIVERSION_BINARY_SELECTION, NO_MULTIVERSION_GENERATE_TASKS, UNIQUE_GEN_SUFFIX_EXPANSION,
+    VERSION_GEN_TASK, VERSION_GEN_VARIANT,
 };
 use generate_sub_tasks_config::GenerateSubTasksConfig;
 use resmoke::{
@@ -391,6 +392,28 @@ fn prewarm_test_discovery(deps: &Dependencies) -> Result<()> {
         "Prewarming test discovery cache with batched discovery"
     );
     deps.test_discovery.prewarm(&suites)
+}
+
+/// Remove the dependency on the task that generated the tasks.
+///
+/// `version_gen` creates the generated tasks, so they can only exist once it has started. Waiting
+/// for it to finish adds a dependency to every generated task reference for no benefit.
+///
+/// # Arguments
+///
+/// * `dependencies` - Dependencies of a task reference.
+///
+/// # Returns
+///
+/// The dependencies without the one on `version_gen`.
+fn without_version_gen_dependency(dependencies: Vec<TaskDependency>) -> Vec<TaskDependency> {
+    dependencies
+        .into_iter()
+        .filter(|dependency| {
+            !(dependency.name == VERSION_GEN_TASK
+                && dependency.variant.as_deref() == Some(VERSION_GEN_VARIANT))
+        })
+        .collect()
 }
 
 /// Create 'generate.tasks' configuration for all generated tasks in the provided evergreen
@@ -900,7 +923,8 @@ impl GenerateTasksService for GenerateTasksServiceImpl {
                     // those overrides too.
                     let mut task_ref_dependencies = self
                         .evg_config_utils
-                        .get_task_ref_dependencies(&task.name, build_variant);
+                        .get_task_ref_dependencies(&task.name, build_variant)
+                        .map(without_version_gen_dependency);
 
                     if generated_task.is_multiversion() && task_ref_dependencies.is_some() {
                         task_ref_dependencies = Some(
@@ -1614,6 +1638,43 @@ mod tests {
                 .contains_key(&format!("{}-{}", BURN_IN_TESTS_PREFIX, "run_bv_name")),
             false
         );
+    }
+
+    // tests for without_version_gen_dependency.
+    fn dependency(name: &str, variant: Option<&str>) -> TaskDependency {
+        TaskDependency {
+            name: name.to_string(),
+            variant: variant.map(|v| v.to_string()),
+        }
+    }
+
+    fn dependency_names(dependencies: &[TaskDependency]) -> Vec<&str> {
+        dependencies.iter().map(|d| d.name.as_str()).collect()
+    }
+
+    #[test]
+    fn test_without_version_gen_dependency_removes_only_version_gen() {
+        let dependencies = vec![
+            dependency("archive_dist_test", Some("compile_variant")),
+            dependency(VERSION_GEN_TASK, Some(VERSION_GEN_VARIANT)),
+            dependency(MULTIVERSION_BINARY_SELECTION, None),
+        ];
+
+        let remaining = without_version_gen_dependency(dependencies);
+
+        assert_eq!(
+            dependency_names(&remaining),
+            vec!["archive_dist_test", MULTIVERSION_BINARY_SELECTION]
+        );
+    }
+
+    #[test]
+    fn test_without_version_gen_dependency_keeps_version_gen_from_other_variants() {
+        let dependencies = vec![dependency(VERSION_GEN_TASK, Some("another_variant"))];
+
+        let remaining = without_version_gen_dependency(dependencies);
+
+        assert_eq!(dependency_names(&remaining), vec![VERSION_GEN_TASK]);
     }
 
     // tests for task_name_matches.
