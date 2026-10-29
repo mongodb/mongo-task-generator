@@ -289,15 +289,15 @@ fn test_end2end_burn_in_with_no_distro(#[case] config_location: String) {
 #[case("tests/data/burn_in/evergreen_burn_in_tasks_with_no_tasks.yml", 4)]
 #[case(
     "tests/data/burn_in/evergreen_burn_in_tasks_with_large_distro_task.yml",
-    305
+    335
 )]
 #[case(
     "tests/data/burn_in/evergreen_burn_in_tasks_with_non_large_distro_task.yml",
-    265
+    295
 )]
 #[case(
     "tests/data/burn_in/evergreen_burn_in_tasks_with_requires_large_host_tag.yml",
-    295
+    325
 )]
 fn test_end2end_burn_in_tasks(#[case] config_location: String, #[case] expected_num_lines: usize) {
     let mut cmd = Command::cargo_bin("mongo-task-generator").unwrap();

@@ -73,8 +73,8 @@ pub struct FuzzerGenTaskParams {
     pub require_multiversion_generate_tasks: bool,
     /// List of tasks generated sub-tasks should depend on.
     pub dependencies: Vec<String>,
-    /// Tags from the "_gen" task to add to the generated sub-tasks.
-    pub propagated_tags: Vec<String>,
+    /// Tags to add to the generated sub-tasks.
+    pub generated_task_tags: Vec<String>,
     /// Is this task for enterprise builds.
     pub is_enterprise: bool,
     /// Name of platform the task will run on.
@@ -169,11 +169,6 @@ impl FuzzerGenTaskParams {
                     .collect(),
             )
         }
-    }
-
-    /// Tags to add to the generated sub-tasks, if any.
-    fn get_propagated_tags(&self) -> Option<Vec<String>> {
-        Some(self.propagated_tags.clone()).filter(|tags| !tags.is_empty())
     }
 }
 
@@ -385,7 +380,7 @@ fn build_fuzzer_sub_task(
         name: formatted_name,
         commands: Some(commands),
         depends_on: params.get_dependencies(),
-        tags: params.get_propagated_tags(),
+        tags: Some(params.generated_task_tags.clone()),
         ..Default::default()
     }
 }
@@ -579,19 +574,20 @@ mod tests {
     }
 
     #[test]
-    fn test_build_fuzzer_sub_task_adds_propagated_tags() {
+    fn test_build_fuzzer_sub_task_adds_generated_task_tags() {
+        let generated_task_tags = vec![
+            "generated_by_mongo_task_generator".to_string(),
+            "assigned_to_jira_team_server_query".to_string(),
+        ];
         let params = FuzzerGenTaskParams {
             task_name: "some task".to_string(),
-            propagated_tags: vec!["assigned_to_jira_team_server_query".to_string()],
+            generated_task_tags: generated_task_tags.clone(),
             ..Default::default()
         };
 
         let sub_task = build_fuzzer_sub_task("my_task", 0, &params, None, None, None);
 
-        assert_eq!(
-            sub_task.tags,
-            Some(vec!["assigned_to_jira_team_server_query".to_string()])
-        );
+        assert_eq!(sub_task.tags, Some(generated_task_tags));
     }
 
     #[test]

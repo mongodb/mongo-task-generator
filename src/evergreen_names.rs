@@ -141,6 +141,8 @@ pub const NO_MULTIVERSION_GENERATE_TASKS: &str = "no_multiversion_generate_tasks
 pub const ASSIGNED_TO_JIRA_TEAM_TAG_PREFIX: &str = "assigned_to_jira_team_";
 /// Prefixes of tags on a "_gen" task that are copied onto the tasks generated from it.
 pub const PROPAGATED_TAG_PREFIXES: &[&str] = &[ASSIGNED_TO_JIRA_TEAM_TAG_PREFIX];
+/// A tag added to every generated task to enable excluding generated tasks by tag.
+pub const GENERATED_TASK_TAG: &str = "generated_by_mongo_task_generator";
 
 // Multiversion values
 /// Tag to include required backport.
