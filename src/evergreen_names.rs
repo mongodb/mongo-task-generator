@@ -27,6 +27,10 @@ pub const DO_MULTIVERSION_SETUP: &str = "do multiversion setup";
 pub const GET_PROJECT_WITH_NO_MODULES: &str = "git get project no modules";
 /// Function to add a git tag.
 pub const ADD_GIT_TAG: &str = "add git tag";
+/// Function that runs `GET_PROJECT_WITH_NO_MODULES`, `ADD_GIT_TAG`, `DO_SETUP` and
+/// `CONFIGURE_EVG_API_CREDS` in order. Evergreen functions cannot call other functions, so the
+/// project defines it with those functions' commands repeated.
+pub const SETUP_MULTIVERSION_GENERATED_TASK: &str = "setup multiversion generated task";
 
 // Noop function which stores multiversion task data.
 pub const INITIALIZE_MULTIVERSION_TASKS: &str = "initialize multiversion tasks";

@@ -27,10 +27,10 @@ use crate::{
         },
     },
     evergreen_names::{
-        ADD_GIT_TAG, CONFIGURE_EVG_API_CREDS, DO_MULTIVERSION_SETUP, DO_SETUP,
-        GET_PROJECT_WITH_NO_MODULES, MULTIVERSION_EXCLUDE_TAG, MULTIVERSION_EXCLUDE_TAGS_FILE,
-        MULTIVERSION_SETUP_VERSIONS, REQUIRE_MULTIVERSION_SETUP, RESMOKE_ARGS, RESMOKE_JOBS_MAX,
-        RUN_GENERATED_TESTS, RUN_GENERATED_TESTS_VIA_BAZEL, SUITE_NAME,
+        CONFIGURE_EVG_API_CREDS, DO_MULTIVERSION_SETUP, DO_SETUP, MULTIVERSION_EXCLUDE_TAG,
+        MULTIVERSION_EXCLUDE_TAGS_FILE, MULTIVERSION_SETUP_VERSIONS, REQUIRE_MULTIVERSION_SETUP,
+        RESMOKE_ARGS, RESMOKE_JOBS_MAX, RUN_GENERATED_TESTS, RUN_GENERATED_TESTS_VIA_BAZEL,
+        SETUP_MULTIVERSION_GENERATED_TASK, SUITE_NAME,
     },
     resmoke::resmoke_proxy::TestDiscovery,
     utils::{fs_service::FsService, task_name::name_generated_task},
@@ -985,15 +985,11 @@ fn resmoke_commands(
     let mut commands = vec![];
 
     if requires_multiversion_setup {
-        commands.push(fn_call(GET_PROJECT_WITH_NO_MODULES));
-        commands.push(fn_call(ADD_GIT_TAG));
-    }
-
-    commands.push(fn_call(DO_SETUP));
-    commands.push(fn_call(CONFIGURE_EVG_API_CREDS));
-
-    if requires_multiversion_setup {
+        commands.push(fn_call(SETUP_MULTIVERSION_GENERATED_TASK));
         commands.push(multiversion_setup_call(setup_versions));
+    } else {
+        commands.push(fn_call(DO_SETUP));
+        commands.push(fn_call(CONFIGURE_EVG_API_CREDS));
     }
 
     commands.push(fn_call_with_params(run_test_fn_name, run_test_vars));
@@ -2061,10 +2057,13 @@ mod tests {
     #[test]
     fn test_resmoke_commands_should_include_multiversion() {
         let commands = resmoke_commands("run test", hashmap! {}, true, None);
-        assert_eq!(commands.len(), 6);
-        assert_eq!(get_evg_fn_name(&commands[2]), Some("do setup"));
-        assert_eq!(get_evg_fn_name(&commands[4]), Some("do multiversion setup"));
-        assert_eq!(get_evg_fn_name(&commands[5]), Some("run test"));
+        assert_eq!(commands.len(), 3);
+        assert_eq!(
+            get_evg_fn_name(&commands[0]),
+            Some("setup multiversion generated task")
+        );
+        assert_eq!(get_evg_fn_name(&commands[1]), Some("do multiversion setup"));
+        assert_eq!(get_evg_fn_name(&commands[2]), Some("run test"));
     }
 
     #[rstest]
@@ -2074,9 +2073,9 @@ mod tests {
     #[case("last_lts last_continuous 7.0 8.0")]
     fn test_multiversion_setup_receives_versions(#[case] versions: &str) {
         let commands = resmoke_commands("run test", hashmap! {}, true, Some(versions.to_string()));
-        assert_eq!(get_evg_fn_name(&commands[4]), Some("do multiversion setup"));
+        assert_eq!(get_evg_fn_name(&commands[1]), Some("do multiversion setup"));
         assert_eq!(
-            get_evg_fn_vars(&commands[4])
+            get_evg_fn_vars(&commands[1])
                 .and_then(|vars| vars.get("multiversion_setup_versions").cloned()),
             Some(ParamValue::from(versions))
         );
@@ -2087,8 +2086,8 @@ mod tests {
         // Tasks tagged no_multiversion_generate_tasks test against several versions, so the setup
         // step must keep downloading everything.
         let commands = resmoke_commands("run test", hashmap! {}, true, None);
-        assert_eq!(get_evg_fn_name(&commands[4]), Some("do multiversion setup"));
-        assert_eq!(get_evg_fn_vars(&commands[4]), None);
+        assert_eq!(get_evg_fn_name(&commands[1]), Some("do multiversion setup"));
+        assert_eq!(get_evg_fn_vars(&commands[1]), None);
     }
     // sort_tests_by_runtime tests.
     #[rstest]
