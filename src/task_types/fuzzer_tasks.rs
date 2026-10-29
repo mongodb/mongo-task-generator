@@ -121,13 +121,21 @@ impl FuzzerGenTaskParams {
     ) -> HashMap<String, ParamValue> {
         let mut vars = hashmap! {
             CONTINUE_ON_FAILURE.to_string() => ParamValue::from(self.continue_on_failure),
-            REQUIRE_MULTIVERSION_SETUP.to_string() => ParamValue::from(self.is_multiversion()),
             RESMOKE_ARGS.to_string() => ParamValue::from(self.resmoke_args.as_str()),
             RESMOKE_JOBS_MAX.to_string() => ParamValue::from(self.resmoke_jobs_max),
             SHOULD_SHUFFLE_TESTS.to_string() => ParamValue::from(self.should_shuffle),
             TASK_NAME.to_string() => ParamValue::from(self.task_name.as_str()),
             IDLE_TIMEOUT.to_string() => ParamValue::from(self.timeout_secs),
         };
+
+        // The scripts that read this var treat an unset value the same as "false", so only
+        // multiversion tasks need to carry it.
+        if self.is_multiversion() {
+            vars.insert(
+                REQUIRE_MULTIVERSION_SETUP.to_string(),
+                ParamValue::from(true),
+            );
+        }
 
         if let Some(suite) = generated_suite_name {
             vars.insert(SUITE_NAME.to_string(), ParamValue::from(suite));
@@ -469,6 +477,23 @@ mod tests {
             run_tests_vars.contains_key("multiversion_exclude_tags_version"),
             bin_version.is_some()
         );
+    }
+
+    #[rstest]
+    #[case(true, Some(&ParamValue::Bool(true)))]
+    #[case(false, None)]
+    fn test_build_run_tests_vars_only_sets_require_multiversion_setup_for_multiversion(
+        #[case] require_multiversion_setup: bool,
+        #[case] expected: Option<&ParamValue>,
+    ) {
+        let gen_params = FuzzerGenTaskParams {
+            require_multiversion_setup,
+            ..Default::default()
+        };
+
+        let run_tests_vars = gen_params.build_run_tests_vars(None, None);
+
+        assert_eq!(run_tests_vars.get("require_multiversion_setup"), expected);
     }
 
     // FuzzerTask tests
