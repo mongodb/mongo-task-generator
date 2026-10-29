@@ -12,11 +12,11 @@ use tracing::{event, Level};
 use crate::{
     evergreen::evg_config_utils::MultiversionGenerateTaskConfig,
     evergreen_names::{
-        ADD_GIT_TAG, CONFIGURE_EVG_API_CREDS, CONTINUE_ON_FAILURE, DO_MULTIVERSION_SETUP, DO_SETUP,
-        FUZZER_PARAMETERS, GET_PROJECT_WITH_NO_MODULES, IDLE_TIMEOUT, MULTIVERSION_EXCLUDE_TAGS,
-        MULTIVERSION_SETUP_VERSIONS, NPM_COMMAND, REQUIRE_MULTIVERSION_SETUP, RESMOKE_ARGS,
-        RESMOKE_JOBS_MAX, RUN_FUZZER, RUN_GENERATED_TESTS, RUN_GENERATED_TESTS_VIA_BAZEL,
-        SETUP_JSTESTFUZZ, SHOULD_SHUFFLE_TESTS, SUITE_NAME, TASK_NAME,
+        CONFIGURE_EVG_API_CREDS, CONTINUE_ON_FAILURE, DO_MULTIVERSION_SETUP, DO_SETUP,
+        FUZZER_PARAMETERS, IDLE_TIMEOUT, MULTIVERSION_EXCLUDE_TAGS, MULTIVERSION_SETUP_VERSIONS,
+        NPM_COMMAND, REQUIRE_MULTIVERSION_SETUP, RESMOKE_ARGS, RESMOKE_JOBS_MAX, RUN_FUZZER,
+        RUN_GENERATED_TESTS, RUN_GENERATED_TESTS_VIA_BAZEL, SETUP_JSTESTFUZZ,
+        SETUP_MULTIVERSION_GENERATED_TASK, SHOULD_SHUFFLE_TESTS, SUITE_NAME, TASK_NAME,
     },
     task_types::resmoke_tasks::replace_resmoke_args_with_bazel_args,
     utils::task_name::name_generated_task,
@@ -314,12 +314,10 @@ fn build_fuzzer_sub_task(
 
     let mut commands = vec![];
     if params.is_multiversion() {
-        commands.extend(vec![
-            fn_call(GET_PROJECT_WITH_NO_MODULES),
-            fn_call(ADD_GIT_TAG),
-        ]);
+        commands.push(fn_call(SETUP_MULTIVERSION_GENERATED_TASK));
+    } else {
+        commands.extend(vec![fn_call(DO_SETUP), fn_call(CONFIGURE_EVG_API_CREDS)]);
     }
-    commands.extend(vec![fn_call(DO_SETUP), fn_call(CONFIGURE_EVG_API_CREDS)]);
 
     if params.is_multiversion() {
         // Tell the setup step which binaries this task needs so it downloads only those. An
@@ -608,12 +606,11 @@ mod tests {
             let commands = sub_task.evg_task.commands.unwrap();
             assert_eq!(
                 get_evg_fn_name(&commands[0]),
-                Some("git get project no modules")
+                Some("setup multiversion generated task")
             );
-            assert_eq!(get_evg_fn_name(&commands[2]), Some("do setup"));
-            assert_eq!(get_evg_fn_name(&commands[4]), Some("do multiversion setup"));
-            assert_eq!(get_evg_fn_name(&commands[6]), Some("run jstestfuzz"));
-            assert_eq!(get_evg_fn_name(&commands[7]), Some("run generated tests"));
+            assert_eq!(get_evg_fn_name(&commands[1]), Some("do multiversion setup"));
+            assert_eq!(get_evg_fn_name(&commands[3]), Some("run jstestfuzz"));
+            assert_eq!(get_evg_fn_name(&commands[4]), Some("run generated tests"));
         }
     }
 
@@ -655,13 +652,12 @@ mod tests {
             let commands = sub_task.evg_task.commands.unwrap();
             assert_eq!(
                 get_evg_fn_name(&commands[0]),
-                Some("git get project no modules")
+                Some("setup multiversion generated task")
             );
-            assert_eq!(get_evg_fn_name(&commands[2]), Some("do setup"));
-            assert_eq!(get_evg_fn_name(&commands[4]), Some("do multiversion setup"));
-            assert_eq!(get_evg_fn_name(&commands[6]), Some("run jstestfuzz"));
+            assert_eq!(get_evg_fn_name(&commands[1]), Some("do multiversion setup"));
+            assert_eq!(get_evg_fn_name(&commands[3]), Some("run jstestfuzz"));
             assert_eq!(
-                get_evg_fn_name(&commands[7]),
+                get_evg_fn_name(&commands[4]),
                 Some("run generated tests via bazel")
             );
         }
@@ -690,12 +686,11 @@ mod tests {
             let commands = sub_task.evg_task.commands.unwrap();
             assert_eq!(
                 get_evg_fn_name(&commands[0]),
-                Some("git get project no modules")
+                Some("setup multiversion generated task")
             );
-            assert_eq!(get_evg_fn_name(&commands[2]), Some("do setup"));
-            assert_eq!(get_evg_fn_name(&commands[4]), Some("do multiversion setup"));
-            assert_eq!(get_evg_fn_name(&commands[6]), Some("run jstestfuzz"));
-            assert_eq!(get_evg_fn_name(&commands[7]), Some("run generated tests"));
+            assert_eq!(get_evg_fn_name(&commands[1]), Some("do multiversion setup"));
+            assert_eq!(get_evg_fn_name(&commands[3]), Some("run jstestfuzz"));
+            assert_eq!(get_evg_fn_name(&commands[4]), Some("run generated tests"));
         }
     }
 
