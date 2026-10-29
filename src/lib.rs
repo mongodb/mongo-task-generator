@@ -393,6 +393,42 @@ fn prewarm_test_discovery(deps: &Dependencies) -> Result<()> {
     deps.test_discovery.prewarm(&suites)
 }
 
+/// Remove the `depends_on` of tasks that every build variant reference overrides.
+///
+/// Evergreen prefers the dependencies on a task reference over those on the task definition, so
+/// when all of a task's references set their own, the ones on the definition are never used.
+///
+/// # Arguments
+///
+/// * `tasks` - Generated task definitions to update.
+/// * `build_variants` - Generated build variants that reference the tasks.
+fn remove_overridden_task_dependencies(tasks: &mut [EvgTask], build_variants: &[BuildVariant]) {
+    let mut references_by_task: HashMap<&str, Vec<&TaskRef>> = HashMap::new();
+    for task_ref in build_variants.iter().flat_map(|bv| &bv.tasks) {
+        references_by_task
+            .entry(task_ref.name.as_str())
+            .or_default()
+            .push(task_ref);
+    }
+
+    for task in tasks {
+        let always_overridden = references_by_task
+            .get(task.name.as_str())
+            .is_some_and(|refs| refs.iter().all(|r| overrides_dependencies(r)));
+        if always_overridden {
+            task.depends_on = None;
+        }
+    }
+}
+
+/// Whether a task reference sets its own dependencies. Evergreen ignores an empty list.
+fn overrides_dependencies(task_ref: &TaskRef) -> bool {
+    task_ref
+        .depends_on
+        .as_ref()
+        .is_some_and(|dependencies| !dependencies.is_empty())
+}
+
 /// Create 'generate.tasks' configuration for all generated tasks in the provided evergreen
 /// project configuration.
 ///
@@ -417,7 +453,7 @@ pub async fn generate_configuration(deps: &Dependencies, target_directory: &Path
     let generated_build_variants =
         generate_tasks_service.generate_build_variants(deps, generated_tasks.clone())?;
 
-    let task_defs: Vec<EvgTask> = {
+    let mut task_defs: Vec<EvgTask> = {
         let generated_tasks = generated_tasks.lock().unwrap();
         generated_tasks
             .values()
@@ -425,6 +461,7 @@ pub async fn generate_configuration(deps: &Dependencies, target_directory: &Path
             .map(|s| s.evg_task)
             .collect()
     };
+    remove_overridden_task_dependencies(&mut task_defs, &generated_build_variants);
 
     let gen_evg_project = EvgProject {
         buildvariants: generated_build_variants.to_vec(),
@@ -1614,6 +1651,90 @@ mod tests {
                 .contains_key(&format!("{}-{}", BURN_IN_TESTS_PREFIX, "run_bv_name")),
             false
         );
+    }
+
+    // tests for remove_overridden_task_dependencies.
+    fn task_with_dependency(name: &str) -> EvgTask {
+        EvgTask {
+            name: name.to_string(),
+            depends_on: Some(vec![TaskDependency {
+                name: "archive_dist_test".to_string(),
+                variant: None,
+            }]),
+            ..Default::default()
+        }
+    }
+
+    fn task_ref_with_dependency(name: &str, overridden: bool) -> TaskRef {
+        TaskRef {
+            name: name.to_string(),
+            depends_on: overridden.then(|| {
+                vec![TaskDependency {
+                    name: "other".to_string(),
+                    variant: None,
+                }]
+            }),
+            distros: None,
+            activate: None,
+        }
+    }
+
+    fn variant_with_refs(refs: Vec<TaskRef>) -> BuildVariant {
+        BuildVariant {
+            tasks: refs,
+            ..Default::default()
+        }
+    }
+
+    #[rstest]
+    #[case(vec![true], true)]
+    #[case(vec![true, true], true)]
+    #[case(vec![true, false], false)]
+    #[case(vec![false], false)]
+    #[case(vec![], false)]
+    fn test_remove_overridden_task_dependencies(
+        #[case] ref_overrides: Vec<bool>,
+        #[case] expect_removed: bool,
+    ) {
+        let mut tasks = vec![task_with_dependency("my_task")];
+        let variants: Vec<BuildVariant> = ref_overrides
+            .into_iter()
+            .map(|overridden| {
+                variant_with_refs(vec![task_ref_with_dependency("my_task", overridden)])
+            })
+            .collect();
+
+        remove_overridden_task_dependencies(&mut tasks, &variants);
+
+        assert_eq!(tasks[0].depends_on.is_none(), expect_removed);
+    }
+
+    #[test]
+    fn test_remove_overridden_task_dependencies_ignores_empty_overrides() {
+        let mut empty_override = task_ref_with_dependency("my_task", true);
+        empty_override.depends_on = Some(vec![]);
+        let mut tasks = vec![task_with_dependency("my_task")];
+
+        remove_overridden_task_dependencies(&mut tasks, &[variant_with_refs(vec![empty_override])]);
+
+        assert!(tasks[0].depends_on.is_some());
+    }
+
+    #[test]
+    fn test_remove_overridden_task_dependencies_only_affects_overridden_tasks() {
+        let mut tasks = vec![
+            task_with_dependency("overridden"),
+            task_with_dependency("not_overridden"),
+        ];
+        let variants = [variant_with_refs(vec![
+            task_ref_with_dependency("overridden", true),
+            task_ref_with_dependency("not_overridden", false),
+        ])];
+
+        remove_overridden_task_dependencies(&mut tasks, &variants);
+
+        assert!(tasks[0].depends_on.is_none());
+        assert!(tasks[1].depends_on.is_some());
     }
 
     // tests for task_name_matches.
