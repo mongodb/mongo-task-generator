@@ -163,5 +163,7 @@ pub const LINUX: &str = "linux";
 // Constants in evergreen.yml.
 /// Name of the variant that calls generate.task on the version.
 pub const VERSION_GEN_VARIANT: &str = "generate-tasks-for-version";
+/// Name of the task that calls generate.task on the version.
+pub const VERSION_GEN_TASK: &str = "version_gen";
 /// Name of the task that calls generate.task on the version for burn-in.
 pub const VERSION_BURN_IN_GEN_TASK: &str = "version_burn_in_gen";
