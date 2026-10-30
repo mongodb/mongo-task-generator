@@ -1,4 +1,9 @@
 # Changelog
+## 3.11.0 - 2026-10-30
+* Propagate Jira assignment tags to generated tasks
+* Only set `require_multiversion_setup` on multiversion tasks
+* Drop `version_gen` dependencies from generated task references
+* Omit task-level `depends_on` that every build variant reference overrides
 
 ## 3.10.0 - 2026-10-21
 * Routes generated tasks tagged `requires_large_host` to their build variant's large distro,
