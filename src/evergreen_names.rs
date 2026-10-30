@@ -139,8 +139,6 @@ pub const REQUIRES_LARGE_HOST: &str = "requires_large_host";
 pub const NO_MULTIVERSION_GENERATE_TASKS: &str = "no_multiversion_generate_tasks";
 /// Prefix of tags naming the Jira team that owns a task, e.g. `assigned_to_jira_team_server_query`.
 pub const ASSIGNED_TO_JIRA_TEAM_TAG_PREFIX: &str = "assigned_to_jira_team_";
-/// Prefixes of tags on a "_gen" task that are copied onto the tasks generated from it.
-pub const PROPAGATED_TAG_PREFIXES: &[&str] = &[ASSIGNED_TO_JIRA_TEAM_TAG_PREFIX];
 /// A tag added to every generated task to enable excluding generated tasks by tag.
 pub const GENERATED_TASK_TAG: &str = "generated_by_mongo_task_generator";
 

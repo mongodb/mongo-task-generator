@@ -6,11 +6,11 @@ use shrub_rs::models::{task::EvgTask, variant::BuildVariant};
 use crate::{
     evergreen::evg_config_utils::EvgConfigUtils,
     evergreen_names::{
-        BAZEL_ARGS, CONTINUE_ON_FAILURE, FUZZER_PARAMETERS, GENERATED_TASK_TAG, IDLE_TIMEOUT,
-        LARGE_DISTRO_EXPANSION, LAST_VERSIONS_EXPANSION, MULTIVERSION,
-        MULTIVERSION_BINARY_SELECTION, MULTIVERSION_SETUP_VERSIONS, NO_MULTIVERSION_GENERATE_TASKS,
-        NPM_COMMAND, NUM_FUZZER_FILES, NUM_FUZZER_TASKS, PROPAGATED_TAG_PREFIXES, REPEAT_SUITES,
-        REQUIRES_LARGE_HOST, RESMOKE_ARGS, RESMOKE_JOBS_MAX, SHOULD_SHUFFLE_TESTS,
+        ASSIGNED_TO_JIRA_TEAM_TAG_PREFIX, BAZEL_ARGS, CONTINUE_ON_FAILURE, FUZZER_PARAMETERS,
+        GENERATED_TASK_TAG, IDLE_TIMEOUT, LARGE_DISTRO_EXPANSION, LAST_VERSIONS_EXPANSION,
+        MULTIVERSION, MULTIVERSION_BINARY_SELECTION, MULTIVERSION_SETUP_VERSIONS,
+        NO_MULTIVERSION_GENERATE_TASKS, NPM_COMMAND, NUM_FUZZER_FILES, NUM_FUZZER_TASKS,
+        REPEAT_SUITES, REQUIRES_LARGE_HOST, RESMOKE_ARGS, RESMOKE_JOBS_MAX, SHOULD_SHUFFLE_TESTS,
         UNIQUE_GEN_SUFFIX_EXPANSION, USE_LARGE_DISTRO, USE_XLARGE_DISTRO, XLARGE_DISTRO_EXPANSION,
     },
     generate_sub_tasks_config::GenerateSubTasksConfig,
@@ -148,11 +148,7 @@ impl ConfigExtractionServiceImpl {
 fn build_generated_task_tags(task_tags: &HashSet<String>) -> Vec<String> {
     let mut propagated_tags: Vec<String> = task_tags
         .iter()
-        .filter(|tag| {
-            PROPAGATED_TAG_PREFIXES
-                .iter()
-                .any(|prefix| tag.starts_with(prefix))
-        })
+        .filter(|tag| tag.starts_with(ASSIGNED_TO_JIRA_TEAM_TAG_PREFIX))
         .cloned()
         .collect();
     propagated_tags.sort();
