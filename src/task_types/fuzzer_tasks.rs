@@ -73,6 +73,8 @@ pub struct FuzzerGenTaskParams {
     pub require_multiversion_generate_tasks: bool,
     /// List of tasks generated sub-tasks should depend on.
     pub dependencies: Vec<String>,
+    /// Tags to add to the generated sub-tasks.
+    pub generated_task_tags: Vec<String>,
     /// Is this task for enterprise builds.
     pub is_enterprise: bool,
     /// Name of platform the task will run on.
@@ -378,6 +380,7 @@ fn build_fuzzer_sub_task(
         name: formatted_name,
         commands: Some(commands),
         depends_on: params.get_dependencies(),
+        tags: Some(params.generated_task_tags.clone()),
         ..Default::default()
     }
 }
@@ -568,6 +571,23 @@ mod tests {
             sub_task.depends_on.unwrap()[0].name,
             "archive_dist_test_debug"
         )
+    }
+
+    #[test]
+    fn test_build_fuzzer_sub_task_adds_generated_task_tags() {
+        let generated_task_tags = vec![
+            "generated_by_mongo_task_generator".to_string(),
+            "assigned_to_jira_team_server_query".to_string(),
+        ];
+        let params = FuzzerGenTaskParams {
+            task_name: "some task".to_string(),
+            generated_task_tags: generated_task_tags.clone(),
+            ..Default::default()
+        };
+
+        let sub_task = build_fuzzer_sub_task("my_task", 0, &params, None, None, None);
+
+        assert_eq!(sub_task.tags, Some(generated_task_tags));
     }
 
     #[test]
