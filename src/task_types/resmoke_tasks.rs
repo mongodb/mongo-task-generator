@@ -130,10 +130,18 @@ impl ResmokeGenParams {
         };
 
         run_test_vars.extend(hashmap! {
-            REQUIRE_MULTIVERSION_SETUP.to_string() => ParamValue::from(self.require_multiversion_setup),
             RESMOKE_ARGS.to_string() => ParamValue::from(resmoke_args.as_str()),
             SUITE_NAME.to_string() => ParamValue::from(suite.as_str()),
         });
+
+        // The scripts that read this var treat an unset value the same as "false", so only
+        // multiversion tasks need to carry it.
+        if self.require_multiversion_setup {
+            run_test_vars.insert(
+                REQUIRE_MULTIVERSION_SETUP.to_string(),
+                ParamValue::from(true),
+            );
+        }
 
         if let Some(mv_exclude_tags) = &sub_suite.mv_exclude_tags {
             run_test_vars.insert(
@@ -1034,7 +1042,8 @@ mod tests {
 
         let test_vars = params.build_run_test_vars("my_suite_0", &sub_suite, "", None);
 
-        assert_eq!(test_vars.len(), 3);
+        assert_eq!(test_vars.len(), 2);
+        assert!(!test_vars.contains_key("require_multiversion_setup"));
         assert!(!test_vars.contains_key("resmoke_jobs_max"));
         assert_eq!(
             test_vars.get("suite").unwrap(),
@@ -1061,7 +1070,7 @@ mod tests {
 
         let test_vars = params.build_run_test_vars("my_suite_0", &sub_suite, "", None);
 
-        assert_eq!(test_vars.len(), 4);
+        assert_eq!(test_vars.len(), 3);
         assert_eq!(
             test_vars.get("resmoke_jobs_max").unwrap(),
             &ParamValue::from(5)
@@ -1095,6 +1104,10 @@ mod tests {
 
         assert_eq!(test_vars.len(), 4);
         assert_eq!(
+            test_vars.get("require_multiversion_setup").unwrap(),
+            &ParamValue::from(true)
+        );
+        assert_eq!(
             test_vars.get("multiversion_exclude_tags_version").unwrap(),
             &ParamValue::from("last_lts")
         );
@@ -1122,7 +1135,7 @@ mod tests {
 
         let test_vars = params.build_run_test_vars("my_suite_0", &sub_suite, "", None);
 
-        assert_eq!(test_vars.len(), 4);
+        assert_eq!(test_vars.len(), 3);
         assert_eq!(
             test_vars.get("multiversion_exclude_tags_version").unwrap(),
             &ParamValue::from("last_lts")
@@ -1153,7 +1166,7 @@ mod tests {
 
         let test_vars = params.build_run_test_vars("my_suite_0", &sub_suite, "", None);
 
-        assert_eq!(test_vars.len(), 4);
+        assert_eq!(test_vars.len(), 3);
         assert_eq!(
             test_vars.get("multiversion_exclude_tags_version").unwrap(),
             &ParamValue::from("last_lts")
