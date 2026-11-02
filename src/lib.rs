@@ -259,7 +259,6 @@ impl Dependencies {
             discovery_service.clone(),
             resmoke_config_actor.clone(),
             multiversion_service,
-            fs_service,
             gen_resmoke_config,
             execution_config.subtask_limits,
             execution_config
