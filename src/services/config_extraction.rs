@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 
 use anyhow::{bail, Result};
 use shrub_rs::models::{task::EvgTask, variant::BuildVariant};
@@ -6,12 +6,12 @@ use shrub_rs::models::{task::EvgTask, variant::BuildVariant};
 use crate::{
     evergreen::evg_config_utils::EvgConfigUtils,
     evergreen_names::{
-        BAZEL_ARGS, CONTINUE_ON_FAILURE, FUZZER_PARAMETERS, IDLE_TIMEOUT, LARGE_DISTRO_EXPANSION,
-        LAST_VERSIONS_EXPANSION, MULTIVERSION, MULTIVERSION_BINARY_SELECTION,
-        MULTIVERSION_SETUP_VERSIONS, NO_MULTIVERSION_GENERATE_TASKS, NPM_COMMAND, NUM_FUZZER_FILES,
-        NUM_FUZZER_TASKS, REPEAT_SUITES, REQUIRES_LARGE_HOST, RESMOKE_ARGS, RESMOKE_JOBS_MAX,
-        SHOULD_SHUFFLE_TESTS, UNIQUE_GEN_SUFFIX_EXPANSION, USE_LARGE_DISTRO, USE_XLARGE_DISTRO,
-        XLARGE_DISTRO_EXPANSION,
+        ASSIGNED_TO_JIRA_TEAM_TAG_PREFIX, BAZEL_ARGS, CONTINUE_ON_FAILURE, FUZZER_PARAMETERS,
+        GENERATED_TASK_TAG, IDLE_TIMEOUT, LARGE_DISTRO_EXPANSION, LAST_VERSIONS_EXPANSION,
+        MULTIVERSION, MULTIVERSION_BINARY_SELECTION, MULTIVERSION_SETUP_VERSIONS,
+        NO_MULTIVERSION_GENERATE_TASKS, NPM_COMMAND, NUM_FUZZER_FILES, NUM_FUZZER_TASKS,
+        REPEAT_SUITES, REQUIRES_LARGE_HOST, RESMOKE_ARGS, RESMOKE_JOBS_MAX, SHOULD_SHUFFLE_TESTS,
+        UNIQUE_GEN_SUFFIX_EXPANSION, USE_LARGE_DISTRO, USE_XLARGE_DISTRO, XLARGE_DISTRO_EXPANSION,
     },
     generate_sub_tasks_config::GenerateSubTasksConfig,
     task_types::{
@@ -141,6 +141,20 @@ impl ConfigExtractionServiceImpl {
     }
 }
 
+/// Build the tags for the tasks generated from a "_gen" task: the marker tag identifying them as
+/// generated, plus the "_gen" task's tags that should propagate to them.
+///
+/// Propagated tags are sorted so the generated configuration is deterministic.
+fn build_generated_task_tags(task_tags: &HashSet<String>) -> Vec<String> {
+    let mut propagated_tags: Vec<String> = task_tags
+        .iter()
+        .filter(|tag| tag.starts_with(ASSIGNED_TO_JIRA_TEAM_TAG_PREFIX))
+        .cloned()
+        .collect();
+    propagated_tags.sort();
+    [vec![GENERATED_TASK_TAG.to_string()], propagated_tags].concat()
+}
+
 impl ConfigExtractionService for ConfigExtractionServiceImpl {
     /// Build the configuration for generated a fuzzer based on the evergreen task definition.
     ///
@@ -242,6 +256,7 @@ impl ConfigExtractionService for ConfigExtractionServiceImpl {
                     last_versions_expansion,
                 ),
             dependencies: self.determine_task_dependencies(task_def),
+            generated_task_tags: build_generated_task_tags(&task_tags),
             is_enterprise,
             platform: Some(evg_config_utils.infer_build_variant_platform(build_variant)),
             gen_task_suffix,
@@ -347,6 +362,7 @@ impl ConfigExtractionService for ConfigExtractionServiceImpl {
                     last_versions_expansion,
                 ),
             dependencies: self.determine_task_dependencies(task_def),
+            generated_task_tags: build_generated_task_tags(&task_tags),
             is_enterprise,
             pass_through_vars: self.evg_config_utils.get_gen_task_vars(task_def),
             platform,
@@ -491,6 +507,26 @@ mod tests {
                 .map(|d| d.to_string())
                 .collect::<Vec<String>>()
         );
+    }
+
+    // Tests for build_generated_task_tags.
+    #[rstest]
+    #[case(vec![], vec![GENERATED_TASK_TAG])]
+    #[case(vec!["multiversion", "requires_large_host"], vec![GENERATED_TASK_TAG])]
+    #[case(
+        vec!["multiversion", "assigned_to_jira_team_server_query"],
+        vec![GENERATED_TASK_TAG, "assigned_to_jira_team_server_query"]
+    )]
+    #[case(
+        vec!["assigned_to_jira_team_b", "assigned_to_jira_team_a"],
+        vec![GENERATED_TASK_TAG, "assigned_to_jira_team_a", "assigned_to_jira_team_b"]
+    )]
+    fn test_build_generated_task_tags(#[case] tags: Vec<&str>, #[case] expected: Vec<&str>) {
+        let task_tags = tags.into_iter().map(String::from).collect();
+
+        let generated_task_tags = build_generated_task_tags(&task_tags);
+
+        assert_eq!(generated_task_tags, expected);
     }
 
     // Tests for determine_large_distro.
