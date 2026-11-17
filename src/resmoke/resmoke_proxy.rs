@@ -24,7 +24,7 @@ pub trait TestDiscovery: Send + Sync {
     ///
     /// # Returns
     ///
-    /// An existence-validated snapshot of tests belonging to the given suite.
+    /// The tests in the suite, with missing files filtered out.
     /// Implementations validate paths before caching; consumers reuse that snapshot
     /// without rechecking the filesystem. Input files should not change during generation.
     fn discover_tests(&self, suite_name: &str) -> Result<Vec<String>>;
@@ -188,7 +188,7 @@ impl TestDiscovery for ResmokeProxy {
     ///
     /// # Returns
     ///
-    /// An existence-validated snapshot of tests belonging to the given suite.
+    /// The tests in the suite, with missing files filtered out.
     fn discover_tests(&self, suite_name: &str) -> Result<Vec<String>> {
         let entry = {
             // Recover from a poisoned lock (a panic in another discovery thread)
