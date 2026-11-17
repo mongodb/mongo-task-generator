@@ -3,11 +3,16 @@
 //! This actor will create several instances of itself and send requests to the instances
 //! in a round-robbin pattern. The number of instances to create can be specified with the
 //! `n_workers` argument when creating the actor.
+//! Workers serialize complete suite batches because different requests can share output filenames.
 //!
 //! When using this actor, to ensure that all in-flight requests have been completed, you
 //! will want to a `flush` message. This message will wait for all actor instance to complete
 //! any work they have queued up before returning.
-use std::{collections::HashMap, path::PathBuf, sync::Arc};
+use std::{
+    collections::HashMap,
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -46,6 +51,9 @@ struct WriteConfigActorImpl {
 
     /// Errors encountered during execution.
     errors: Vec<String>,
+
+    /// Guard against interleaved writes to shared suite filenames.
+    write_lock: Arc<Mutex<()>>,
 }
 
 impl WriteConfigActorImpl {
@@ -57,6 +65,7 @@ impl WriteConfigActorImpl {
     /// * `fs_service` - Service to work with the filesystem.
     /// * `receiver` - Mailbox to query for messages.
     /// * `target_dir` - Directory to write generated files to.
+    /// * `write_lock` - Shared guard for complete suite-write batches.
     ///
     /// # Returns
     ///
@@ -66,6 +75,7 @@ impl WriteConfigActorImpl {
         fs_service: Arc<dyn FsService>,
         receiver: mpsc::Receiver<ResmokeConfigMessage>,
         target_dir: String,
+        write_lock: Arc<Mutex<()>>,
     ) -> Self {
         WriteConfigActorImpl {
             test_discovery,
@@ -73,6 +83,7 @@ impl WriteConfigActorImpl {
             target_dir,
             receiver,
             errors: vec![],
+            write_lock,
         }
     }
 
@@ -116,6 +127,10 @@ impl WriteConfigActorImpl {
     ///
     /// * `suite_info` - Details about the generated task.
     fn write_standard_suite(&self, suite_info: &ResmokeSuiteGenerationInfo) -> Result<()> {
+        let _guard = self
+            .write_lock
+            .lock()
+            .map_err(|error| anyhow::anyhow!("Suite write lock poisoned: {}", error))?;
         let mut resmoke_config_cache = ResmokeConfigCache::new(self.test_discovery.clone());
 
         // Create suite files for all the sub-suites.
@@ -207,6 +222,7 @@ impl ResmokeConfigActorService {
     ) -> Self {
         let senders_and_receivers = (0..n_workers).map(|_| mpsc::channel(100));
         let mut senders = vec![];
+        let write_lock = Arc::new(Mutex::new(()));
         senders_and_receivers
             .into_iter()
             .for_each(|(sender, receiver)| {
@@ -216,6 +232,7 @@ impl ResmokeConfigActorService {
                     fs_service.clone(),
                     receiver,
                     target_dir.to_string(),
+                    write_lock.clone(),
                 );
                 tokio::spawn(async move { actor.run().await });
             });
@@ -399,7 +416,13 @@ mod tests {
         let test_discovery = Arc::new(MockTestDiscovery {});
         let (_tx, rx) = mpsc::channel(1);
 
-        WriteConfigActorImpl::new(test_discovery, fs_service, rx, "target".to_string())
+        WriteConfigActorImpl::new(
+            test_discovery,
+            fs_service,
+            rx,
+            "target".to_string(),
+            Arc::new(Mutex::new(())),
+        )
     }
 
     #[test]
@@ -432,6 +455,64 @@ mod tests {
 
         assert_eq!(fs_service.get_call_counts("target/suite_name_0.yml"), 1);
         assert_eq!(fs_service.get_call_counts("target/suite_name_1.yml"), 1);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn suite_batches_do_not_interleave_writes() {
+        #[derive(Default)]
+        struct RecordingFs {
+            writes: Mutex<Vec<String>>,
+        }
+
+        impl FsService for RecordingFs {
+            fn file_exists(&self, _path: &str) -> bool {
+                todo!()
+            }
+
+            fn write_file(&self, _path: &std::path::Path, contents: &str) -> Result<()> {
+                let config = ResmokeSuiteConfig::from_str(contents)?;
+                let Some(crate::resmoke::resmoke_suite::TestRoot::Roots { roots }) =
+                    config.selector.test_root
+                else {
+                    bail!("expected generated test roots");
+                };
+                self.writes.lock().unwrap().push(roots[0].clone());
+                std::thread::sleep(std::time::Duration::from_millis(5));
+                Ok(())
+            }
+        }
+
+        let fs = Arc::new(RecordingFs::default());
+        let mut actor =
+            ResmokeConfigActorService::new(Arc::new(MockTestDiscovery {}), fs.clone(), "target", 2);
+        for batch in ["first", "second"] {
+            actor
+                .write_sub_suite(&ResmokeSuiteGenerationInfo {
+                    task_name: "shared".to_string(),
+                    origin_suite: "suite".to_string(),
+                    require_multiversion_generate_tasks: false,
+                    sub_suites: (0..4)
+                        .map(|index| SubSuite {
+                            index,
+                            name: "shared".to_string(),
+                            origin_suite: "suite".to_string(),
+                            test_list: vec![format!("{}_{}.js", batch, index)],
+                            ..Default::default()
+                        })
+                        .collect(),
+                })
+                .await;
+        }
+        assert!(actor.flush().await.unwrap().is_empty());
+
+        let writes = fs.writes.lock().unwrap();
+        let first = ["first_0.js", "first_1.js", "first_2.js", "first_3.js"];
+        let second = ["second_0.js", "second_1.js", "second_2.js", "second_3.js"];
+        assert!(
+            *writes == [first, second].concat() || *writes == [second, first].concat(),
+            "suite batches interleaved: {:?}",
+            *writes
+        );
     }
 
     #[tokio::test]
