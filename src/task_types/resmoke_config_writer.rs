@@ -393,10 +393,6 @@ mod tests {
         }
     }
     impl FsService for MockFsService {
-        fn file_exists(&self, _path: &str) -> bool {
-            todo!()
-        }
-
         fn write_file(&self, path: &std::path::Path, _contents: &str) -> anyhow::Result<()> {
             if self.raise_errors {
                 bail!("Error injected for {:?}", path);
@@ -465,10 +461,6 @@ mod tests {
         }
 
         impl FsService for RecordingFs {
-            fn file_exists(&self, _path: &str) -> bool {
-                todo!()
-            }
-
             fn write_file(&self, _path: &std::path::Path, contents: &str) -> Result<()> {
                 let config = ResmokeSuiteConfig::from_str(contents)?;
                 let Some(crate::resmoke::resmoke_suite::TestRoot::Roots { roots }) =

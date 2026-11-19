@@ -24,7 +24,9 @@ pub trait TestDiscovery: Send + Sync {
     ///
     /// # Returns
     ///
-    /// A list of tests belonging to given suite.
+    /// The tests in the suite, with missing files filtered out.
+    /// Implementations validate paths before caching; consumers reuse that snapshot
+    /// without rechecking the filesystem. Input files should not change during generation.
     fn discover_tests(&self, suite_name: &str) -> Result<Vec<String>>;
 
     /// Get the configuration for the given suite.
@@ -186,7 +188,7 @@ impl TestDiscovery for ResmokeProxy {
     ///
     /// # Returns
     ///
-    /// A list of tests belonging to given suite.
+    /// The tests in the suite, with missing files filtered out.
     fn discover_tests(&self, suite_name: &str) -> Result<Vec<String>> {
         let entry = {
             // Recover from a poisoned lock (a panic in another discovery thread)
@@ -627,8 +629,10 @@ mod tests {
         std::fs::write(
             &script_file,
             format!(
-                "echo called >> \"{}\"\necho 'suite_name: my_suite'\necho 'tests: []'\n",
-                counter_file.display()
+                "echo called >> \"{}\"\necho 'suite_name: my_suite'\necho 'tests: [\"{}\", \"{}\"]'\n",
+                counter_file.display(),
+                script_file.display(),
+                tmp_dir.join("missing.js").display()
             ),
         )
         .unwrap();
@@ -642,13 +646,18 @@ mod tests {
         for _ in 0..3 {
             assert_eq!(
                 proxy.discover_tests("my_suite").unwrap(),
-                Vec::<String>::new()
+                vec![script_file.to_str().unwrap().to_string()]
             );
         }
         proxy.discover_tests("other_suite").unwrap();
 
         let calls = std::fs::read_to_string(&counter_file).unwrap();
         assert_eq!(calls.lines().count(), 2);
+        std::fs::remove_file(&script_file).unwrap();
+        assert_eq!(
+            proxy.discover_tests("my_suite").unwrap(),
+            vec![script_file.to_str().unwrap().to_string()]
+        );
         std::fs::remove_dir_all(&tmp_dir).unwrap();
     }
 
@@ -678,7 +687,7 @@ mod tests {
                     "if [ \"$1\" = 'test-discovery' ]; then\n",
                     "  echo called >> {counter}\n",
                     "  echo 'suite_name: suite_a'\n",
-                    "  echo 'tests: []'\n",
+                    "  echo 'tests: [\"{existing}\", \"{missing}\"]'\n",
                     "  echo '---'\n",
                     "  echo 'suite_name: suite_b'\n",
                     "  echo 'tests: []'\n",
@@ -690,7 +699,9 @@ mod tests {
                     "  echo 'config: {{test_kind: js_test, selector: {{roots: []}}, executor: {{}}}}'\n",
                     "fi\n",
                 ),
-                counter = counter_file.display()
+                counter = counter_file.display(),
+                existing = script_file.display(),
+                missing = tmp_dir.join("missing.js").display()
             ),
         )
         .unwrap();
@@ -706,7 +717,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             proxy.discover_tests("suite_a").unwrap(),
-            Vec::<String>::new()
+            vec![script_file.to_str().unwrap().to_string()]
         );
         assert_eq!(
             proxy.discover_tests("suite_b").unwrap(),
