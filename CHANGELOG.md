@@ -1,4 +1,7 @@
 # Changelog
+## 3.11.1 - 2026-11-19
+* Upgrade shrub-rs to 0.10.0 to support the `virtual_tasks.complete` command
+
 ## 3.11.0 - 2026-10-30
 * Propagate Jira assignment tags to generated tasks
 * Only set `require_multiversion_setup` on multiversion tasks
