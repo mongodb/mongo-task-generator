@@ -1,4 +1,7 @@
 # Changelog
+## 3.11.2 - 2026-11-24
+* Avoid checking each test file again during task generation; discovery already filters out missing files.
+
 ## 3.11.1 - 2026-11-19
 * Upgrade shrub-rs to 0.10.0 to support the `virtual_tasks.complete` command
 
