@@ -33,7 +33,7 @@ use crate::{
         RUN_GENERATED_TESTS, RUN_GENERATED_TESTS_VIA_BAZEL, SUITE_NAME,
     },
     resmoke::resmoke_proxy::TestDiscovery,
-    utils::{fs_service::FsService, task_name::name_generated_task},
+    utils::task_name::name_generated_task,
     SubtaskLimits, REQUIRED_PREFIX,
 };
 
@@ -368,9 +368,6 @@ pub struct GenResmokeTaskServiceImpl {
     /// Service for generating multiversion configurations.
     multiversion_service: Arc<dyn MultiversionService>,
 
-    /// Service to interact with file system.
-    fs_service: Arc<dyn FsService>,
-
     /// Configuration for generating resmoke tasks.
     config: GenResmokeConfig,
 
@@ -390,7 +387,6 @@ impl GenResmokeTaskServiceImpl {
     ///
     /// * `task_history_service` - An instance of the service to query task history.
     /// * `test_discovery` - An instance of the service to query tests belonging to a task.
-    /// * `fs_service` - An instance of the service too work with the file system.
     /// * `gen_resmoke_config` - Configuration for how resmoke tasks should be generated.
     /// * `max_sub_tasks` - If set, limit the number of sub-tasks generated for each task.
     ///
@@ -403,7 +399,6 @@ impl GenResmokeTaskServiceImpl {
         test_discovery: Arc<dyn TestDiscovery>,
         resmoke_config_actor: Arc<Mutex<dyn ResmokeConfigActor>>,
         multiversion_service: Arc<dyn MultiversionService>,
-        fs_service: Arc<dyn FsService>,
         config: GenResmokeConfig,
         subtask_limits: SubtaskLimits,
         target_directory: String,
@@ -414,7 +409,6 @@ impl GenResmokeTaskServiceImpl {
             test_discovery,
             resmoke_config_actor,
             multiversion_service,
-            fs_service,
             config,
             subtask_limits,
             target_directory,
@@ -539,7 +533,7 @@ impl GenResmokeTaskServiceImpl {
     ///
     /// # Returns
     ///
-    /// List of tests belonging to suite being split.
+    /// Tests from the discovery snapshot, filtered for this variant and shuffled.
     fn get_test_list(
         &self,
         params: &ResmokeGenParams,
@@ -551,12 +545,7 @@ impl GenResmokeTaskServiceImpl {
             multiversion_name.unwrap_or(&params.suite_name).to_string()
         };
 
-        let mut test_list: Vec<String> = self
-            .test_discovery
-            .discover_tests(&suite_name)?
-            .into_iter()
-            .filter(|s| self.fs_service.file_exists(s))
-            .collect();
+        let mut test_list = self.test_discovery.discover_tests(&suite_name)?;
 
         if !params.is_enterprise {
             if let Some(enterprise_dir) = &self.config.enterprise_dir {
@@ -1268,17 +1257,6 @@ mod tests {
         }
     }
 
-    struct MockFsService {}
-    impl FsService for MockFsService {
-        fn file_exists(&self, _path: &str) -> bool {
-            true
-        }
-
-        fn write_file(&self, _path: &std::path::Path, _contents: &str) -> Result<()> {
-            Ok(())
-        }
-    }
-
     struct MockResmokeConfigActor {}
     #[async_trait]
     impl ResmokeConfigActor for MockResmokeConfigActor {
@@ -1312,7 +1290,6 @@ mod tests {
         let task_history_service = MockTaskHistoryService {
             task_history: task_history.clone(),
         };
-        let fs_service = MockFsService {};
         let resmoke_config_actor = MockResmokeConfigActor {};
 
         let config = GenResmokeConfig::new(false, Some(MOCK_ENTERPRISE_DIR.to_string()));
@@ -1322,7 +1299,6 @@ mod tests {
             Arc::new(test_discovery),
             Arc::new(Mutex::new(resmoke_config_actor)),
             Arc::new(multiversion_service),
-            Arc::new(fs_service),
             config,
             SubtaskLimits {
                 test_runtime_per_required_subtask: 3600.0,
@@ -1345,7 +1321,6 @@ mod tests {
         let task_history_service = MockTaskHistoryService {
             task_history: task_history.clone(),
         };
-        let fs_service = MockFsService {};
         let resmoke_config_actor = MockResmokeConfigActor {};
 
         let config = GenResmokeConfig::new(false, Some(MOCK_ENTERPRISE_DIR.to_string()));
@@ -1355,7 +1330,6 @@ mod tests {
             Arc::new(test_discovery),
             Arc::new(Mutex::new(resmoke_config_actor)),
             Arc::new(multiversion_service),
-            Arc::new(fs_service),
             config,
             SubtaskLimits {
                 test_runtime_per_required_subtask: 3600.0,
@@ -1605,6 +1579,28 @@ mod tests {
         assert_eq!(sub_suites.len(), 0);
     }
     // tests for get_test_list.
+    #[test]
+    fn test_get_test_list_reuses_discovery_snapshot() {
+        let directory = tempdir::TempDir::new("discovery_snapshot").unwrap();
+        let test_path = directory.path().join("test.js");
+        std::fs::write(&test_path, "").unwrap();
+        let discovered_test = test_path.to_str().unwrap().to_string();
+        let service = build_mocked_service(
+            vec![discovered_test.clone()],
+            TaskRuntimeHistory {
+                task_name: "snapshot".to_string(),
+                test_map: HashMap::new(),
+            },
+        );
+        std::fs::remove_file(&test_path).unwrap();
+
+        let tests = service
+            .get_test_list(&ResmokeGenParams::default(), None)
+            .unwrap();
+
+        assert_eq!(tests, vec![discovered_test]);
+    }
+
     #[rstest]
     #[case(true, 12)]
     #[case(false, 6)]
